@@ -1080,3 +1080,14 @@ The exact batching trigger — fixed N turns, checkpoint-based, or time-based �
 
 **Effect C: trigger-driven direct game state mutation (Open-5)**
 Active conditions currently instruct the narrator but do not directly mutate `Playthrough.state`. A future extension (Effect C) would allow creator-authored conditions to directly change game state fields when they fire — without waiting for the AI narrator's tool call. Not designed, not built; deferred to a future design pass as it introduces a second state-mutation path alongside the AI narrator's tool calls.
+
+
+
+Decisions Missing:
+
+- On master-mode authoring UI:
+  Deliberately deferred. The exact fields, controls, and flow for master-mode authoring are not specified in this RFC. This isn't an oversight, the actual shape of this UI will only become clear once we're building it and iterating against real use. Specifying it in detail now would mean designing something we'd likely throw away. What is committed at the RFC level: master-mode input is fully manual and structured (no AI inference on creator intent), and it must produce data that maps directly onto the memory layer's Fact/Entity schema without going through LLM extraction. The concrete authoring UI is an implementation-phase decision, not a design gap.
+
+- On the template-clone mechanism:
+
+Deliberately deferred, pending memory layer team input. The mechanics of cloning a scenario's template memory space into a new playthrough-scoped space (copy vs. reference, performance characteristics at scale) are not specified here. This decision depends on the underlying memory layer implementation, mem1, the from-scratch ideal design, or some mixture, which is itself still undecided and owned by the memory layer team, not something to be resolved unilaterally in this RFC. What is committed: ingestion happens once per scenario, not once per playthrough, and playthroughs get an isolated, cloned copy rather than sharing or re-ingesting. The exact mechanism is a conversation to have with whoever ends up owning the memory layer implementation.
