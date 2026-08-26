@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from app.db.connection import close_db_connection
 from fastapi import FastAPI
+from app.middleware.error_handler import setup_error_handlers
 
 
 @asynccontextmanager
@@ -20,6 +21,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+setup_error_handlers(app)
 
 
 @app.get("/health")

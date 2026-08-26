@@ -1,0 +1,36 @@
+import jwt
+from typing import Annotated
+from fastapi import Depends, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from app.config import settings
+from app.exceptions.auth_exceptions import InvalidTokenError
+from app.models.auth import CurrentUser
+import uuid
+
+security = HTTPBearer()
+
+async def get_current_user(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
+) -> CurrentUser:
+    if settings.environment == "development":
+        dev_user_id = request.headers.get("x-dev-user-id")
+        if dev_user_id:
+            try:
+                # We trust the dev header completely in TRS dev bypass
+                return CurrentUser(user_id=uuid.UUID(dev_user_id), token_version=1)
+            except ValueError:
+                raise InvalidTokenError("Invalid UUID format in dev header")
+
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+        if payload.get("type") != "access":
+            raise InvalidTokenError("Invalid token type")
+            
+        user_id = payload.get("sub")
+        token_version = payload.get("token_version")
+        
+        return CurrentUser(user_id=uuid.UUID(user_id), token_version=token_version)
+    except jwt.InvalidTokenError:
+        raise InvalidTokenError("Invalid or expired access token")

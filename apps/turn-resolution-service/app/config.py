@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     db_pool_size: int = 5
     db_max_overflow: int = 10
     secret_key: str = "default-secret-key-change-in-production"
+    jwt_algorithm: str = "HS256"
+    cors_origins: list[str] = ["http://localhost:5173"]
     environment: str = "development"
 
 

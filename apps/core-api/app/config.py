@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     db_pool_size: int = 5
     db_max_overflow: int = 10
     secret_key: str = "default-secret-key-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_access_expire_minutes: int = 15
+    jwt_refresh_expire_days: int = 7
+    firebase_project_id: str = ""
+    firebase_credentials_path: str = ""
+    cors_origins: list[str] = ["http://localhost:5173"]
     environment: str = "development"
 
 

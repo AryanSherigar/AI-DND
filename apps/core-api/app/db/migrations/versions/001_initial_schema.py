@@ -26,6 +26,7 @@ def _create_users_table() -> None:
         ),
         sa.Column("display_name", sa.String(length=255), nullable=False),
         sa.Column("auth_provider_id", sa.String(length=255), nullable=False),
+        sa.Column("token_version", sa.Integer(), server_default="1", nullable=False),
         sa.Column(
             "created_at",
             sa.TIMESTAMP(timezone=True),
