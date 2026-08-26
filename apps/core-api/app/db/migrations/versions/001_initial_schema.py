@@ -55,7 +55,9 @@ def _get_scenarios_columns() -> list[sa.Column]:
         sa.Column(
             "mode",
             sa.String(length=20),
-            sa.CheckConstraint("mode IN ('newbie', 'master')"),
+            sa.CheckConstraint(
+                "mode IN ('newbie', 'master')", name="ck_scenarios_mode"
+            ),
             nullable=False,
         ),
         sa.Column(
@@ -67,7 +69,9 @@ def _get_scenarios_columns() -> list[sa.Column]:
         sa.Column(
             "status",
             sa.String(length=20),
-            sa.CheckConstraint("status IN ('draft', 'published')"),
+            sa.CheckConstraint(
+                "status IN ('draft', 'published')", name="ck_scenarios_status"
+            ),
             server_default="draft",
             nullable=False,
         ),
@@ -81,7 +85,8 @@ def _get_scenarios_columns() -> list[sa.Column]:
             "complexity_tier",
             sa.String(length=20),
             sa.CheckConstraint(
-                "complexity_tier IN ('newbie', 'intermediate', 'master')"
+                "complexity_tier IN ('newbie', 'intermediate', 'master')",
+                name="ck_scenarios_complexity_tier",
             ),
             nullable=False,
         ),
@@ -89,7 +94,8 @@ def _get_scenarios_columns() -> list[sa.Column]:
             "player_count_support",
             sa.String(length=20),
             sa.CheckConstraint(
-                "player_count_support IN ('solo', 'multiplayer', 'both')"
+                "player_count_support IN ('solo', 'multiplayer', 'both')",
+                name="ck_scenarios_player_count_support",
             ),
             nullable=False,
         ),
@@ -237,7 +243,10 @@ def _create_playthroughs_table() -> None:
         sa.Column(
             "status",
             sa.String(length=20),
-            sa.CheckConstraint("status IN ('active', 'completed', 'abandoned')"),
+            sa.CheckConstraint(
+                "status IN ('active', 'completed', 'abandoned')",
+                name="ck_playthroughs_status",
+            ),
             server_default="active",
             nullable=False,
         ),
@@ -287,7 +296,9 @@ def _create_participants_table() -> None:
         sa.Column(
             "role",
             sa.String(length=20),
-            sa.CheckConstraint("role IN ('owner', 'joined')"),
+            sa.CheckConstraint(
+                "role IN ('owner', 'joined')", name="ck_participants_role"
+            ),
             nullable=False,
         ),
         sa.Column("turn_order_position", sa.Integer(), nullable=False),
@@ -319,7 +330,9 @@ def _create_playthrough_shares_table() -> None:
         sa.Column(
             "mode",
             sa.String(length=20),
-            sa.CheckConstraint("mode IN ('spectate', 'join')"),
+            sa.CheckConstraint(
+                "mode IN ('spectate', 'join')", name="ck_playthrough_shares_mode"
+            ),
             nullable=False,
         ),
         sa.Column(

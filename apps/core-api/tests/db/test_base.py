@@ -3,12 +3,11 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import schema
-from sqlalchemy.dialects import postgresql
-
 from app.db.base import (
     NAMING_CONVENTION,
     Base,
+)
+from app.db.models import (
     Participant,
     Playthrough,
     PlaythroughShare,
@@ -17,6 +16,8 @@ from app.db.base import (
     TurnLog,
     User,
 )
+from sqlalchemy import schema
+from sqlalchemy.dialects import postgresql
 
 
 def test_base_metadata_contains_all_tables() -> None:

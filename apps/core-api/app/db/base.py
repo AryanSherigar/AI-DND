@@ -41,25 +41,9 @@ class TimestampMixin(CreatedAtMixin):
     )
 
 
-# Import all ORM models so Base.metadata is fully populated.
-from app.db.models.participant import Participant
-from app.db.models.playthrough import Playthrough
-from app.db.models.scenario import Scenario
-from app.db.models.scenario_condition import ScenarioCondition
-from app.db.models.share import PlaythroughShare
-from app.db.models.turn_log import TurnLog
-from app.db.models.user import User
-
 __all__: list[str] = [
     "NAMING_CONVENTION",
     "Base",
     "CreatedAtMixin",
-    "Participant",
-    "Playthrough",
-    "PlaythroughShare",
-    "Scenario",
-    "ScenarioCondition",
     "TimestampMixin",
-    "TurnLog",
-    "User",
 ]

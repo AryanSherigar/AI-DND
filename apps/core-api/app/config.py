@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/aidnd_db"
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
     secret_key: str = "default-secret-key-change-in-production"
     environment: str = "development"
 
