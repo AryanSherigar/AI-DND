@@ -19,10 +19,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_expire_minutes: int = 15
     jwt_refresh_expire_days: int = 7
-    firebase_project_id: str = ""
+    firebase_project_id: str = "ai-dnd-47eb0"
     firebase_credentials_path: str = ""
-    cors_origins: list[str] = ["http://localhost:5173"]
+    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
     environment: str = "development"
-
 
 settings = Settings()

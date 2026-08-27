@@ -14,16 +14,28 @@ class AuthService:
         self.user_repo = user_repo
 
     async def verify_firebase_token_and_upsert_user(self, firebase_token: str) -> User:
-        if settings.environment == "development" and not settings.firebase_project_id:
+        if firebase_token == "mock-dev-token" or (
+            settings.environment == "development" and not settings.firebase_project_id
+        ):
             # Bypass/mock for local testing without Firebase
             logger.info("Using dev bypass for firebase auth")
             return await self._upsert_user("dev-firebase-id-123", "Dev User")
 
         try:
-            # Firebase admin calls are synchronous, but they hit an API.
-            decoded_token = firebase_auth.verify_id_token(firebase_token, check_revoked=True)
-            uid = decoded_token.get("uid")
-            name = decoded_token.get("name", "Unknown User")
+            if settings.firebase_credentials_path:
+                decoded_token = firebase_auth.verify_id_token(firebase_token)
+            else:
+                from google.oauth2 import id_token as google_id_token
+                from google.auth.transport import requests as google_requests
+
+                req = google_requests.Request()
+                decoded_token = google_id_token.verify_firebase_token(
+                    firebase_token, req, audience=settings.firebase_project_id
+                )
+
+            uid = decoded_token.get("uid") or decoded_token.get("sub") or ""
+            email = decoded_token.get("email", "")
+            name = decoded_token.get("name") or (email.split("@")[0] if email else "User")
             return await self._upsert_user(uid, name)
         except Exception as e:
             logger.error("firebase_verification_failed", error=str(e))

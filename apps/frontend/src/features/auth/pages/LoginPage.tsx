@@ -6,7 +6,7 @@ import { LoginButton } from '../components/LoginButton/LoginButton';
 
 export const LoginPage: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuthStore();
-  const { error } = useAuth();
+  const { error, loginAsDevUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -44,8 +44,19 @@ export const LoginPage: React.FC = () => {
           </div>
         )}
 
-        <div className="mt-8">
+        <div className="mt-8 space-y-4">
           <LoginButton />
+          <div className="relative flex py-2 items-center">
+            <div className="flex-grow border-t border-zinc-800"></div>
+            <span className="flex-shrink mx-4 text-xs text-zinc-500 uppercase font-semibold">Or</span>
+            <div className="flex-grow border-t border-zinc-800"></div>
+          </div>
+          <button
+            onClick={loginAsDevUser}
+            className="w-full px-4 py-3 border border-zinc-700 text-sm font-medium rounded-lg text-zinc-200 bg-zinc-800 hover:bg-zinc-700 transition-colors"
+          >
+            ⚡ Dev Quick Login (No Firebase Required)
+          </button>
         </div>
       </div>
     </div>

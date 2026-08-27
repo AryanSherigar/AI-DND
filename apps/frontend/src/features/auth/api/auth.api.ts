@@ -1,5 +1,5 @@
 import { apiClient } from '@/shared/lib/api-client';
-import { UserResponse, TokenResponse } from '../types/auth.types';
+import { TokenResponse } from '../types/auth.types';
 
 
 export const exchangeFirebaseToken = async (firebaseIdToken: string): Promise<TokenResponse> => {

@@ -21,8 +21,20 @@ export const useAuth = () => {
     }
   };
 
+  const loginAsDevUser = async () => {
+    try {
+      const { access_token, user: apiUser } = await exchangeFirebaseToken('mock-dev-token');
+      setAuth(access_token, apiUser);
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Dev login failed');
+    }
+  };
+
   const logout = async () => {
-    await auth.signOut();
+    if (auth.currentUser) {
+      await auth.signOut();
+    }
     storeLogout();
   };
 
@@ -32,6 +44,7 @@ export const useAuth = () => {
     isLoading,
     error,
     loginWithGoogle,
+    loginAsDevUser,
     logout,
   };
 };
