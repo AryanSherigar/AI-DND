@@ -1,13 +1,15 @@
 from datetime import datetime, timedelta, timezone
+
 import jwt
-from firebase_admin import auth as firebase_auth
+import structlog
 from app.config import settings
-from app.repositories.user_repo import UserRepo
 from app.db.models.user import User
 from app.exceptions.auth_exceptions import InvalidTokenError
-import structlog
+from app.repositories.user_repo import UserRepo
+from firebase_admin import auth as firebase_auth
 
 logger = structlog.get_logger()
+
 
 class AuthService:
     def __init__(self, user_repo: UserRepo):
@@ -25,8 +27,8 @@ class AuthService:
             if settings.firebase_credentials_path:
                 decoded_token = firebase_auth.verify_id_token(firebase_token)
             else:
-                from google.oauth2 import id_token as google_id_token
                 from google.auth.transport import requests as google_requests
+                from google.oauth2 import id_token as google_id_token
 
                 req = google_requests.Request()
                 decoded_token = google_id_token.verify_firebase_token(
@@ -35,11 +37,13 @@ class AuthService:
 
             uid = decoded_token.get("uid") or decoded_token.get("sub") or ""
             email = decoded_token.get("email", "")
-            name = decoded_token.get("name") or (email.split("@")[0] if email else "User")
+            name = decoded_token.get("name") or (
+                email.split("@")[0] if email else "User"
+            )
             return await self._upsert_user(uid, name)
         except Exception as e:
             logger.error("firebase_verification_failed", error=str(e))
-            raise InvalidTokenError(f"Firebase token verification failed: {str(e)}")
+            raise InvalidTokenError(f"Firebase token verification failed: {e!s}")
 
     async def _upsert_user(self, auth_provider_id: str, display_name: str) -> User:
         user = await self.user_repo.get_by_auth_provider_id(auth_provider_id)
@@ -48,21 +52,29 @@ class AuthService:
         return user
 
     def generate_access_token(self, user: User) -> str:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_expire_minutes)
+        expire = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.jwt_access_expire_minutes
+        )
         to_encode = {
             "sub": str(user.user_id),
             "exp": expire,
             "token_version": user.token_version,
-            "type": "access"
+            "type": "access",
         }
-        return jwt.encode(to_encode, settings.secret_key, algorithm=settings.jwt_algorithm)
+        return jwt.encode(
+            to_encode, settings.secret_key, algorithm=settings.jwt_algorithm
+        )
 
     def generate_refresh_token(self, user: User) -> str:
-        expire = datetime.now(timezone.utc) + timedelta(days=settings.jwt_refresh_expire_days)
+        expire = datetime.now(timezone.utc) + timedelta(
+            days=settings.jwt_refresh_expire_days
+        )
         to_encode = {
             "sub": str(user.user_id),
             "exp": expire,
             "token_version": user.token_version,
-            "type": "refresh"
+            "type": "refresh",
         }
-        return jwt.encode(to_encode, settings.secret_key, algorithm=settings.jwt_algorithm)
+        return jwt.encode(
+            to_encode, settings.secret_key, algorithm=settings.jwt_algorithm
+        )

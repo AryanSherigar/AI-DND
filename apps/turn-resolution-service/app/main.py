@@ -4,8 +4,8 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from app.db.connection import close_db_connection
-from fastapi import FastAPI
 from app.middleware.error_handler import setup_error_handlers
+from fastapi import FastAPI
 
 
 @asynccontextmanager

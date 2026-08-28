@@ -1,9 +1,10 @@
-from fastapi import Request, FastAPI
-from fastapi.responses import JSONResponse
-from app.exceptions.base import BaseAppException
 import structlog
+from app.exceptions.base import BaseAppException
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 logger = structlog.get_logger()
+
 
 def setup_error_handlers(app: FastAPI):
     @app.exception_handler(BaseAppException)

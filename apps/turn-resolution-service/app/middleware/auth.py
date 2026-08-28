@@ -1,17 +1,19 @@
-import jwt
+import uuid
 from typing import Annotated
-from fastapi import Depends, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+import jwt
 from app.config import settings
 from app.exceptions.auth_exceptions import InvalidTokenError
 from app.models.auth import CurrentUser
-import uuid
+from fastapi import Depends, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 security = HTTPBearer()
 
+
 async def get_current_user(
     request: Request,
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
 ) -> CurrentUser:
     if settings.environment == "development":
         dev_user_id = request.headers.get("x-dev-user-id")
@@ -24,13 +26,15 @@ async def get_current_user(
 
     token = credentials.credentials
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(
+            token, settings.secret_key, algorithms=[settings.jwt_algorithm]
+        )
         if payload.get("type") != "access":
             raise InvalidTokenError("Invalid token type")
-            
+
         user_id = payload.get("sub")
         token_version = payload.get("token_version")
-        
+
         return CurrentUser(user_id=uuid.UUID(user_id), token_version=token_version)
     except jwt.InvalidTokenError:
         raise InvalidTokenError("Invalid or expired access token")

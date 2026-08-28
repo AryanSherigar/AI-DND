@@ -1,25 +1,30 @@
-import pytest
-import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
-from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.pool import NullPool
-from app.main import app as fastapi_app
-from app.db.connection import get_db_session
-from app.db.base import Base
-import app.db.models  # Ensures all models are registered with Base
+from collections.abc import AsyncGenerator
 
-TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/aidnd_test_db"
+import pytest_asyncio
+from app.db.base import Base
+from app.db.connection import get_db_session
+from app.main import app as fastapi_app
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
+
+TEST_DATABASE_URL = (
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/aidnd_test_db"
+)
 
 from app.config import settings
+
 settings.environment = "testing"
+
 
 @pytest_asyncio.fixture(scope="session")
 def event_loop():
     import asyncio
+
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
+
 
 @pytest_asyncio.fixture(scope="session")
 async def test_engine():
@@ -32,6 +37,7 @@ async def test_engine():
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
+
 @pytest_asyncio.fixture
 async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     async_session = async_sessionmaker(
@@ -40,6 +46,7 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     async with async_session() as session:
         yield session
         await session.rollback()
+
 
 @pytest_asyncio.fixture
 async def async_client(db_session) -> AsyncGenerator[AsyncClient, None]:

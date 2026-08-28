@@ -3,12 +3,12 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.connection import close_db_connection
-from fastapi import FastAPI
-from app.routers import auth
 from app.middleware.error_handler import setup_error_handlers
+from app.routers import auth
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager

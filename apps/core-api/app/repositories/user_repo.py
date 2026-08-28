@@ -1,7 +1,9 @@
 import uuid
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+
 from app.db.models.user import User
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 
 class UserRepo:
     def __init__(self, session: AsyncSession):
@@ -14,9 +16,7 @@ class UserRepo:
         return result.scalars().first()
 
     async def get_by_id(self, user_id: uuid.UUID) -> User | None:
-        result = await self.session.execute(
-            select(User).where(User.user_id == user_id)
-        )
+        result = await self.session.execute(select(User).where(User.user_id == user_id))
         return result.scalars().first()
 
     async def create(self, auth_provider_id: str, display_name: str) -> User:
