@@ -1,0 +1,13 @@
+# Antigravity Context Ignore Rules
+# Ignore all .env files of all types except .env.example
+.env*
+!.env.example
+
+# Node & Python dependencies and build artifacts
+node_modules/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+dist/
+build/

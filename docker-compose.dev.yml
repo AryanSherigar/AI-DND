@@ -1,0 +1,34 @@
+name: ai-dnd
+
+services:
+  core-api:
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"]
+    volumes:
+      - ./apps/core-api:/app
+
+  turn-resolution-service:
+    command: ["uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8001"]
+    volumes:
+      - ./apps/turn-resolution-service:/app
+
+  frontend:
+    build: !reset []
+    image: node:20-alpine
+    container_name: aidnd-frontend-dev
+    working_dir: /app
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    environment:
+      VITE_CORE_API_URL: ${VITE_CORE_API_URL:-http://localhost:8000}
+      VITE_TRS_URL: ${VITE_TRS_URL:-http://localhost:8001}
+      VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+      VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
+      VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
+      VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-}
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-}
+      VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
+      VITE_MEASUREMENT_ID: ${VITE_MEASUREMENT_ID:-}
+    command: ["sh", "-c", "npm install && npm run dev -- --host 0.0.0.0 --port 5173"]

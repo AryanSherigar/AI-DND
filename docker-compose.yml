@@ -1,0 +1,88 @@
+name: ai-dnd
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aidnd-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-aidnd_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-aidnd_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aidnd-net
+
+  core-api:
+    build:
+      context: ./apps/core-api
+      dockerfile: Dockerfile
+    container_name: aidnd-core-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${CORE_API_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/aidnd_db}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_ACCESS_EXPIRE_MINUTES: ${JWT_ACCESS_EXPIRE_MINUTES:-15}
+      JWT_REFRESH_EXPIRE_DAYS: ${JWT_REFRESH_EXPIRE_DAYS:-7}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-ai-dnd-47eb0}
+      FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:3000","http://localhost:80"]}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    ports:
+      - "${CORE_API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - aidnd-net
+
+  turn-resolution-service:
+    build:
+      context: ./apps/turn-resolution-service
+      dockerfile: Dockerfile
+    container_name: aidnd-trs
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${TRS_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/aidnd_db}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:3000","http://localhost:80"]}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    ports:
+      - "${TRS_PORT:-8001}:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - aidnd-net
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+    container_name: aidnd-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - core-api
+      - turn-resolution-service
+    networks:
+      - aidnd-net
+
+networks:
+  aidnd-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
