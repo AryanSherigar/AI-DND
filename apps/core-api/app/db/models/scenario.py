@@ -40,6 +40,7 @@ class Scenario(Base, TimestampMixin):
         nullable=False,
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    logline: Mapped[str | None] = mapped_column(String(150), nullable=True)
     mode: Mapped[str] = mapped_column(String(20), nullable=False)
     world_data: Mapped[dict[str, object]] = mapped_column(
         JSONB,
