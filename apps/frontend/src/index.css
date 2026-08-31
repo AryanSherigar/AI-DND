@@ -1,7 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400..600&family=Pixelify+Sans:wght@500..700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -10,44 +7,62 @@
 @layer base {
   body {
     margin: 0;
-    font-family: 'Manrope', sans-serif;
+    font-family: "IM Fell English", serif;
     background-color: #0d0f14;
     color: #ffffff;
   }
 }
 
 @layer utilities {
-  .font-retro {
-    font-family: 'Press Start 2P', monospace;
+  .font-fell {
+    font-family: "IM Fell English", serif;
   }
-  .font-playfair {
-    font-family: 'Playfair Display', serif;
+  .font-fell-sc {
+    font-family: "IM Fell English SC", serif;
   }
-  .font-vt323 {
-    font-family: 'VT323', monospace;
-  }
-  .font-pixelify {
-    font-family: 'Pixelify Sans', sans-serif;
-  }
-  .font-manrope {
-    font-family: 'Manrope', sans-serif;
+  .font-mono {
+    font-family: "IBM Plex Mono", monospace;
   }
 }
 
 /* Animations */
 @keyframes boot-flicker {
-  0% { opacity: 0.1; }
-  2% { opacity: 1; }
-  8% { opacity: 0.1; }
-  9% { opacity: 1; }
-  12% { opacity: 0.1; }
-  20% { opacity: 1; }
-  25% { opacity: 0.3; }
-  30% { opacity: 1; }
-  70% { opacity: 0.7; }
-  72% { opacity: 0.2; }
-  77% { opacity: 0.9; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 0.1;
+  }
+  2% {
+    opacity: 1;
+  }
+  8% {
+    opacity: 0.1;
+  }
+  9% {
+    opacity: 1;
+  }
+  12% {
+    opacity: 0.1;
+  }
+  20% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 0.3;
+  }
+  30% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.7;
+  }
+  72% {
+    opacity: 0.2;
+  }
+  77% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 @keyframes falling-snow {

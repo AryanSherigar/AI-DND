@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
-import { useAuthStore } from '../stores/auth.store';
-import { refreshAccessToken } from '../api/auth.api';
+import React, { useEffect } from "react";
+import { useAuthStore } from "../stores/auth.store";
+import { refreshAccessToken } from "../api/auth.api";
 
 interface AuthProviderProps {
   children: React.ReactNode;

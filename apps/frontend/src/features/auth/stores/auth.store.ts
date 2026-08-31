@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import { UserResponse } from '../types/auth.types';
+import { create } from "zustand";
+import { UserResponse } from "../types/auth.types";
 
 interface AuthState {
   accessToken: string | null;
@@ -16,7 +16,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
   isLoading: true,
-  setAuth: (token, user) => set({ accessToken: token, user, isAuthenticated: true }),
+  setAuth: (token, user) =>
+    set({ accessToken: token, user, isAuthenticated: true }),
   logout: () => set({ accessToken: null, user: null, isAuthenticated: false }),
   setLoading: (status) => set({ isLoading: status }),
 }));

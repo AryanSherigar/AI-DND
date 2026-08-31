@@ -1,201 +1,95 @@
-
-import { SVGProps } from 'react';
+import { SVGProps } from "react";
 
 export const PlayIcon = (props: SVGProps<SVGSVGElement>) => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
-    <desc>
-    Video Movies Play Streamline Icon: https://streamlinehq.com
-  </desc>
-  <title>video-movies-play</title>
-  <g>
-    <path d="M22.2825 2.2874999999999996h1.1475v19.424999999999997h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M21.142500000000002 21.7125h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M21.142500000000002 1.1400000000000001h1.1400000000000001v1.1475h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M2.8575 22.8525h18.285V24H2.8575Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M18.855 18.285h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M17.715 19.424999999999997h1.1400000000000001v1.1475h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M17.715 17.137500000000003h1.1400000000000001v1.1475h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="m7.425000000000001 14.857499999999998 1.1475 0 0 -1.1475 11.4225 0 0 -1.1400000000000001 -11.4225 0 0 -1.1400000000000001 -1.1475 0 0 1.1400000000000001 -3.4275 0 0 1.1400000000000001 3.4275 0 0 1.1475z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M17.715 9.1425h2.2800000000000002v1.1400000000000001h-2.2800000000000002Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M17.715 6.855h2.2800000000000002v1.1400000000000001h-2.2800000000000002Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M16.5675 20.572499999999998h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M16.5675 15.997499999999999h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M13.14 9.1425h2.2874999999999996v1.1400000000000001h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M13.14 6.855h2.2874999999999996v1.1400000000000001h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M13.14 4.5675h2.2874999999999996v1.1475h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="m13.14 17.137500000000003 -1.1400000000000001 0 0 -1.1400000000000001 -1.1475 0 0 5.715 1.1475 0 0 -1.1400000000000001 1.1400000000000001 0 0 -1.1475 1.1475 0 0 -1.1400000000000001 -1.1475 0 0 -1.1475z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M8.5725 9.1425h2.2800000000000002v1.1400000000000001h-2.2800000000000002Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M8.5725 6.855h2.2800000000000002v1.1400000000000001h-2.2800000000000002Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M8.5725 4.5675h2.2800000000000002v1.1475h-2.2800000000000002Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M8.5725 2.2874999999999996h2.2800000000000002v1.1400000000000001h-2.2800000000000002Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M6.285 20.572499999999998H7.425000000000001v1.1400000000000001H6.285Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M6.285 15.997499999999999H7.425000000000001v1.1400000000000001H6.285Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M5.137499999999999 19.424999999999997h1.1475v1.1475H5.137499999999999Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M5.137499999999999 17.137500000000003h1.1475v1.1475H5.137499999999999Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M3.9975 9.1425h2.2874999999999996v1.1400000000000001H3.9975Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M3.9975 6.855h2.2874999999999996v1.1400000000000001H3.9975Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M3.9975 18.285h1.1400000000000001v1.1400000000000001H3.9975Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M2.8575 0h18.285v1.1400000000000001H2.8575Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M1.71 21.7125h1.1475v1.1400000000000001H1.71Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M1.71 1.1400000000000001h1.1475v1.1475H1.71Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M0.5700000000000001 2.2874999999999996h1.1400000000000001v19.424999999999997H0.5700000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-  </g>
+  <svg
+    viewBox="0 0 24 24"
+    width="1em"
+    height="1em"
+    fill="currentColor"
+    {...props}
+  >
+    <path d="M8 5v14l11-7z" />
   </svg>
 );
 
 export const QuillIcon = (props: SVGProps<SVGSVGElement>) => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
-    <desc>
-    Content Files Quill Ink Streamline Icon: https://streamlinehq.com
-  </desc>
-  <title>content-files-quill-ink</title>
-  <g>
-    <path d="m20.576249999999998 2.2874999999999996 1.1400000000000001 0 0 -1.1475 1.1400000000000001 0 0 -1.1400000000000001 -6.855 0 0 1.1400000000000001 4.574999999999999 0 0 1.1475z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M19.42875 2.2874999999999996h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M18.28875 3.4275h1.1400000000000001V4.574999999999999h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M17.14875 4.574999999999999h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M16.00125 5.715h1.1475v2.2874999999999996h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M16.00125 2.2874999999999996h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M14.861250000000002 8.0025h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M14.861250000000002 3.4275h1.1400000000000001V4.574999999999999h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M13.713750000000001 1.1400000000000001h2.2874999999999996v1.1475h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M13.713750000000001 4.574999999999999h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M12.57375 9.1425h2.2874999999999996v1.1475h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M12.57375 5.715h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M12.57375 2.2874999999999996h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M2.2912500000000002 24h10.2825v-1.1400000000000001h1.1400000000000001v-4.574999999999999h-1.1400000000000001v1.1475h-5.715v-1.1475H4.574999999999999v-1.1400000000000001H2.2912500000000002v1.1400000000000001h-1.1475v4.574999999999999h1.1475Zm1.1400000000000001 -4.5675H4.574999999999999v2.2800000000000002h2.2874999999999996v1.1475H4.574999999999999v-1.1475H3.4312500000000004Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M11.43375 6.855h1.1400000000000001v1.1475h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M11.43375 3.4275h1.1400000000000001V4.574999999999999h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M10.286249999999999 17.145h2.2874999999999996v1.1400000000000001h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="m12.57375 10.290000000000001 -2.2874999999999996 0 0 -1.1475 -1.1400000000000001 0 0 -1.1400000000000001 -1.1400000000000001 0 0 3.4275 4.5675 0 0 -1.1400000000000001z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M10.286249999999999 8.0025h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M10.286249999999999 4.574999999999999h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M9.14625 5.715h1.1400000000000001v2.2874999999999996h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="m5.71875 14.857499999999998 3.4275 0 0 2.2874999999999996 1.1400000000000001 0 0 -2.2874999999999996 1.1475 0 0 -1.1400000000000001 -3.4275 0 0 -2.2874999999999996 -1.1475 0 0 2.2874999999999996 -3.4275 0 0 1.1400000000000001 1.1400000000000001 0 0 2.2874999999999996 1.1475 0 0 -2.2874999999999996z" fill="currentColor" strokeWidth="0.75"></path>
-  </g>
+  <svg
+    viewBox="0 0 24 24"
+    width="1em"
+    height="1em"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L3 13v5h5l9.24-9.24z" />
+    <line x1="16" y1="8" x2="2" y2="22" />
+    <line x1="17.5" y1="15" x2="9" y2="15" />
   </svg>
 );
 
 export const UserIcon = (props: SVGProps<SVGSVGElement>) => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
-    <desc>
-    Multiple User Streamline Icon: https://streamlinehq.com
-  </desc>
-  <title>multiple-user</title>
-  <g>
-    <path d="M22.86 13.713750000000001H24v1.1475h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M20.572499999999998 12.57375h2.2874999999999996v1.1400000000000001h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M20.572499999999998 10.286249999999999h1.1400000000000001v1.1475h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="m17.145 11.43375 0 -2.2874999999999996 -1.1400000000000001 0 0 -1.1475 -1.1475 0 0 -2.2800000000000002 1.1475 0 0 -1.1475 4.5675 0 0 1.1475 1.1400000000000001 0 0 4.5675 1.1475 0 0 -6.855 -1.1475 0 0 -1.1475 -1.1400000000000001 0 0 -1.1400000000000001 -4.5675 0 0 1.1400000000000001 -1.1475 0 0 1.1475 -1.1400000000000001 0 0 3.4275 -3.4275 0 0 -3.4275 -1.1475 0 0 -1.1475 -1.1400000000000001 0 0 -1.1400000000000001 -4.574999999999999 0 0 1.1400000000000001 -1.1400000000000001 0 0 1.1475 -1.1400000000000001 0 0 6.855 1.1400000000000001 0 0 -4.5675 1.1400000000000001 0 0 -1.1475 4.574999999999999 0 0 1.1475 1.1400000000000001 0 0 2.2800000000000002 -1.1400000000000001 0 0 1.1475 -1.1400000000000001 0 0 2.2874999999999996 -3.435 0 0 1.1400000000000001 3.435 0 0 4.5675 1.1400000000000001 0 0 -5.7075000000000005 1.1400000000000001 0 0 -1.1475 5.715 0 0 1.1475 1.1475 0 0 5.7075000000000005 1.1400000000000001 0 0 -4.5675 3.4275 0 0 -1.1400000000000001 -3.4275 0z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M18.285 21.71625h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M17.145 20.576249999999998h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M14.857499999999998 19.42875h2.2874999999999996v1.1475h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M14.857499999999998 17.14125h1.1475v1.1475h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M13.7175 12.57375h1.1400000000000001v2.2874999999999996h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M9.1425 18.28875h5.715v1.1400000000000001h-5.715Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M10.290000000000001 16.00125h3.4275v1.1400000000000001h-3.4275Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M9.1425 12.57375h1.1475v2.2874999999999996h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M8.0025 17.14125h1.1400000000000001v1.1475h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M6.862500000000001 19.42875h2.2800000000000002v1.1475H6.862500000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M5.715 20.576249999999998h1.1475v1.1400000000000001H5.715Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M4.574999999999999 21.71625h1.1400000000000001v1.1400000000000001H4.574999999999999Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M2.2874999999999996 10.286249999999999h1.1400000000000001v1.1475H2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M1.1475 12.57375h2.2800000000000002v1.1400000000000001H1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M0 13.713750000000001h1.1475v1.1475H0Z" fill="currentColor" strokeWidth="0.75"></path>
-  </g>
+  <svg
+    viewBox="0 0 24 24"
+    width="1em"
+    height="1em"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
   </svg>
 );
 
 export const HourglassIcon = (props: SVGProps<SVGSVGElement>) => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
-    <desc>
-    Interface Essential Waiting Hourglass Loading Streamline Icon: https://streamlinehq.com
-  </desc>
-  <title>interface-essential-waiting-hourglass-loading</title>
-  <g>
-    <path d="m14.857499999999998 20.0025 0 1.1400000000000001 2.2800000000000002 0 0 1.1475 -10.2825 0 0 -1.1475 2.2874999999999996 0 0 -1.1400000000000001 -2.2874999999999996 0 0 -2.2874999999999996 -1.1400000000000001 0 0 4.574999999999999 -2.2874999999999996 0 0 1.1400000000000001 17.145 0 0 -1.1400000000000001 -2.2874999999999996 0 0 -4.574999999999999 -1.1475 0 0 2.2874999999999996 -2.2800000000000002 0z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M15.997499999999999 15.4275h1.1400000000000001v2.2874999999999996h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M15.997499999999999 6.285h1.1400000000000001v2.2874999999999996h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M14.857499999999998 14.287500000000001h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M13.71 13.1475h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M12.57 18.855h2.2874999999999996v1.1475h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="m14.857499999999998 10.86 0 -1.1475 1.1400000000000001 0 0 -1.1400000000000001 -8.0025 0 0 1.1400000000000001 1.1475 0 0 1.1475 1.1400000000000001 0 0 2.2874999999999996 1.1475 0 0 5.7075000000000005 1.1400000000000001 0 0 -5.7075000000000005 1.1400000000000001 0 0 -2.2874999999999996 1.1475 0z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M9.1425 18.855h2.2874999999999996v1.1475h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M9.1425 13.1475h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M7.995 14.287500000000001h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M6.855 15.4275h1.1400000000000001v2.2874999999999996H6.855Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M6.855 6.285h1.1400000000000001v2.2874999999999996H6.855Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="m6.855 1.7175 10.2825 0 0 4.5675 1.1475 0 0 -4.5675 2.2874999999999996 0 0 -1.1475 -17.145 0 0 1.1475 2.2874999999999996 0 0 4.5675 1.1400000000000001 0 0 -4.5675z" fill="currentColor" strokeWidth="0.75"></path>
-  </g>
+  <svg
+    viewBox="0 0 24 24"
+    width="1em"
+    height="1em"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M5 22h14M5 2h14M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />
   </svg>
 );
 
 export const HeartIcon = (props: SVGProps<SVGSVGElement>) => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
-    <desc>
-    Interface Essential Heart Favorite Streamline Icon: https://streamlinehq.com
-  </desc>
-  <title>interface-essential-heart-favorite</title>
-  <g>
-    <path d="M22.8525 6.285H24V12h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M21.7125 12h1.1400000000000001v2.2874999999999996h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M21.7125 5.1450000000000005h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M20.572499999999998 14.287500000000001h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M20.572499999999998 7.425000000000001h1.1400000000000001v2.2874999999999996h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M20.572499999999998 3.9975h1.1400000000000001v1.1475h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M19.424999999999997 6.285h1.1475V7.425000000000001H19.424999999999997Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M18.285 15.4275h2.2874999999999996v1.1400000000000001h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M17.137500000000003 5.1450000000000005h2.2874999999999996v1.1400000000000001h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M15.997499999999999 16.5675h2.2874999999999996v1.1475h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M14.857499999999998 2.8575h5.715v1.1400000000000001h-5.715Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M13.71 17.715h2.2874999999999996v1.1400000000000001h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M13.71 3.9975h1.1475v1.1475h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M12.57 18.855h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M12.57 5.1450000000000005h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M11.43 19.995h1.1400000000000001v1.1475h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M11.43 6.285h1.1400000000000001V7.425000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M10.2825 18.855h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M10.2825 5.1450000000000005h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M7.995 17.715h2.2874999999999996v1.1400000000000001h-2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M9.1425 3.9975h1.1400000000000001v1.1475h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M5.715 16.5675h2.2800000000000002v1.1475H5.715Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M3.4275 15.4275h2.2874999999999996v1.1400000000000001H3.4275Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M3.4275 2.8575h5.715v1.1400000000000001H3.4275Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M2.2874999999999996 14.287500000000001h1.1400000000000001v1.1400000000000001H2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M2.2874999999999996 3.9975h1.1400000000000001v1.1475H2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M1.1400000000000001 12h1.1475v2.2874999999999996H1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M1.1400000000000001 5.1450000000000005h1.1475v1.1400000000000001H1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M0 6.285h1.1400000000000001V12H0Z" fill="currentColor" strokeWidth="0.75"></path>
-  </g>
+  <svg
+    viewBox="0 0 24 24"
+    width="1em"
+    height="1em"
+    fill="currentColor"
+    {...props}
+  >
+    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
   </svg>
 );
 
 export const TextInputIcon = (props: SVGProps<SVGSVGElement>) => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
-    <desc>
-    Interface Essential Text Input Area 2 Streamline Icon: https://streamlinehq.com
-  </desc>
-  <title>interface-essential-text-input-area-2</title>
-  <g>
-    <path d="M22.86 12.00375H24v5.715h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M22.86 5.14125H24v3.435h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M21.7125 17.71875h1.1475v1.1400000000000001h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="m21.7125 7.428749999999999 -1.1400000000000001 0 0 1.1475 -1.1400000000000001 0 0 1.1400000000000001 -1.1475 0 0 1.1400000000000001 -1.1400000000000001 0 0 1.1475 -1.1400000000000001 0 0 1.1400000000000001 1.1400000000000001 0 0 1.1400000000000001 1.1400000000000001 0 0 -1.1400000000000001 1.1475 0 0 -1.1400000000000001 1.1400000000000001 0 0 -1.1475 1.1400000000000001 0 0 -1.1400000000000001 1.1475 0 0 -1.1400000000000001 -1.1475 0 0 -1.1475z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M19.4325 4.00125h3.4275v1.1400000000000001h-3.4275Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M2.2874999999999996 18.85875h19.424999999999997v1.1400000000000001H2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M16.005 4.00125h2.2800000000000002v1.1400000000000001h-2.2800000000000002Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="m13.7175 14.283750000000001 0 -3.4275 -1.1475 0 0 4.574999999999999 4.574999999999999 0 0 -1.1475 -3.4275 0z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="m14.857499999999998 12.00375 1.1475 0 0 -1.1475 1.1400000000000001 0 0 -1.1400000000000001 1.1400000000000001 0 0 -1.1400000000000001 1.1475 0 0 -1.1475 1.1400000000000001 0 0 -1.1400000000000001 -1.1400000000000001 0 0 -1.1475 -1.1475 0 0 1.1475 -1.1400000000000001 0 0 1.1400000000000001 -1.1400000000000001 0 0 1.1475 -1.1475 0 0 1.1400000000000001 -1.1400000000000001 0 0 1.1400000000000001 1.1400000000000001 0 0 1.1475z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M14.857499999999998 5.14125h1.1475v1.1475h-1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M13.7175 6.28875h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M11.43 15.431249999999999h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M8.0025 15.431249999999999h1.1400000000000001v1.1400000000000001h-1.1400000000000001Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M4.574999999999999 15.431249999999999h1.1400000000000001v1.1400000000000001H4.574999999999999Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M2.2874999999999996 8.57625h10.2825v1.1400000000000001H2.2874999999999996Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M1.1475 17.71875h1.1400000000000001v1.1400000000000001H1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M1.1475 9.71625h1.1400000000000001v1.1400000000000001H1.1475Z" fill="currentColor" strokeWidth="0.75"></path>
-    <path d="M0 10.85625h1.1475v6.862500000000001H0Z" fill="currentColor" strokeWidth="0.75"></path>
-  </g>
+  <svg
+    viewBox="0 0 24 24"
+    width="1em"
+    height="1em"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
   </svg>
 );
-

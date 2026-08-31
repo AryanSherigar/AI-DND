@@ -1,8 +1,8 @@
-import React, { useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuthStore } from '../stores/auth.store';
-import { useAuth } from '../hooks/useAuth';
-import { RetroConsole } from '../components/RetroConsole';
+import React, { useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useAuthStore } from "../stores/auth.store";
+import { useAuth } from "../hooks/useAuth";
+import { RetroConsole } from "../components/RetroConsole";
 
 export const LoginPage: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -10,7 +10,7 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const from = location.state?.from?.pathname || '/';
+  const from = location.state?.from?.pathname || "/";
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -28,7 +28,7 @@ export const LoginPage: React.FC = () => {
 
   return (
     <>
-      <RetroConsole 
+      <RetroConsole
         onStart={loginWithGoogle}
         isError={!!error}
         errorMessage={error}
