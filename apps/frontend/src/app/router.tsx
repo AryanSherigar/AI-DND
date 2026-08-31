@@ -4,6 +4,7 @@ import { LoginPage } from "@/features/auth/pages/LoginPage";
 import { AuthGuard } from "@/features/auth/components/AuthGuard/AuthGuard";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { LandingPage } from "@/features/play/pages/LandingPage";
+import { DiscoveryPage } from "@/features/play/pages/DiscoveryPage";
 
 const StudioPlaceholder: React.FC = () => {
   const { user, logout } = useAuth();
@@ -47,6 +48,14 @@ export const router = createBrowserRouter([
   {
     path: "/login",
     element: <LoginPage />,
+  },
+  {
+    path: "/discover",
+    element: <DiscoveryPage />,
+  },
+  {
+    path: "/setup/:id",
+    element: <div className="p-10 text-white font-mono text-xl">Setup Page Placeholder (Not implemented in this scope)</div>,
   },
   {
     path: "/studio",
