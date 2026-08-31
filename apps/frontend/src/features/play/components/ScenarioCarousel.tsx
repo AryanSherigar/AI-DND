@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { motion, Variants } from "framer-motion";
 import { ScenarioMock } from "../types/scenario";
 import { ScenarioCard } from "./ScenarioCard";
@@ -8,77 +8,104 @@ interface ScenarioCarouselProps {
   scenarios: ScenarioMock[];
 }
 
+const CONTAINER_VARIANTS: Variants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 },
+  },
+};
+
+const ITEM_VARIANTS: Variants = {
+  hidden: { opacity: 0, x: 50 },
+  show: {
+    opacity: 1,
+    x: 0,
+    transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] },
+  },
+};
+
+const SCROLL_STEP_PX = 900;
+
 export const ScenarioCarousel: React.FC<ScenarioCarouselProps> = ({
   title,
   scenarios,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
 
-  const scroll = (direction: "left" | "right") => {
-    if (scrollContainerRef.current) {
-      const scrollAmount = direction === "left" ? -800 : 800;
-      scrollContainerRef.current.scrollBy({
-        left: scrollAmount,
-        behavior: "smooth",
-      });
-    }
+  const checkScrollBounds = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef.current;
+    setCanScrollLeft(scrollLeft > 10);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 10);
   };
 
-  const containerVariants: Variants = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: { staggerChildren: 0.1 },
-    },
-  };
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    checkScrollBounds();
+    el.addEventListener("scroll", checkScrollBounds, { passive: true });
+    window.addEventListener("resize", checkScrollBounds);
+    return () => {
+      el.removeEventListener("scroll", checkScrollBounds);
+      window.removeEventListener("resize", checkScrollBounds);
+    };
+  }, [scenarios]);
 
-  const itemVariants: Variants = {
-    hidden: { opacity: 0, x: 50 },
-    show: {
-      opacity: 1,
-      x: 0,
-      transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] },
-    },
+  const handleScroll = (direction: "left" | "right") => {
+    if (!scrollContainerRef.current) return;
+    const scrollAmount =
+      direction === "left" ? -SCROLL_STEP_PX : SCROLL_STEP_PX;
+    scrollContainerRef.current.scrollBy({
+      left: scrollAmount,
+      behavior: "smooth",
+    });
   };
 
   return (
     <motion.div
-      variants={containerVariants}
+      variants={CONTAINER_VARIANTS}
       initial="hidden"
       whileInView="show"
       viewport={{ once: true, margin: "-100px" }}
-      className="w-full py-4 relative group"
+      className="group relative w-full py-2"
     >
-      <h2 className="font-fell-sc text-3xl md:text-4xl font-bold text-white mb-6 px-12 md:px-24 tracking-wide drop-shadow-md">
+      <h2 className="mb-3 px-8 sm:px-12 md:px-16 lg:px-24 font-fell-sc text-3xl font-bold tracking-wide text-white drop-shadow-md md:text-4xl">
         {title}
       </h2>
 
-      {/* Scroll Controls - Appear on hover */}
-      <button
-        onClick={() => scroll("left")}
-        className="absolute left-0 top-1/2 -translate-y-1/2 z-20 h-full w-12 md:w-24 bg-gradient-to-r from-zinc-950 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center text-white text-3xl font-mono hover:text-emerald-400"
-      >
-        {"<"}
-      </button>
+      {canScrollLeft && (
+        <button
+          onClick={() => handleScroll("left")}
+          className="absolute left-0 top-1/2 z-30 flex h-3/4 w-12 -translate-y-1/2 items-center justify-center bg-gradient-to-r from-zinc-950 via-zinc-950/70 to-transparent font-mono text-3xl text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100 hover:text-emerald-400 md:w-16"
+          aria-label="Scroll left"
+        >
+          {"<"}
+        </button>
+      )}
 
-      <button
-        onClick={() => scroll("right")}
-        className="absolute right-0 top-1/2 -translate-y-1/2 z-20 h-full w-12 md:w-24 bg-gradient-to-l from-zinc-950 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center text-white text-3xl font-mono hover:text-emerald-400"
-      >
-        {">"}
-      </button>
+      {canScrollRight && (
+        <button
+          onClick={() => handleScroll("right")}
+          className="absolute right-0 top-1/2 z-30 flex h-3/4 w-12 -translate-y-1/2 items-center justify-center bg-gradient-to-l from-zinc-950 via-zinc-950/70 to-transparent font-mono text-3xl text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100 hover:text-emerald-400 md:w-16"
+          aria-label="Scroll right"
+        >
+          {">"}
+        </button>
+      )}
 
-      {/* Carousel Container */}
       <div
         ref={scrollContainerRef}
-        className="flex overflow-x-auto gap-8 pb-12 pt-4 snap-x snap-mandatory hide-scrollbar scroll-pl-12 md:scroll-pl-24"
+        className="flex overflow-x-auto gap-2.5 pb-4 pt-1 snap-x snap-mandatory hide-scrollbar px-8 sm:px-12 md:px-16 lg:px-24 scroll-px-8 sm:scroll-px-12 md:scroll-px-16 lg:scroll-px-24"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
-        {scenarios.map((scenario, index) => (
+        {scenarios.map((scenario) => (
           <motion.div
-            variants={itemVariants}
+            variants={ITEM_VARIANTS}
             key={scenario.id}
-            className={`snap-start shrink-0 ${index === 0 ? "ml-12 md:ml-24" : ""} ${index === scenarios.length - 1 ? "mr-12 md:mr-24" : ""}`}
+            className="shrink-0 snap-start w-[85vw] sm:w-[320px] lg:w-[calc((100%-1.25rem)/3)]"
           >
             <ScenarioCard scenario={scenario} />
           </motion.div>

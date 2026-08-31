@@ -11,8 +11,11 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onPlayClick }) => {
   return (
     <LivingBookHero>
       {/* Soft gradients for text readability without obscuring image */}
-      <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/20 via-transparent to-zinc-950/40 pointer-events-none" />
-      <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/30 via-zinc-950/10 to-transparent pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/60 via-transparent to-transparent pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/70 via-zinc-950/30 to-transparent pointer-events-none" />
+
+      {/* Seamless bottom fade into page background (#0d0f14) */}
+      <div className="absolute bottom-0 left-0 right-0 h-[28rem] bg-gradient-to-b from-transparent via-[#0d0f14]/80 to-[#0d0f14] pointer-events-none z-10" />
 
       {/* Content */}
       <motion.div
