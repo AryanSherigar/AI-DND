@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { ScenarioMock, GENRE_COLORS } from "../types/scenario";
+import { ScenarioMock, GENRE_COLORS } from "../../types/scenario";
 // Assume generic pixel icons are available or use SVGs
-import { UserIcon } from "../../../shared/components/icons/PixelIcons";
+import { UserIcon } from "../../../../shared/components/icons/PixelIcons";
 
 interface WideScenarioCardProps {
   scenario: ScenarioMock;

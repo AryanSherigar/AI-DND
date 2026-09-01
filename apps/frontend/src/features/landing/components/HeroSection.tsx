@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { PlayIcon } from "../../../shared/components/icons/PixelIcons";
-import { LivingBookHero } from "../../landing/components/LivingBookHero";
+import { PlayIcon } from "@/shared/components/icons/PixelIcons";
+import { LivingBookHero } from "./LivingBookHero";
 
 interface HeroSectionProps {
   onPlayClick?: () => void;
@@ -35,7 +35,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onPlayClick }) => {
         <div className="flex gap-6 pointer-events-auto">
           <button
             onClick={onPlayClick}
-            className="bg-white text-zinc-950 font-mono text-lg font-bold px-10 py-4 hover:scale-105 hover:bg-zinc-200 transition-all duration-300 ease-out flex items-center gap-3 shadow-[0_0_20px_rgba(255,255,255,0.3)]"
+            className="bg-white text-zinc-950 font-mono text-lg font-bold px-10 py-4 hover:scale-105 hover:bg-zinc-200 transition-all duration-300 ease-out flex items-center gap-3 shadow-[0_0_20px_rgba(255,255,255,0.3)] cursor-pointer"
             style={{
               clipPath:
                 "polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)",

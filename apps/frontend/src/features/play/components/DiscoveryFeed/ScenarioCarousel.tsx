@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { motion, Variants } from "framer-motion";
-import { ScenarioMock } from "../types/scenario";
+import { ScenarioMock } from "../../types/scenario";
 import { ScenarioCard } from "./ScenarioCard";
 
 interface ScenarioCarouselProps {

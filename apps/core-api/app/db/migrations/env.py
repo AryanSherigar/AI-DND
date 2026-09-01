@@ -2,6 +2,11 @@
 
 import asyncio
 from logging.config import fileConfig
+import os
+import sys
+
+# Ensure app package is importable
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 from alembic import context
 from app.config import settings

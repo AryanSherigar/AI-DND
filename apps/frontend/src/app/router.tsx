@@ -2,9 +2,9 @@ import React from "react";
 import { createBrowserRouter } from "react-router-dom";
 import { LoginPage } from "@/features/auth/pages/LoginPage";
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { LandingPage } from "@/features/play/pages/LandingPage";
+import { LandingPage } from "@/features/landing/pages/LandingPage";
 import { DiscoveryPage } from "@/features/play/pages/DiscoveryPage";
-import { CreateScenarioPage } from "@/features/studio/pages/CreateScenarioPage";
+import { NewScenarioPage } from "@/features/studio/pages/NewScenarioPage";
 
 import { PlayPage } from "@/features/play/pages/PlayPage";
 import { SetupPage } from "@/features/play/pages/SetupPage";
@@ -70,7 +70,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/studio/new",
-    element: <CreateScenarioPage />,
+    element: <NewScenarioPage />,
   },
   {
     path: "/studio",

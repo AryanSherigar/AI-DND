@@ -1,5 +1,5 @@
 import React from "react";
-import { GENRES } from "../../../shared/constants/genres";
+import { GENRES } from "../../../../shared/constants/genres";
 
 interface AdvancedFiltersModalProps {
   isOpen: boolean;

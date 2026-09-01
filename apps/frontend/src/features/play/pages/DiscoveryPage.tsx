@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { DiscoverySidebar } from "../components/DiscoverySidebar";
-import { TopSearchBar } from "../components/TopSearchBar";
-import { WideScenarioCard } from "../components/WideScenarioCard";
-import { AdvancedFiltersModal } from "../components/AdvancedFiltersModal";
+import { DiscoverySidebar } from "../components/DiscoveryFeed/DiscoverySidebar";
+import { TopSearchBar } from "../components/DiscoveryFeed/TopSearchBar";
+import { WideScenarioCard } from "../components/DiscoveryFeed/WideScenarioCard";
+import { AdvancedFiltersModal } from "../components/DiscoveryFeed/AdvancedFiltersModal";
 import { useSearchParams } from "react-router-dom";
 import { useDiscovery } from "../hooks/useDiscovery";
 

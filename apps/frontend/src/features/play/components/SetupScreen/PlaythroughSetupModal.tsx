@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { SetupInputField } from "../../studio/stores/studio.store";
+import { SetupInputField } from "../../../studio/stores/studio.store";
 
 export interface PlaythroughSetupModalProps {
   isOpen: boolean;

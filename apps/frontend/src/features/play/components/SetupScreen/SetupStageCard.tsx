@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ScenarioMock } from "../types/scenario";
+import { ScenarioMock } from "../../types/scenario";
 import { SetupInputField } from "@/features/studio/stores/studio.store";
 
 interface SetupStageCardProps {

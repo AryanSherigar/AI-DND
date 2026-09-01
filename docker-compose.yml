@@ -37,6 +37,7 @@ services:
       FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:3000","http://localhost:80"]}
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      PYTHONPATH: /app
     ports:
       - "${CORE_API_PORT:-8000}:8000"
     depends_on:

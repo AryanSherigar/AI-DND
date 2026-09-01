@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { GENRES } from "../../../shared/constants/genres";
-import { GENRE_COLORS } from "../types/scenario";
+import { GENRES } from "../../../../shared/constants/genres";
+import { GENRE_COLORS } from "../../types/scenario";
 
 const SidebarSection: React.FC<{
   title?: string;

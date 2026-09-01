@@ -2,8 +2,8 @@ import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { mockScenarios } from "../mock/scenarios";
 import { BackgroundMist } from "../components/PlayScreen/BackgroundMist";
-import { SetupStageCard } from "../components/SetupStageCard";
-import { DramaticSetupLoader } from "../components/DramaticSetupLoader";
+import { SetupStageCard } from "../components/SetupScreen/SetupStageCard";
+import { DramaticSetupLoader } from "../components/SetupScreen/DramaticSetupLoader";
 
 export const SetupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();

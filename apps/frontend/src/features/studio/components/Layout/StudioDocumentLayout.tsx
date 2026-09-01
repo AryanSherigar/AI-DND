@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Step1Meta } from "./NewbieWizard/Step1Meta";
-import { Step2Lore } from "./NewbieWizard/Step2Lore";
-import { StepPlayerSetup } from "./NewbieWizard/StepPlayerSetup";
-import { Step3Narrator } from "./NewbieWizard/Step3Narrator";
-import { Step4Review } from "./NewbieWizard/Step4Review";
-import { AIChatSidebar } from "./AIChatSidebar/AIChatSidebar";
+import { Step1Meta } from "../NewbieWizard/Step1Meta";
+import { Step2Lore } from "../NewbieWizard/Step2Lore";
+import { StepPlayerSetup } from "../NewbieWizard/StepPlayerSetup";
+import { Step3Narrator } from "../NewbieWizard/Step3Narrator";
+import { Step4Review } from "../NewbieWizard/Step4Review";
+import { AIChatSidebar } from "../AIChatSidebar/AIChatSidebar";
 
 const sections = [
   { id: "meta", label: "The Basics" },
