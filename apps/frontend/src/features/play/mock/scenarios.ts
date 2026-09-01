@@ -11,6 +11,50 @@ export const mockScenarios: ScenarioMock[] = [
     genre: "High Fantasy",
     author: "ArchMage42",
     coverImageUrl: "/images/crimson.png",
+    setupInputs: [
+      {
+        id: "field-1",
+        key: "character_origin",
+        label: "Lineage of Blood",
+        type: "single_select",
+        description:
+          "Your ancestors pledged their blood to an ancient covenant.",
+        required: true,
+        options: [
+          {
+            id: "opt-1",
+            label: "House of Sunfire (Paladin)",
+            value: "sunfire",
+          },
+          { id: "opt-2", label: "Veil of Shadows (Rogue)", value: "shadows" },
+          { id: "opt-3", label: "Coven of Arcana (Mage)", value: "arcana" },
+        ],
+        defaultValue: "sunfire",
+      },
+      {
+        id: "field-2",
+        key: "starting_relic",
+        label: "Starting Relic",
+        type: "single_select",
+        description: "Choose a heirloom carried past the Citadel gates.",
+        required: false,
+        options: [
+          { id: "rel-1", label: "Shattered Sun Amulet", value: "amulet" },
+          { id: "rel-2", label: "Vial of Silver Blood", value: "vial" },
+          { id: "rel-3", label: "Runic Dagger of the Fallen", value: "dagger" },
+        ],
+      },
+      {
+        id: "field-3",
+        key: "secret_motive",
+        label: "Secret Infiltration Motive",
+        type: "textarea",
+        placeholder:
+          "Why do you seek the core of the Crimson Citadel? (e.g. avenge a lost sibling, retrieve a forbidden tome)",
+        required: false,
+        options: [],
+      },
+    ],
   },
   {
     id: "2",
@@ -22,6 +66,31 @@ export const mockScenarios: ScenarioMock[] = [
     genre: "Sci-Fi",
     author: "VoidWalker",
     coverImageUrl: "/images/abyss.png",
+    setupInputs: [
+      {
+        id: "field-space-1",
+        key: "station_role",
+        label: "Station Assignment",
+        type: "single_select",
+        description: "Your role aboard Deep-Mining Station Erebus-9.",
+        required: true,
+        options: [
+          { id: "role-1", label: "Lead Engineer", value: "engineer" },
+          { id: "role-2", label: "Security Specialist", value: "security" },
+          { id: "role-3", label: "Xeno-Cartographer", value: "cartographer" },
+        ],
+      },
+      {
+        id: "field-space-2",
+        key: "personal_quirk",
+        label: "Psychological Anomaly",
+        type: "text",
+        placeholder:
+          "e.g. Insomnia, auditory hallucinations, irrational fear of silence",
+        required: false,
+        options: [],
+      },
+    ],
   },
   {
     id: "3",

@@ -6,7 +6,10 @@ export interface PlaythroughSetupModalProps {
   onClose: () => void;
   scenarioTitle: string;
   setupFields: SetupInputField[];
-  onConfirm: (formattedPromptPayload: string, choices: Record<string, unknown>) => void;
+  onConfirm: (
+    formattedPromptPayload: string,
+    choices: Record<string, unknown>,
+  ) => void;
 }
 
 export const PlaythroughSetupModal: React.FC<PlaythroughSetupModalProps> = ({
@@ -73,7 +76,8 @@ export const PlaythroughSetupModal: React.FC<PlaythroughSetupModalProps> = ({
           val === "" ||
           (Array.isArray(val) && val.length === 0)
         ) {
-          newErrors[field.id] = `Please select or enter a value for ${field.label}`;
+          newErrors[field.id] =
+            `Please select or enter a value for ${field.label}`;
         }
       }
     });
@@ -91,7 +95,9 @@ export const PlaythroughSetupModal: React.FC<PlaythroughSetupModalProps> = ({
 
       if (field.type === "single_select") {
         const matchedOption = field.options.find((o) => o.value === val);
-        lines.push(`- ${field.label}: ${matchedOption ? matchedOption.label : val}`);
+        lines.push(
+          `- ${field.label}: ${matchedOption ? matchedOption.label : val}`,
+        );
       } else if (field.type === "multi_select") {
         const selectedLabels = (val as string[])
           .map((v) => field.options.find((o) => o.value === v)?.label || v)
@@ -119,7 +125,8 @@ export const PlaythroughSetupModal: React.FC<PlaythroughSetupModalProps> = ({
               {scenarioTitle || "Initialize Adventure"}
             </h2>
             <p className="text-xs text-zinc-400 mt-1">
-              Customize your starting character and options before narration begins.
+              Customize your starting character and options before narration
+              begins.
             </p>
           </div>
           <button
@@ -164,7 +171,7 @@ export const PlaythroughSetupModal: React.FC<PlaythroughSetupModalProps> = ({
                 <div className="space-y-2 bg-zinc-900 border border-zinc-800 p-3">
                   {field.options.map((opt) => {
                     const isChecked = (formValues[field.id] || []).includes(
-                      opt.value
+                      opt.value,
                     );
                     return (
                       <label

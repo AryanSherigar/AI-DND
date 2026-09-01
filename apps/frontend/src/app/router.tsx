@@ -1,11 +1,13 @@
 import React from "react";
 import { createBrowserRouter } from "react-router-dom";
 import { LoginPage } from "@/features/auth/pages/LoginPage";
-import { AuthGuard } from "@/features/auth/components/AuthGuard/AuthGuard";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { LandingPage } from "@/features/play/pages/LandingPage";
 import { DiscoveryPage } from "@/features/play/pages/DiscoveryPage";
 import { CreateScenarioPage } from "@/features/studio/pages/CreateScenarioPage";
+
+import { PlayPage } from "@/features/play/pages/PlayPage";
+import { SetupPage } from "@/features/play/pages/SetupPage";
 
 const StudioPlaceholder: React.FC = () => {
   const { user, logout } = useAuth();
@@ -55,23 +57,23 @@ export const router = createBrowserRouter([
     element: <DiscoveryPage />,
   },
   {
+    path: "/play",
+    element: <PlayPage />,
+  },
+  {
+    path: "/play/:id",
+    element: <PlayPage />,
+  },
+  {
     path: "/setup/:id",
-    element: <div className="p-10 text-white font-mono text-xl">Setup Page Placeholder (Not implemented in this scope)</div>,
+    element: <SetupPage />,
   },
   {
     path: "/studio/new",
-    element: (
-
-      <CreateScenarioPage />
-
-    ),
+    element: <CreateScenarioPage />,
   },
   {
     path: "/studio",
-    element: (
-
-      <StudioPlaceholder />
-
-    ),
+    element: <StudioPlaceholder />,
   },
 ]);

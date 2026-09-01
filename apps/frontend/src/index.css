@@ -97,3 +97,22 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #3f3f46; /* zinc-700 */
 }
+
+/* Minimalistic Dark Scrollbar for Narrative Feed */
+.scrollbar-minimal {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 113, 108, 0.25) transparent;
+}
+.scrollbar-minimal::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollbar-minimal::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-minimal::-webkit-scrollbar-thumb {
+  background: rgba(120, 113, 108, 0.25);
+  border-radius: 9999px;
+}
+.scrollbar-minimal::-webkit-scrollbar-thumb:hover {
+  background: rgba(217, 119, 6, 0.5);
+}

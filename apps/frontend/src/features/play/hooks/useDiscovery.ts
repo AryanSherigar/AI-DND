@@ -12,7 +12,7 @@ export const useDiscovery = (searchParams: URLSearchParams) => {
         (s) =>
           s.title.toLowerCase().includes(query) ||
           s.logline.toLowerCase().includes(query) ||
-          s.author.toLowerCase().includes(query)
+          s.author.toLowerCase().includes(query),
       );
     }
 
@@ -20,11 +20,11 @@ export const useDiscovery = (searchParams: URLSearchParams) => {
     const mode = searchParams.get("mode");
     if (mode && mode !== "all") {
       // Mock logic: randomly filter based on mode to simulate real filtering
-      // since our mock data doesn't have mode explicitely, we assume based on ID 
+      // since our mock data doesn't have mode explicitely, we assume based on ID
       // just to have some visuals.
-      result = result.filter(s => {
-        if (mode === 'master') return parseInt(s.id) % 2 === 0;
-        if (mode === 'newbie') return parseInt(s.id) % 2 !== 0;
+      result = result.filter((s) => {
+        if (mode === "master") return parseInt(s.id) % 2 === 0;
+        if (mode === "newbie") return parseInt(s.id) % 2 !== 0;
         return true;
       });
     }
@@ -32,8 +32,8 @@ export const useDiscovery = (searchParams: URLSearchParams) => {
     // 3. Player Count
     const playerCount = searchParams.get("playerCount");
     if (playerCount && playerCount !== "all") {
-       result = result.filter(s => {
-        if (playerCount === 'solo') return s.id !== "3"; // just mock filtering
+      result = result.filter((s) => {
+        if (playerCount === "solo") return s.id !== "3"; // just mock filtering
         return true;
       });
     }
@@ -41,13 +41,13 @@ export const useDiscovery = (searchParams: URLSearchParams) => {
     // 4. Genres (Support multiple)
     const genres = searchParams.getAll("genre");
     if (genres.length > 0) {
-      result = result.filter(s => genres.includes(s.genre.toLowerCase()));
+      result = result.filter((s) => genres.includes(s.genre.toLowerCase()));
     }
 
     // 5. Min Plays
     const minPlays = searchParams.get("minPlays");
     if (minPlays) {
-       result = result.filter(s => s.playerCount >= parseInt(minPlays));
+      result = result.filter((s) => s.playerCount >= parseInt(minPlays));
     }
 
     // 6. Sort

@@ -1,3 +1,5 @@
+import { SetupInputField } from "@/features/studio/stores/studio.store";
+
 export type ScenarioGenre =
   | "High Fantasy"
   | "Sci-Fi"
@@ -28,4 +30,5 @@ export interface ScenarioMock {
   genre: ScenarioGenre;
   author: string;
   coverImageUrl: string;
+  setupInputs?: SetupInputField[];
 }

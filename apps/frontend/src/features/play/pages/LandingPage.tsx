@@ -33,10 +33,11 @@ export const LandingPage: React.FC = () => {
       >
         {/* Top Navbar */}
         <header
-          className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled
-            ? "bg-[#0d0f14]/90 backdrop-blur-md shadow-lg shadow-black/50 py-4"
-            : "bg-transparent py-8"
-            }`}
+          className={`fixed top-0 w-full z-50 transition-all duration-300 ${
+            isScrolled
+              ? "bg-[#0d0f14]/90 backdrop-blur-md shadow-lg shadow-black/50 py-4"
+              : "bg-transparent py-8"
+          }`}
         >
           <div className="container mx-auto px-12 md:px-24 flex justify-between items-center">
             <div className="font-fell-sc text-3xl text-white tracking-widest font-bold">

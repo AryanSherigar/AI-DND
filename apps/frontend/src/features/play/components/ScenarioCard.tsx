@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
-import { ScenarioCardProps } from './ScenarioCard.types';
-import { GENRE_COLORS } from '../types/scenario';
+import React, { useState } from "react";
+import { ScenarioCardProps } from "./ScenarioCard.types";
+import { GENRE_COLORS } from "../types/scenario";
 import {
   HeartIcon,
   PlayersIcon,
   QuillIcon,
-} from '../../../shared/components/icons/CleanIcons';
+} from "../../../shared/components/icons/CleanIcons";
 
-const DEFAULT_ACCENT_COLOR = '#6B7280';
+const DEFAULT_ACCENT_COLOR = "#6B7280";
 
 interface SubComponentProps {
-  scenario: ScenarioCardProps['scenario'];
+  scenario: ScenarioCardProps["scenario"];
   accentColor: string;
 }
 
@@ -39,7 +39,10 @@ const CardThumbnail: React.FC<SubComponentProps> = ({
 
       {/* Bottom-Right Rating & Players Badge */}
       <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-2 rounded-md bg-zinc-950/85 px-2 py-0.5 font-mono text-xs font-medium text-white shadow-lg backdrop-blur-md border border-white/10">
-        <span className="flex items-center gap-1" style={{ color: accentColor }}>
+        <span
+          className="flex items-center gap-1"
+          style={{ color: accentColor }}
+        >
           <HeartIcon className="h-3.5 w-3.5" />
           <span className="text-zinc-200">{scenario.rating}</span>
         </span>
@@ -57,7 +60,7 @@ const AuthorAvatar: React.FC<{ author: string; accentColor: string }> = ({
   author,
   accentColor,
 }) => {
-  const authorInitial = author ? author.charAt(0).toUpperCase() : '?';
+  const authorInitial = author ? author.charAt(0).toUpperCase() : "?";
 
   return (
     <div
@@ -104,18 +107,18 @@ export const ScenarioCard: React.FC<ScenarioCardProps> = ({
     if (onHoverEnd) onHoverEnd();
   };
 
-  const dimmedClass = isDimmed ? 'opacity-40 blur-[0.5px]' : 'opacity-100';
+  const dimmedClass = isDimmed ? "opacity-40 blur-[0.5px]" : "opacity-100";
 
   const cardContainerStyle = isHovered
     ? {
-      backgroundColor: `${accentColor}18`,
-      borderColor: `${accentColor}70`,
-      boxShadow: `0 8px 30px ${accentColor}35, 0 0 15px ${accentColor}20`,
-    }
+        backgroundColor: `${accentColor}18`,
+        borderColor: `${accentColor}70`,
+        boxShadow: `0 8px 30px ${accentColor}35, 0 0 15px ${accentColor}20`,
+      }
     : {
-      backgroundColor: 'transparent',
-      borderColor: 'transparent',
-    };
+        backgroundColor: "transparent",
+        borderColor: "transparent",
+      };
 
   return (
     <div
