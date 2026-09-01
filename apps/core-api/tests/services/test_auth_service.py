@@ -1,10 +1,11 @@
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.exceptions.auth_exceptions import InvalidTokenError
 from app.repositories.user_repo import UserRepo
 from app.services.auth_service import AuthService
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.mark.asyncio
@@ -19,6 +20,7 @@ async def test_jwt_generation(db_session: AsyncSession):
     assert refresh_token is not None
 
     import jwt
+
     from app.config import settings
 
     payload = jwt.decode(

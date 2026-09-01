@@ -2,11 +2,12 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 import structlog
+from firebase_admin import auth as firebase_auth
+
 from app.config import settings
 from app.db.models.user import User
 from app.exceptions.auth_exceptions import InvalidTokenError
 from app.repositories.user_repo import UserRepo
-from firebase_admin import auth as firebase_auth
 
 logger = structlog.get_logger()
 
@@ -17,14 +18,15 @@ class AuthService:
 
     async def verify_firebase_token_and_upsert_user(self, firebase_token: str) -> User:
         if firebase_token == "mock-dev-token" or (
-            settings.environment == "development" and not settings.firebase_project_id
+            settings.environment in ("development", "testing")
+            and not settings.firebase_project_id
         ):
             # Bypass/mock for local testing without Firebase
             logger.info("Using dev bypass for firebase auth")
             return await self._upsert_user("dev-firebase-id-123", "Dev User")
 
         try:
-            if settings.firebase_credentials_path:
+            if settings.firebase_credentials_path or settings.environment == "testing":
                 decoded_token = firebase_auth.verify_id_token(firebase_token)
             else:
                 from google.auth.transport import requests as google_requests

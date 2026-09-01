@@ -3,12 +3,13 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.config import settings
 from app.db.connection import close_db_connection
 from app.middleware.error_handler import setup_error_handlers
-from app.routers import auth
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from app.routers import auth, scenarios
 
 
 @asynccontextmanager
@@ -35,6 +36,7 @@ app.add_middleware(
 
 setup_error_handlers(app)
 app.include_router(auth.router)
+app.include_router(scenarios.router)
 
 
 @app.get("/health")

@@ -1,12 +1,13 @@
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
-from app.db.base import Base
-from app.db.connection import get_db_session
-from app.main import app as fastapi_app
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+
+from app.db.base import Base
+from app.db.connection import get_db_session
+from app.main import app as fastapi_app
 
 TEST_DATABASE_URL = (
     "postgresql+asyncpg://postgres:postgres@localhost:5432/aidnd_test_db"

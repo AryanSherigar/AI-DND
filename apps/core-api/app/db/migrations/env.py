@@ -1,18 +1,19 @@
 """Alembic environment script."""
 
 import asyncio
-from logging.config import fileConfig
 import os
 import sys
+from logging.config import fileConfig
 
 # Ensure app package is importable
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 from alembic import context
-from app.config import settings
-from app.db.base import Base
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
+
+from app.config import settings
+from app.db.base import Base
 
 config = context.config
 

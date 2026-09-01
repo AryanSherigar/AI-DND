@@ -1,11 +1,12 @@
 from unittest.mock import patch
 
 import pytest
+from fastapi import APIRouter, Depends
+from httpx import AsyncClient
+
 from app.db.models.user import User
 from app.main import app as fastapi_app
 from app.middleware.auth import get_current_user
-from fastapi import APIRouter, Depends
-from httpx import AsyncClient
 
 dummy_router = APIRouter()
 

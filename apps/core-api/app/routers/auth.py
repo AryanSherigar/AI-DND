@@ -1,11 +1,12 @@
+from fastapi import APIRouter, Cookie, Depends, Response
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import settings
 from app.db.connection import get_db_session
 from app.exceptions.auth_exceptions import InvalidTokenError
 from app.models.auth import TokenExchangeRequest, TokenResponse, UserResponse
 from app.repositories.user_repo import UserRepo
 from app.services.auth_service import AuthService
-from fastapi import APIRouter, Cookie, Depends, Response
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 

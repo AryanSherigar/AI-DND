@@ -3,10 +3,11 @@
 import uuid
 from decimal import Decimal
 
-from app.db.base import Base, TimestampMixin
 from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.base import Base, TimestampMixin
 
 
 class Scenario(Base, TimestampMixin):

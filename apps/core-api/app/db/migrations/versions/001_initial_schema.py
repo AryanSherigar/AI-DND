@@ -53,6 +53,7 @@ def _get_scenarios_columns() -> list[sa.Column]:
             nullable=False,
         ),
         sa.Column("title", sa.String(length=255), nullable=False),
+        sa.Column("logline", sa.String(length=150), nullable=True),
         sa.Column(
             "mode",
             sa.String(length=20),
