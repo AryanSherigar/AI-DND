@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useStudioStore } from "../../stores/studio.store";
 import { DistractionFreeEditor } from "../MarkdownEditor/DistractionFreeEditor";
-import { AIChatSidebar } from "../AIChatSidebar/AIChatSidebar";
 
 export const Step2Lore: React.FC = () => {
   const { newbieDraft, updateNewbieDraft, setSaveState } = useStudioStore();

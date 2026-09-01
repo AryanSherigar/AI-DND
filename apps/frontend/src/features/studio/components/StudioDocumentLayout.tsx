@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Step1Meta } from "./NewbieWizard/Step1Meta";
 import { Step2Lore } from "./NewbieWizard/Step2Lore";
+import { StepPlayerSetup } from "./NewbieWizard/StepPlayerSetup";
 import { Step3Narrator } from "./NewbieWizard/Step3Narrator";
 import { Step4Review } from "./NewbieWizard/Step4Review";
 import { AIChatSidebar } from "./AIChatSidebar/AIChatSidebar";
@@ -8,6 +9,7 @@ import { AIChatSidebar } from "./AIChatSidebar/AIChatSidebar";
 const sections = [
   { id: "meta", label: "The Basics" },
   { id: "lore", label: "World Lore" },
+  { id: "setup", label: "Player Setup" },
   { id: "narrator", label: "The Narrator" },
   { id: "review", label: "Review & Publish" },
 ];
@@ -76,6 +78,7 @@ export const StudioDocumentLayout: React.FC = () => {
       >
         <div id="meta" className="scroll-mt-12 max-w-4xl mx-auto"><Step1Meta /></div>
         <div id="lore" className="scroll-mt-12 max-w-4xl mx-auto"><Step2Lore /></div>
+        <div id="setup" className="scroll-mt-12 max-w-4xl mx-auto"><StepPlayerSetup /></div>
         <div id="narrator" className="scroll-mt-12 max-w-4xl mx-auto"><Step3Narrator /></div>
         <div id="review" className="scroll-mt-12 max-w-4xl mx-auto"><Step4Review /></div>
       </main>

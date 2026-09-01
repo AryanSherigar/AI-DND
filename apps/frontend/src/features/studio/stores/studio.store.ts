@@ -1,5 +1,30 @@
 import { create } from "zustand";
 
+export type SetupInputType =
+  | "single_select"
+  | "multi_select"
+  | "text"
+  | "textarea"
+  | "number";
+
+export interface SetupInputOption {
+  id: string;
+  label: string;
+  value: string;
+}
+
+export interface SetupInputField {
+  id: string;
+  key: string;
+  label: string;
+  type: SetupInputType;
+  description?: string;
+  placeholder?: string;
+  required: boolean;
+  options: SetupInputOption[];
+  defaultValue?: string | string[] | number;
+}
+
 export interface StoryCard {
   id: string;
   type: string;
@@ -24,6 +49,9 @@ export interface NewbieDraft {
   storyCards: StoryCard[];
   singleLorePrompt: string;
 
+  // Player Setup
+  setupInputs: SetupInputField[];
+
   // Narrator
   aiInstructions: string;
   narrativeStyle: string;
@@ -43,6 +71,22 @@ const defaultDraft: NewbieDraft = {
   includeConflict: false,
   storyCards: [{ id: "1", type: "Character", name: "Hero", content: "" }],
   singleLorePrompt: "",
+  setupInputs: [
+    {
+      id: "1",
+      key: "character_class",
+      label: "Character Role / Class",
+      type: "single_select",
+      description: "Choose your primary discipline in this world",
+      required: true,
+      options: [
+        { id: "opt-1", label: "Solar Sentinel", value: "solar_sentinel" },
+        { id: "opt-2", label: "Aether Scholar", value: "aether_scholar" },
+        { id: "opt-3", label: "Shadow Rogue", value: "shadow_rogue" },
+      ],
+      defaultValue: "solar_sentinel",
+    },
+  ],
   aiInstructions: "",
   narrativeStyle: "",
 };

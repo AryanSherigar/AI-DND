@@ -34,6 +34,41 @@ export const Step4Review: React.FC = () => {
         <p className="text-sm text-zinc-400">Review the entities and facts extracted from your lore. You can edit them below.</p>
       </div>
 
+      {/* Configured Player Options Summary */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold tracking-wide text-zinc-300 uppercase border-b border-zinc-800 pb-2">
+          Player Setup Options ({newbieDraft.setupInputs?.length || 0})
+        </h3>
+        {(!newbieDraft.setupInputs || newbieDraft.setupInputs.length === 0) ? (
+          <p className="text-xs text-zinc-500 italic">No custom setup fields configured.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {newbieDraft.setupInputs.map((inputItem) => (
+              <div key={inputItem.id} className="bg-zinc-950 border border-zinc-800 p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-zinc-100">{inputItem.label || "Untitled"}</span>
+                  <span className="text-[10px] font-mono uppercase bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-zinc-400">
+                    {inputItem.type}
+                  </span>
+                </div>
+                {inputItem.description && (
+                  <p className="text-xs text-zinc-400">{inputItem.description}</p>
+                )}
+                {inputItem.options && inputItem.options.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {inputItem.options.map((opt) => (
+                      <span key={opt.id} className="text-[11px] bg-zinc-900 border border-zinc-800 text-zinc-300 px-2 py-0.5">
+                        {opt.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="space-y-6">
         <h3 className="text-sm font-semibold tracking-wide text-zinc-300 uppercase border-b border-zinc-800 pb-2">Extracted Entities</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

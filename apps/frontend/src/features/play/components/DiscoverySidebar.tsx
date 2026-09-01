@@ -78,7 +78,7 @@ export const DiscoverySidebar: React.FC = () => {
                 <span className="flex items-center gap-2">
                   <span 
                     className="w-2 h-2 rounded-full shadow-sm" 
-                    style={{ backgroundColor: GENRE_COLORS[genre] || '#6B7280' }}
+                    style={{ backgroundColor: GENRE_COLORS[genre as keyof typeof GENRE_COLORS] || '#6B7280' }}
                   />
                   {genre}
                 </span>
