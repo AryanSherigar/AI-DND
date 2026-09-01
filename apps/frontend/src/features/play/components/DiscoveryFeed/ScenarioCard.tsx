@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ScenarioCardProps } from "./ScenarioCard.types";
+import type { ScenarioCardProps } from "./ScenarioCard.types";
 import { GENRE_COLORS } from "../../types/scenario";
 import {
   HeartIcon,

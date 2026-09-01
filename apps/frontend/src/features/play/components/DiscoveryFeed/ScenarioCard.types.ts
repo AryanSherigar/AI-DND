@@ -1,4 +1,4 @@
-import { ScenarioMock } from "../../types/scenario";
+import type { ScenarioMock } from "../../types/scenario";
 
 export interface ScenarioCardProps {
   scenario: ScenarioMock;
