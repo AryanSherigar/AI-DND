@@ -33,7 +33,7 @@ export const StepPlayerSetup: React.FC = () => {
 
   const handleUpdateField = (id: string, updates: Partial<SetupInputField>) => {
     const updated = inputs.map((item) =>
-      item.id === id ? { ...item, ...updates } : item
+      item.id === id ? { ...item, ...updates } : item,
     );
     updateNewbieDraft({ setupInputs: updated });
   };
@@ -61,7 +61,8 @@ export const StepPlayerSetup: React.FC = () => {
             Player Setup
           </h2>
           <p className="text-sm text-zinc-400">
-            Configure custom choices and inputs players must select before Turn 1.
+            Configure custom choices and inputs players must select before Turn
+            1.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -151,10 +152,10 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
 
   const handleUpdateOption = (
     optionId: string,
-    updates: Partial<SetupInputOption>
+    updates: Partial<SetupInputOption>,
   ) => {
     const updatedOptions = field.options.map((opt) =>
-      opt.id === optionId ? { ...opt, ...updates } : opt
+      opt.id === optionId ? { ...opt, ...updates } : opt,
     );
     onUpdate({ options: updatedOptions });
   };
@@ -231,7 +232,9 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
             }
             className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-500"
           >
-            <option value="single_select">Single Select (Dropdown/Radio)</option>
+            <option value="single_select">
+              Single Select (Dropdown/Radio)
+            </option>
             <option value="multi_select">Multi Select (Checkboxes)</option>
             <option value="text">Short Text</option>
             <option value="textarea">Long Text / Backstory</option>
@@ -314,7 +317,9 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
       )}
 
       {/* Conditional UI: Placeholder for text inputs */}
-      {(field.type === "text" || field.type === "textarea" || field.type === "number") && (
+      {(field.type === "text" ||
+        field.type === "textarea" ||
+        field.type === "number") && (
         <div className="space-y-2 border-t border-zinc-900 pt-4">
           <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
             Placeholder Text
@@ -352,13 +357,16 @@ const PlayerSetupPreview: React.FC<PlayerSetupPreviewProps> = ({ inputs }) => {
       </div>
 
       {inputs.length === 0 ? (
-        <p className="text-xs text-zinc-500 italic">No setup options configured.</p>
+        <p className="text-xs text-zinc-500 italic">
+          No setup options configured.
+        </p>
       ) : (
         <div className="space-y-6">
           {inputs.map((field) => (
             <div key={field.id} className="space-y-2">
               <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-                {field.label} {field.required && <span className="text-red-400">*</span>}
+                {field.label}{" "}
+                {field.required && <span className="text-red-400">*</span>}
               </label>
               {field.description && (
                 <p className="text-xs text-zinc-500">{field.description}</p>
@@ -377,7 +385,10 @@ const PlayerSetupPreview: React.FC<PlayerSetupPreviewProps> = ({ inputs }) => {
               {field.type === "multi_select" && (
                 <div className="space-y-2 bg-zinc-900 border border-zinc-800 p-3">
                   {field.options.map((opt) => (
-                    <label key={opt.id} className="flex items-center gap-3 text-xs text-zinc-300 cursor-pointer">
+                    <label
+                      key={opt.id}
+                      className="flex items-center gap-3 text-xs text-zinc-300 cursor-pointer"
+                    >
                       <input type="checkbox" className="accent-zinc-100" />
                       {opt.label}
                     </label>

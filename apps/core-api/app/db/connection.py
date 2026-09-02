@@ -43,6 +43,16 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Provide the session factory for code that needs its own DB session.
+
+    Used by background work (e.g. the publish job) that outlives the
+    request-scoped session from `get_db_session`. Overridable in tests so
+    background tasks bind to the test engine instead of the dev database.
+    """
+    return AsyncSessionFactory
+
+
 async def close_db_connection() -> None:
     """Dispose of the async engine's connection pool.
 

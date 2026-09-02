@@ -29,3 +29,10 @@ class ScenarioDeletionError(BaseAppException):
 
     def __init__(self, message: str = "Cannot delete scenario"):
         super().__init__(message=message, status_code=409)
+
+
+class ScenarioAlreadyPublishingError(BaseAppException):
+    """Raised when publish or edit is attempted while a publish is in flight."""
+
+    def __init__(self, message: str = "Scenario is currently being published"):
+        super().__init__(message=message, status_code=409)

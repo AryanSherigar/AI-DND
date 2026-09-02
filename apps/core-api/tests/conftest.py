@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -6,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.db.base import Base
-from app.db.connection import get_db_session
+from app.db.connection import get_db_session, get_session_factory
 from app.main import app as fastapi_app
 
 TEST_DATABASE_URL = (
@@ -54,7 +55,18 @@ async def async_client(db_session) -> AsyncGenerator[AsyncClient, None]:
     async def override_get_db_session():
         yield db_session
 
+    @asynccontextmanager
+    async def _shared_session_cm() -> AsyncGenerator[AsyncSession, None]:
+        # Reuses the same test session/connection rather than opening a new
+        # one, so a background publish job can see writes the test made
+        # earlier in the same (uncommitted) test transaction.
+        yield db_session
+
+    def override_get_session_factory():
+        return _shared_session_cm
+
     fastapi_app.dependency_overrides[get_db_session] = override_get_db_session
+    fastapi_app.dependency_overrides[get_session_factory] = override_get_session_factory
     async with AsyncClient(
         transport=ASGITransport(app=fastapi_app), base_url="http://testserver"
     ) as client:

@@ -34,6 +34,7 @@ class ScenarioUpdate(BaseModel):
     """Payload to update scenario fields. Mode is immutable and omitted."""
 
     title: str | None = Field(default=None, max_length=255)
+    status: str | None = Field(default=None, pattern="^(draft|archived)$")
     logline: str | None = Field(default=None, max_length=150)
     complexity_tier: str | None = Field(
         default=None, pattern="^(newbie|intermediate|master)$"
@@ -71,6 +72,8 @@ class ScenarioResponse(BaseModel):
     estimated_playtime: str | None = None
     cover_image_url: str | None = None
     content_tag: str | None = None
+    publish_error: str | None = None
+    published_at: datetime | None = None
     play_count: int = 0
     rating_avg: Decimal = Field(default=Decimal("0.00"))
     narrator_persona: str | None = None

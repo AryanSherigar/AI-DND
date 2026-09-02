@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { LivingBookHeroProps } from './LivingBookHero.types';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { LivingBookHeroProps } from "./LivingBookHero.types";
 
 export function LivingBookHero({
-  baseImageUrl = '/images/book-base.png',
-  mistRenderMode: initialMistRenderMode = 'blobs',
+  baseImageUrl = "/images/book-base.png",
+  mistRenderMode: initialMistRenderMode = "blobs",
   blobCount = 5,
   dustCount = 20,
   mistOpacity = 0.15,
@@ -33,7 +33,7 @@ export function LivingBookHero({
         duration: 10 + Math.random() * 8, // 10-18s
         delay: -(Math.random() * 10), // Negative delay so it starts mid-animation
       })),
-    [blobCount]
+    [blobCount],
   );
 
   // Generate random stable properties for dust motes
@@ -48,16 +48,16 @@ export function LivingBookHero({
         duration: 6 + Math.random() * 8, // 6-14s
         delay: -(Math.random() * 8), // Negative delay
       })),
-    [dustCount]
+    [dustCount],
   );
 
   useEffect(() => {
     // Respect prefers-reduced-motion
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (mediaQuery.matches) return;
-    
+
     // Disable on touch devices (where hover is usually simulated)
-    const isTouch = window.matchMedia('(pointer: coarse)').matches;
+    const isTouch = window.matchMedia("(pointer: coarse)").matches;
     if (isTouch) return;
 
     const container = containerRef.current;
@@ -71,7 +71,7 @@ export function LivingBookHero({
       targetY.current = y * 2; // Range -1 to 1
     };
 
-    container.addEventListener('mousemove', handleMouseMove);
+    container.addEventListener("mousemove", handleMouseMove);
 
     let animationFrameId: number;
     const lerp = (start: number, end: number, amt: number) =>
@@ -83,12 +83,12 @@ export function LivingBookHero({
 
       if (containerRef.current) {
         containerRef.current.style.setProperty(
-          '--mouse-x',
-          mouseX.current.toString()
+          "--mouse-x",
+          mouseX.current.toString(),
         );
         containerRef.current.style.setProperty(
-          '--mouse-y',
-          mouseY.current.toString()
+          "--mouse-y",
+          mouseY.current.toString(),
         );
       }
       animationFrameId = requestAnimationFrame(update);
@@ -97,7 +97,7 @@ export function LivingBookHero({
     animationFrameId = requestAnimationFrame(update);
 
     return () => {
-      container.removeEventListener('mousemove', handleMouseMove);
+      container.removeEventListener("mousemove", handleMouseMove);
       cancelAnimationFrame(animationFrameId);
     };
   }, []);
@@ -108,9 +108,9 @@ export function LivingBookHero({
       className="relative w-full min-h-screen overflow-hidden bg-black flex items-end justify-end"
       style={
         {
-          '--parallax': parallaxIntensity,
-          '--mouse-x': 0,
-          '--mouse-y': 0,
+          "--parallax": parallaxIntensity,
+          "--mouse-x": 0,
+          "--mouse-y": 0,
         } as React.CSSProperties
       }
     >
@@ -165,45 +165,50 @@ export function LivingBookHero({
 
       {/* Layer 2: Breathing Glow */}
       <div className="absolute inset-0 layer-parallax-glow pointer-events-none mix-blend-screen mix-blend-lighten">
-        <div 
+        <div
           className="absolute right-0 bottom-0 w-2/3 h-full animate-glow"
           style={{
-            background: 'radial-gradient(circle at 60% 70%, rgba(255, 220, 150, 0.4), transparent 60%)',
+            background:
+              "radial-gradient(circle at 60% 70%, rgba(255, 220, 150, 0.4), transparent 60%)",
             filter: `blur(${mistBlur}px)`,
-            animation: 'glow-breathe 5s ease-in-out infinite',
-            willChange: 'opacity'
+            animation: "glow-breathe 5s ease-in-out infinite",
+            willChange: "opacity",
           }}
         />
       </div>
 
       {/* Layer 3: Mist */}
-      {mistRenderMode === 'blobs' ? (
+      {mistRenderMode === "blobs" ? (
         <div className="absolute inset-0 layer-parallax-mist pointer-events-none mix-blend-screen">
           {mistBlobs.map((blob) => (
             <div
               key={blob.id}
               className="absolute animate-mist rounded-full bg-[radial-gradient(circle,rgba(255,245,215,1),transparent_70%)]"
-              style={{
-                width: blob.width,
-                height: blob.height,
-                left: blob.left,
-                top: blob.top,
-                filter: `blur(${mistBlur}px)`,
-                '--max-opacity': mistOpacity,
-                opacity: 0, // Starts at 0, driven by keyframes
-                animation: `mist-drift ${blob.duration}s ease-in-out infinite`,
-                animationDelay: `${blob.delay}s`,
-                willChange: 'transform, opacity'
-              } as React.CSSProperties}
+              style={
+                {
+                  width: blob.width,
+                  height: blob.height,
+                  left: blob.left,
+                  top: blob.top,
+                  filter: `blur(${mistBlur}px)`,
+                  "--max-opacity": mistOpacity,
+                  opacity: 0, // Starts at 0, driven by keyframes
+                  animation: `mist-drift ${blob.duration}s ease-in-out infinite`,
+                  animationDelay: `${blob.delay}s`,
+                  willChange: "transform, opacity",
+                } as React.CSSProperties
+              }
             />
           ))}
         </div>
       ) : (
-        <div 
+        <div
           className="absolute inset-0 layer-parallax-mist pointer-events-none mix-blend-screen opacity-70"
           style={{
-            maskImage: 'linear-gradient(to right, transparent 0%, transparent 15%, black 45%, black 100%)',
-            WebkitMaskImage: 'linear-gradient(to right, transparent 0%, transparent 15%, black 45%, black 100%)',
+            maskImage:
+              "linear-gradient(to right, transparent 0%, transparent 15%, black 45%, black 100%)",
+            WebkitMaskImage:
+              "linear-gradient(to right, transparent 0%, transparent 15%, black 45%, black 100%)",
           }}
         >
           <svg className="w-full h-full">
@@ -258,11 +263,11 @@ export function LivingBookHero({
               height: mote.size,
               left: mote.left,
               top: mote.top,
-              boxShadow: '0 0 4px 1px rgba(255,220,150,0.6)',
+              boxShadow: "0 0 4px 1px rgba(255,220,150,0.6)",
               opacity: 0,
               animation: `dust-drift ${mote.duration}s linear infinite`,
               animationDelay: `${mote.delay}s`,
-              willChange: 'transform, opacity'
+              willChange: "transform, opacity",
             }}
           />
         ))}
@@ -276,7 +281,11 @@ export function LivingBookHero({
       {/* Dev Toggle Button */}
       <div className="absolute top-4 right-4 z-50 pointer-events-auto">
         <button
-          onClick={() => setMistRenderMode(prev => prev === 'blobs' ? 'svg-turbulence' : 'blobs')}
+          onClick={() =>
+            setMistRenderMode((prev) =>
+              prev === "blobs" ? "svg-turbulence" : "blobs",
+            )
+          }
           className="px-3 py-1 text-xs font-mono bg-black/60 text-white/80 border border-white/20 rounded hover:bg-black/80 hover:text-white transition-colors backdrop-blur-md cursor-pointer pointer-events-auto"
         >
           Dev: Mist Mode = {mistRenderMode}

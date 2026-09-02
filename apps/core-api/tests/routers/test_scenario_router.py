@@ -1,12 +1,28 @@
 """Integration tests for Scenario REST endpoints."""
 
+import asyncio
 import uuid
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.user_repo import UserRepo
+
+
+async def _poll_until_settled(
+    async_client: AsyncClient, scenario_id: str, headers: dict, attempts: int = 20
+) -> dict:
+    """Poll GET /v1/scenarios/{id} until publish settles, mirroring a real client."""
+    for _ in range(attempts):
+        resp = await async_client.get(f"/v1/scenarios/{scenario_id}", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        if data["status"] != "publishing":
+            return data
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"publish never settled for scenario {scenario_id}")
 
 
 @pytest.fixture
@@ -122,3 +138,127 @@ async def test_list_scenarios_my_dashboard(async_client: AsyncClient, dev_user):
     assert list_resp.status_code == 200
     data = list_resp.json()
     assert data["total_count"] >= 2
+
+
+@pytest.mark.asyncio
+async def test_publish_flow_success(async_client: AsyncClient, dev_user):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    create_resp = await async_client.post(
+        "/v1/scenarios",
+        json={
+            "title": "Publishable Tale",
+            "mode": "newbie",
+            "complexity_tier": "newbie",
+            "content_tag": "all-ages",
+        },
+        headers=headers,
+    )
+    scenario_id = create_resp.json()["scenario_id"]
+
+    publish_resp = await async_client.post(
+        f"/v1/scenarios/{scenario_id}/publish", headers=headers
+    )
+    assert publish_resp.status_code == 202
+    assert publish_resp.json()["status"] in ("publishing", "published")
+
+    settled = await _poll_until_settled(async_client, scenario_id, headers)
+    assert settled["status"] == "published"
+    assert settled["published_at"] is not None
+    assert settled["publish_error"] is None
+
+    # Now visible in the public discovery feed.
+    discovery_resp = await async_client.get("/v1/scenarios")
+    assert discovery_resp.status_code == 200
+    ids = [item["scenario_id"] for item in discovery_resp.json()["items"]]
+    assert scenario_id in ids
+
+
+@pytest.mark.asyncio
+async def test_publish_flow_content_check_failure_reverts_to_draft(
+    async_client: AsyncClient, dev_user
+):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    create_resp = await async_client.post(
+        "/v1/scenarios",
+        json={"title": "Untagged Tale", "mode": "newbie", "complexity_tier": "newbie"},
+        headers=headers,
+    )
+    scenario_id = create_resp.json()["scenario_id"]
+
+    publish_resp = await async_client.post(
+        f"/v1/scenarios/{scenario_id}/publish", headers=headers
+    )
+    assert publish_resp.status_code == 202
+
+    settled = await _poll_until_settled(async_client, scenario_id, headers)
+    assert settled["status"] == "draft"
+    assert settled["published_at"] is None
+    assert settled["publish_error"] is not None
+
+    # Not visible in the public discovery feed.
+    discovery_resp = await async_client.get("/v1/scenarios")
+    ids = [item["scenario_id"] for item in discovery_resp.json()["items"]]
+    assert scenario_id not in ids
+
+
+@pytest.mark.asyncio
+async def test_publish_rejected_while_already_publishing(
+    async_client: AsyncClient, db_session: AsyncSession, dev_user
+):
+    # FastAPI's BackgroundTasks run to completion before the ASGI response is
+    # sent (verified: not a real race under the in-process test transport),
+    # so a live "publishing" window can't be caught by racing two real HTTP
+    # calls here. Instead, force the in-flight state directly via the repo
+    # (arrange), then exercise the real endpoint's guard (act/assert).
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    create_resp = await async_client.post(
+        "/v1/scenarios",
+        json={
+            "title": "Double Publish",
+            "mode": "newbie",
+            "complexity_tier": "newbie",
+            "content_tag": "all-ages",
+        },
+        headers=headers,
+    )
+    scenario_id = create_resp.json()["scenario_id"]
+
+    repo = ScenarioRepo(db_session)
+    scenario = await repo.get_by_id(uuid.UUID(scenario_id))
+    scenario.status = "publishing"
+    await repo.update(scenario)
+
+    resp = await async_client.post(
+        f"/v1/scenarios/{scenario_id}/publish", headers=headers
+    )
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_patch_rejected_while_publishing(
+    async_client: AsyncClient, db_session: AsyncSession, dev_user
+):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    create_resp = await async_client.post(
+        "/v1/scenarios",
+        json={
+            "title": "Mid Publish Edit",
+            "mode": "newbie",
+            "complexity_tier": "newbie",
+            "content_tag": "all-ages",
+        },
+        headers=headers,
+    )
+    scenario_id = create_resp.json()["scenario_id"]
+
+    repo = ScenarioRepo(db_session)
+    scenario = await repo.get_by_id(uuid.UUID(scenario_id))
+    scenario.status = "publishing"
+    await repo.update(scenario)
+
+    patch_resp = await async_client.patch(
+        f"/v1/scenarios/{scenario_id}",
+        json={"title": "Sneaky Edit"},
+        headers=headers,
+    )
+    assert patch_resp.status_code == 409

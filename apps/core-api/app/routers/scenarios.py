@@ -3,10 +3,10 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.connection import get_db_session
+from app.db.connection import get_db_session, get_session_factory
 from app.db.models.user import User
 from app.middleware.auth import get_current_user, get_optional_current_user
 from app.models.scenario import (
@@ -16,6 +16,7 @@ from app.models.scenario import (
     ScenarioUpdate,
 )
 from app.repositories.scenario_repo import ScenarioRepo
+from app.services.publish_service import PublishService
 from app.services.scenario_service import ScenarioService
 
 router = APIRouter(prefix="/v1/scenarios", tags=["Scenarios"])
@@ -27,6 +28,14 @@ def get_scenario_service(
     """Dependency injector for ScenarioService."""
     repo = ScenarioRepo(session)
     return ScenarioService(repo)
+
+
+def get_publish_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> PublishService:
+    """Dependency injector for PublishService."""
+    repo = ScenarioRepo(session)
+    return PublishService(repo)
 
 
 @router.post(
@@ -41,6 +50,30 @@ async def create_scenario(
 ) -> ScenarioResponse:
     """Create a new scenario draft."""
     return await service.create_scenario(user_id=user.user_id, data=data)
+
+
+@router.post(
+    "/{scenario_id}/publish",
+    response_model=ScenarioResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def publish_scenario(
+    scenario_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[PublishService, Depends(get_publish_service)],
+    background_tasks: BackgroundTasks,
+    session_factory: Annotated[
+        async_sessionmaker[AsyncSession], Depends(get_session_factory)
+    ],
+) -> ScenarioResponse:
+    """Start the async publish flow: content-tag check + authoring-time ingestion."""
+    scenario = await service.start_publish(
+        scenario_id=scenario_id, user_id=user.user_id
+    )
+    background_tasks.add_task(
+        PublishService.run_publish_job, scenario.scenario_id, session_factory
+    )
+    return ScenarioResponse.model_validate(scenario)
 
 
 @router.get(

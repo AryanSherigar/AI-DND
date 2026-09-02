@@ -62,9 +62,18 @@ export const DiscoveryPage: React.FC = () => {
               <div className="text-zinc-500">Loading...</div>
             ) : filteredScenarios.length > 0 ? (
               <div className="flex flex-col gap-2 md:gap-4">
-                {filteredScenarios.map((scenario) => (
-                  <WideScenarioCard key={scenario.id} scenario={scenario} />
-                ))}
+                {filteredScenarios.map((scenario) => {
+                  const cardKey =
+                    "scenario_id" in scenario
+                      ? scenario.scenario_id
+                      : scenario.id;
+                  return (
+                    <WideScenarioCard
+                      key={String(cardKey)}
+                      scenario={scenario}
+                    />
+                  );
+                })}
               </div>
             ) : (
               <div className="py-20 text-center flex flex-col items-center justify-center border border-dashed border-zinc-800 rounded-xl">

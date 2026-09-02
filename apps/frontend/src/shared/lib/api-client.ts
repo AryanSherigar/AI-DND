@@ -29,6 +29,8 @@ apiClient.interceptors.request.use(
     const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers["Authorization"] = `Bearer ${token}`;
+    } else if (import.meta.env.DEV) {
+      config.headers["X-Dev-User-Id"] = "00000000-0000-0000-0000-000000000001";
     }
     return config;
   },

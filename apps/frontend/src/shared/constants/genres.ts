@@ -8,5 +8,5 @@ export const GENRES = [
   "Cyberpunk",
   "Horror",
   "Historical Fiction",
-  "Mystery"
+  "Mystery",
 ];

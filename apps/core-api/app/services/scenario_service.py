@@ -5,6 +5,7 @@ import uuid
 from app.db.models.scenario import Scenario
 from app.exceptions.scenario_exceptions import (
     ScenarioAccessDeniedError,
+    ScenarioAlreadyPublishingError,
     ScenarioNotFoundError,
 )
 from app.models.scenario import (
@@ -88,6 +89,11 @@ class ScenarioService:
         is_draft = scenario.status == "draft"
         self._ensure_creator_access(scenario, user_id, hide_as_404=is_draft)
 
+        if scenario.status == "publishing":
+            raise ScenarioAlreadyPublishingError(
+                "Cannot edit a scenario while it is being published"
+            )
+
         should_bump_version = False
         update_dict = data.model_dump(exclude_unset=True)
 
@@ -131,14 +137,13 @@ class ScenarioService:
     ) -> ScenarioListResponse:
         """List published scenarios for discovery or creator's own scenarios."""
         creator_id = current_user_id if mine else None
-        status = None if mine else "published"
 
         if mine and current_user_id is None:
             raise ScenarioAccessDeniedError("Must be logged in to view my scenarios")
 
         items, total_count = await self.scenario_repo.list_scenarios(
             creator_id=creator_id,
-            status=status,
+            published_only=not mine,
             genre_tags=genre_tags,
             complexity_tier=complexity_tier,
             player_count_support=player_count_support,

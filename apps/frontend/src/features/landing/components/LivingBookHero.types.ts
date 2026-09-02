@@ -1,10 +1,10 @@
-import React from 'react';
+import React from "react";
 
 export interface LivingBookHeroProps {
   /** Path to the static background image */
   baseImageUrl?: string;
   /** Controls which rendering method is used for the mist */
-  mistRenderMode?: 'blobs' | 'svg-turbulence';
+  mistRenderMode?: "blobs" | "svg-turbulence";
   /** Number of pure CSS mist blobs to render (only used if mistRenderMode='blobs') */
   blobCount?: number;
   /** Number of drifting dust motes to render */

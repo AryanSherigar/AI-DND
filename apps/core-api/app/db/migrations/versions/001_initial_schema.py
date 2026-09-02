@@ -72,7 +72,9 @@ def _get_scenarios_columns() -> list[sa.Column]:
             "status",
             sa.String(length=20),
             sa.CheckConstraint(
-                "status IN ('draft', 'published')", name="ck_scenarios_status"
+                "status IN ('draft', 'publishing', 'published', 'publish_failed', "
+                "'archived')",
+                name="ck_scenarios_status",
             ),
             server_default="draft",
             nullable=False,
@@ -104,6 +106,8 @@ def _get_scenarios_columns() -> list[sa.Column]:
         sa.Column("estimated_playtime", sa.String(length=50), nullable=True),
         sa.Column("cover_image_url", sa.String(length=1024), nullable=True),
         sa.Column("content_tag", sa.String(length=100), nullable=True),
+        sa.Column("publish_error", sa.Text(), nullable=True),
+        sa.Column("published_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("play_count", sa.Integer(), server_default="0", nullable=False),
         sa.Column(
             "rating_avg",

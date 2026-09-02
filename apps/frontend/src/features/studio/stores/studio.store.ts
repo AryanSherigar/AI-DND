@@ -34,6 +34,7 @@ export interface StoryCard {
 
 export interface NewbieDraft {
   title: string;
+  logline: string;
   genre_tags: string[];
   complexity_tier: "newbie" | "intermediate" | "master";
   player_count_support: "solo" | "multiplayer" | "both";
@@ -59,6 +60,7 @@ export interface NewbieDraft {
 
 const defaultDraft: NewbieDraft = {
   title: "",
+  logline: "",
   genre_tags: [],
   complexity_tier: "newbie",
   player_count_support: "solo",
@@ -100,6 +102,7 @@ interface StudioState {
 
   newbieDraft: NewbieDraft;
   updateNewbieDraft: (updates: Partial<NewbieDraft>) => void;
+  resetDraft: () => void;
 
   lastSaved: Date | null;
   isSaving: boolean;
@@ -118,6 +121,13 @@ export const useStudioStore = create<StudioState>((set) => ({
     set((state) => ({
       newbieDraft: { ...state.newbieDraft, ...updates },
     })),
+  resetDraft: () =>
+    set({
+      newbieDraft: defaultDraft,
+      activeStep: 1,
+      lastSaved: null,
+      isSaving: false,
+    }),
 
   lastSaved: null,
   isSaving: false,

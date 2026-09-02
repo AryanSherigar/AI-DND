@@ -1,9 +1,19 @@
 """Scenario ORM model."""
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, String, Text, text
+from sqlalchemy import (
+    TIMESTAMP,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,7 +27,11 @@ class Scenario(Base, TimestampMixin):
 
     __table_args__ = (
         CheckConstraint("mode IN ('newbie', 'master')", name="ck_scenarios_mode"),
-        CheckConstraint("status IN ('draft', 'published')", name="ck_scenarios_status"),
+        CheckConstraint(
+            "status IN ('draft', 'publishing', 'published', 'publish_failed', "
+            "'archived')",
+            name="ck_scenarios_status",
+        ),
         CheckConstraint(
             "complexity_tier IN ('newbie', 'intermediate', 'master')",
             name="ck_scenarios_complexity_tier",
@@ -66,6 +80,10 @@ class Scenario(Base, TimestampMixin):
     estimated_playtime: Mapped[str | None] = mapped_column(String(50), nullable=True)
     cover_image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     content_tag: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    publish_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     play_count: Mapped[int] = mapped_column(
         server_default="0", default=0, nullable=False
     )

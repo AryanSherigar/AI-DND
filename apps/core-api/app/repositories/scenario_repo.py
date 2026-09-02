@@ -51,7 +51,7 @@ class ScenarioRepo:
     async def list_scenarios(
         self,
         creator_id: uuid.UUID | None = None,
-        status: str | None = None,
+        published_only: bool = False,
         genre_tags: list[str] | None = None,
         complexity_tier: str | None = None,
         player_count_support: str | None = None,
@@ -62,7 +62,12 @@ class ScenarioRepo:
         """Fetch scenarios matching discovery or creator dashboard filters."""
         stmt = select(Scenario)
         stmt = self._apply_filters(
-            stmt, creator_id, status, genre_tags, complexity_tier, player_count_support
+            stmt,
+            creator_id,
+            published_only,
+            genre_tags,
+            complexity_tier,
+            player_count_support,
         )
 
         count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -79,7 +84,7 @@ class ScenarioRepo:
         self,
         stmt: select,
         creator_id: uuid.UUID | None,
-        status: str | None,
+        published_only: bool,
         genre_tags: list[str] | None,
         complexity_tier: str | None,
         player_count_support: str | None,
@@ -87,8 +92,11 @@ class ScenarioRepo:
         """Apply query conditions for scenario filtering."""
         if creator_id is not None:
             stmt = stmt.where(Scenario.creator_id == creator_id)
-        if status is not None:
-            stmt = stmt.where(Scenario.status == status)
+        if published_only:
+            # published_at (not status) is the discovery-visibility signal: a
+            # re-publish attempt can transiently move status away from
+            # 'published' without the scenario leaving the live feed.
+            stmt = stmt.where(Scenario.published_at.is_not(None))
         if complexity_tier is not None:
             stmt = stmt.where(Scenario.complexity_tier == complexity_tier)
         if player_count_support is not None:

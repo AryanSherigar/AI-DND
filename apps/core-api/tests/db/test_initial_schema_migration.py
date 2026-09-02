@@ -56,6 +56,8 @@ def test_scenarios_columns_structure() -> None:
         "estimated_playtime",
         "cover_image_url",
         "content_tag",
+        "publish_error",
+        "published_at",
         "play_count",
         "rating_avg",
         "narrator_persona",
@@ -70,3 +72,19 @@ def test_scenarios_columns_structure() -> None:
     ]
     for expected in expected_names:
         assert expected in column_names, f"Missing column {expected}"
+
+
+def test_scenarios_status_check_constraint_includes_publish_states() -> None:
+    module = _load_migration_module()
+    columns = module._get_scenarios_columns()
+    status_col = next(col for col in columns if col.name == "status")
+    check_constraint = next(iter(status_col.constraints))
+    constraint_text = str(check_constraint.sqltext)
+    for expected_state in (
+        "draft",
+        "publishing",
+        "published",
+        "publish_failed",
+        "archived",
+    ):
+        assert expected_state in constraint_text
