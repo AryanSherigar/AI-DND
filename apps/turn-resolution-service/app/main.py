@@ -3,9 +3,10 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from fastapi import FastAPI
+
 from app.db.connection import close_db_connection
 from app.middleware.error_handler import setup_error_handlers
-from fastapi import FastAPI
 
 
 @asynccontextmanager

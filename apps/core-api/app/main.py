@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.connection import close_db_connection
 from app.middleware.error_handler import setup_error_handlers
-from app.routers import auth, scenarios
+from app.routers import auth, playthroughs, scenarios
 
 
 @asynccontextmanager
@@ -37,6 +37,7 @@ app.add_middleware(
 setup_error_handlers(app)
 app.include_router(auth.router)
 app.include_router(scenarios.router)
+app.include_router(playthroughs.router)
 
 
 @app.get("/health")

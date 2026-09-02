@@ -21,3 +21,9 @@
 - **Why:** Required for complex staggered scroll/mount reveals on dynamic content and page-level route transitions that feel like "entering a scene".
 - **Where:** `apps/frontend/package.json`
 - **How:** Run `npm install framer-motion` (or equivalent) in the `apps/frontend` directory.
+
+## 4. SQLAlchemy does not auto-order cross-table INSERTs for plain FK-only models
+- **What:** SQLAlchemy did not auto-order cross-table INSERTs by FK dependency for plain (non-`relationship()`) mapped models — reproduced directly against `aidnd_test_db` while seeding TRS integration test fixtures (`apps/turn-resolution-service/tests/`), where inserting a `User` and a `Scenario` together in a single `session.add_all([...]); await session.flush()` call raised a `ForeignKeyViolationError` because the child row was emitted before its parent.
+- **Why:** TRS's ORM models (`app/db/models/`) mirror core-api's schema but declare no `relationship()` links between entities, only raw FK columns — SQLAlchemy's unit-of-work insert ordering leans on `relationship()`-derived dependency processors, so plain FK columns alone aren't enough for it to sequence multi-table inserts correctly within one flush.
+- **Where:** Worked around locally in TRS's test seed helpers (`apps/turn-resolution-service/tests/repositories/*.py`, `apps/turn-resolution-service/tests/turn/test_pipeline.py`) by flushing parent rows before dependent ones, one entity at a time. Not yet an issue in production code paths (state_writer.py's writes are single-table `update`/`create` calls), but worth keeping in mind for any future TRS (or core-api) code that batches multi-table inserts in one `flush()`.
+- **How:** Either keep flushing parent-before-child explicitly wherever multi-table inserts happen in one transaction, or add `relationship()` declarations between the mirrored models so SQLAlchemy's automatic dependency sort can be relied on instead.

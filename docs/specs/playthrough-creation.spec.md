@@ -29,7 +29,7 @@
   3. Service fetches the `Scenario` via `ScenarioRepo.get_by_id`. `404` (`ScenarioNotFoundError`, reused from `scenario_exceptions.py`) if missing/archived.
   4. Service checks `scenario.status == "published"`. If not → `409` `ScenarioNotPublishedError`. (This check is also what transitively guarantees a template memory space exists — `Scenario.status` only ever becomes `"published"` in `publish_service.run_publish_job` *after* `ingest_scenario_template` has already succeeded, so a published scenario is provably clone-able. See `publish_service.py:97-100`.)
   5. Service validates `setup_values` against `scenario.setup_schema` (required fields present; `select`-type fields' values are within `options`). Mismatch → `422` `InvalidSetupValuesError`.
-  6. Service constructs the initial `Playthrough.state` dict (namespaced — see §3.4) and the `scenario_snapshot` dict (see §3.4), and instantiates in-memory `Playthrough` and `Participant` ORM objects. Because `Playthrough.playthrough_id` has a client-side `default=uuid.uuid4` (not just `server_default`), the ID exists the instant the object is constructed — **before** any SQL is sent.
+  6. Service constructs the initial `Playthrough.state` dict (namespaced — see §3.4) and the `scenario_snapshot` dict (see §3.4). It explicitly generates `playthrough_id = uuid.uuid4()` itself and passes it into both the `Playthrough` and `Participant` ORM objects. **Correction from the original spec draft:** `Playthrough.playthrough_id`'s `default=uuid.uuid4` column default is a SQLAlchemy INSERT-time default — it is only evaluated at flush, not at Python object construction — so it cannot be relied on to produce the ID before the clone call below. Generating the ID explicitly in the service is what actually gives us an ID before any SQL is sent.
   7. Service calls `memory_client.clone_template_memory_space(MemoryTemplateCloneRequest(scenario_id=..., playthrough_id=<already-generated id>))`.
   8. **If the clone call raises:** service raises `PlaythroughMemoryCloneError` (502). Nothing was ever added to the session — no partial `Playthrough` or `Participant` row exists in Postgres. This is the entire atomicity mechanism; no explicit rollback/compensation code is needed.
   9. **If the clone succeeds:** service adds both ORM objects to the session via `PlaythroughRepo.create` / `ParticipantRepo.create` (flush, not commit — commit happens at the request boundary via `get_db_session`'s existing commit-on-success behavior), and returns `PlaythroughResponse`.
@@ -37,7 +37,7 @@
 
 - **Sequence Flow (`GET /v1/playthroughs/{playthrough_id}`):**
   1. Service fetches the playthrough. `404` if missing.
-  2. Service checks the requesting user is a `Participant` of this playthrough (owner or joined). Not a participant → `404` (hidden, matching the existing draft-scenario pattern of hiding rather than `403`-leaking existence... **decision needed, see Open Questions** — default assumed here is `403` since playthroughs aren't otherwise publicly discoverable the way scenarios are; adjust if you want 404-hiding instead).
+  2. Service checks the requesting user is a `Participant` of this playthrough (owner or joined). Not a participant → `403 PlaythroughAccessDeniedError` (confirmed: existence of a playthrough is not treated as sensitive the way a draft scenario's existence is — a non-participant is told plainly they don't have access, not given a `404`).
   3. Returns `PlaythroughResponse`.
 
 ## 3. The Six Core Engineering Dimensions
@@ -170,9 +170,14 @@ async def create_playthrough(
     if scenario.status != "published":
         raise ScenarioNotPublishedError()
 
-    self._validate_setup_values(scenario.setup_schema, data.setup_values)
+    _validate_setup_values(scenario.setup_schema, data.setup_values)
 
+    # Generated explicitly: the ORM column's `default=uuid.uuid4` only
+    # fires at flush/INSERT time, not at object construction, so it can't
+    # supply an ID before the clone call below.
+    playthrough_id = uuid.uuid4()
     playthrough = Playthrough(
+        playthrough_id=playthrough_id,
         scenario_id=scenario.scenario_id,
         created_by=user_id,
         state=_build_initial_state(data.setup_values),
@@ -180,27 +185,19 @@ async def create_playthrough(
         scenario_snapshot=_build_snapshot(scenario),
     )
     participant = Participant(
-        playthrough_id=playthrough.playthrough_id,
+        playthrough_id=playthrough_id,
         user_id=user_id,
         role="owner",
         turn_order_position=1,
     )
 
-    try:
-        await memory_client.clone_template_memory_space(
-            MemoryTemplateCloneRequest(
-                scenario_id=scenario.scenario_id,
-                playthrough_id=playthrough.playthrough_id,
-            )
-        )
-    except Exception as exc:  # noqa: BLE001 - mapped to a domain exception
-        raise PlaythroughMemoryCloneError(str(exc)) from exc
+    await self._clone_memory_space(scenario.scenario_id, playthrough_id)
 
     created = await self.playthrough_repo.create(playthrough)
     await self.participant_repo.create(participant)
     return _to_response(created, scenario.title)
 ```
-Note the ordering: both ORM objects exist fully in memory (IDs included, via `Playthrough`'s client-side `uuid.uuid4` default) before the clone call, and `session.add()` never happens until after the clone succeeds — no explicit `try/rollback` around the DB write is needed because nothing was ever staged on the session to roll back.
+Note the ordering: both ORM objects exist fully in memory (IDs included, via an explicitly generated `uuid.uuid4()` — not the ORM column default) before the clone call, and `session.add()` never happens until after the clone succeeds — no explicit `try/rollback` around the DB write is needed because nothing was ever staged on the session to roll back.
 
 **Snapshot builder** — single unified builder, no mode branching (master-mode fields are simply empty for a newbie scenario today, ready to populate once master mode is built):
 ```python
@@ -240,7 +237,7 @@ The `"setup"` / `"narrative"` (and future `"game"`, for master mode) namespacing
 
 ### 3.6. Boundaries (Three-Tier Model)
 - ✅ **Always:** run the targeted test suite before reporting completion; keep the memory clone call as the last step before any DB write (atomicity depends on this ordering); log `PlaythroughMemoryCloneError` with full context (`scenario_id`, attempted `playthrough_id`) before it's mapped to a 502.
-- ⚠️ **Ask First:** changing the `GET /v1/playthroughs/{playthrough_id}` non-participant response code between `403` and `404` (open question below — pick one and it becomes a real authorization contract other endpoints will follow); adding any new column to `Playthrough` (e.g. a future `memory_space_id`) — explicitly deferred per your answer to Q14, revisit only if a concrete downstream need appears.
+- ⚠️ **Ask First:** adding any new column to `Playthrough` (e.g. a future `memory_space_id`) — explicitly deferred per your answer to Q14, revisit only if a concrete downstream need appears.
 - 🚫 **Never:** call `memory_client` from the router or repository layer; add a `condition_repo.py`/`ScenarioCondition` read in this task (out of scope — `active_conditions` stays `[]`); build `POST /v1/playthroughs/{id}/share` or `POST /v1/playthroughs/join` in this task (explicitly out of scope per your answer to Q23); commit a `Playthrough`/`Participant` row before the memory clone has confirmed success.
 
 ## 4. Edge Cases, Rate Limits & Graceful Degradation
@@ -259,7 +256,6 @@ The `"setup"` / `"narrative"` (and future `"game"`, for master mode) namespacing
 
 ---
 
-## Open Questions Carried Into Implementation
-These are small enough not to block starting, but should be confirmed before Task 4 is considered done:
-1. **`GET /v1/playthroughs/{id}` non-participant response:** this spec defaults to `403 PlaythroughAccessDeniedError`. The README's own Authorization Rules section (line 923) says playthroughs are "not publicly browsable," which could argue for `404`-hiding instead (matching the draft-scenario pattern). Pick one during Task 4; §3.2 test 9 should assert whichever is chosen.
-2. **`setup_values` value typing:** modeled as `dict[str, str]` above (matches `setup_schema`'s `text`/`select` field types, both string-valued). If a future setup field type needs non-string values, this narrows — flagged here so it isn't a silent assumption.
+## Decisions Confirmed (no longer open)
+1. **`GET /v1/playthroughs/{id}` non-participant response is `403`** — a non-participant is told plainly they lack access; playthrough existence is not treated as sensitive.
+2. **`setup_values` typed as `dict[str, str]`** — confirmed sufficient for `setup_schema`'s current `text`/`select` field types.

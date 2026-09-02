@@ -3,6 +3,7 @@
 from uuid import uuid4
 
 import pytest
+
 from app.integrations import memory_client
 from app.models.memory import (
     MemoryIngestRequest,

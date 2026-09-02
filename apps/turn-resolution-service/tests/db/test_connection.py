@@ -1,9 +1,10 @@
 """Integration tests for database connection and session management in TRS."""
 
 import pytest
-from app.db.connection import close_db_connection, get_db_session
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.connection import close_db_connection, get_db_session
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
