@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
     environment: str = "development"
     frontend_base_url: str = "http://localhost:5173"
+    log_level: str = "INFO"
+    log_format: str = "json"
 
 
 settings = Settings()

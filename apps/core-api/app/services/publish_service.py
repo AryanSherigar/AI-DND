@@ -22,12 +22,17 @@ from app.exceptions.scenario_exceptions import (
     ScenarioValidationError,
 )
 from app.integrations import memory_client
+from app.logging_config import log_audit_event
 from app.models.memory import MemoryTemplateIngestRequest
 from app.repositories.scenario_repo import ScenarioRepo
 
 logger = structlog.get_logger()
 
 ALLOWED_CONTENT_TAGS: set[str] = {"all-ages", "teen", "mature"}
+
+EVENT_SCENARIO_PUBLISH_STARTED = "scenario_publish_started"
+EVENT_SCENARIO_PUBLISH_COMPLETED = "scenario_publish_completed"
+EVENT_SCENARIO_PUBLISH_FAILED = "scenario_publish_failed"
 
 
 class PublishService:
@@ -53,6 +58,12 @@ class PublishService:
         scenario.status = "publishing"
         scenario.publish_error = None
         updated = await self.scenario_repo.update(scenario)
+        log_audit_event(
+            logger,
+            EVENT_SCENARIO_PUBLISH_STARTED,
+            scenario_id=str(scenario_id),
+            user_id=str(user_id),
+        )
         # Must commit here rather than leaving it to the request-scoped
         # session's usual end-of-request commit: FastAPI runs BackgroundTasks
         # *before* a yield-dependency's post-yield cleanup code (including
@@ -89,8 +100,9 @@ class PublishService:
                     "draft" if scenario.published_at is None else "publish_failed"
                 )
                 scenario.publish_error = str(exc)
-                logger.warning(
-                    "scenario_publish_failed",
+                log_audit_event(
+                    logger,
+                    EVENT_SCENARIO_PUBLISH_FAILED,
                     scenario_id=str(scenario_id),
                     error=str(exc),
                 )
@@ -98,6 +110,11 @@ class PublishService:
                 scenario.status = "published"
                 scenario.published_at = scenario.published_at or datetime.now(UTC)
                 scenario.publish_error = None
+                log_audit_event(
+                    logger,
+                    EVENT_SCENARIO_PUBLISH_COMPLETED,
+                    scenario_id=str(scenario_id),
+                )
 
             await session.commit()
 

@@ -2,6 +2,7 @@ import uuid
 from typing import Annotated
 
 import jwt
+import structlog
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,10 @@ from app.repositories.user_repo import UserRepo
 
 security = HTTPBearer(auto_error=False)
 optional_security = HTTPBearer(auto_error=False)
+
+
+def _bind_user_context(user: User) -> None:
+    structlog.contextvars.bind_contextvars(user_id=str(user.user_id))
 
 
 async def get_current_user(
@@ -36,6 +41,7 @@ async def get_current_user(
                     )
                     session.add(user)
                     await session.commit()
+                _bind_user_context(user)
                 return user
             except ValueError:
                 pass
@@ -61,6 +67,7 @@ async def get_current_user(
         if not user or user.token_version != token_version:
             raise InvalidTokenError("Token revoked or user not found")
 
+        _bind_user_context(user)
         return user
     except jwt.InvalidTokenError:
         raise InvalidTokenError("Invalid or expired access token")
@@ -88,6 +95,7 @@ async def get_optional_current_user(
                     )
                     session.add(user)
                     await session.commit()
+                _bind_user_context(user)
                 return user
             except ValueError:
                 pass
@@ -112,6 +120,7 @@ async def get_optional_current_user(
         if not user or user.token_version != token_version:
             return None
 
+        _bind_user_context(user)
         return user
     except jwt.InvalidTokenError:
         return None

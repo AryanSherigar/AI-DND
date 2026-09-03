@@ -2,6 +2,7 @@ import uuid
 from typing import Annotated
 
 import jwt
+import structlog
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -10,6 +11,10 @@ from app.exceptions.auth_exceptions import InvalidTokenError
 from app.models.auth import CurrentUser
 
 security = HTTPBearer(auto_error=False)
+
+
+def _bind_user_context(user: CurrentUser) -> None:
+    structlog.contextvars.bind_contextvars(user_id=str(user.user_id))
 
 
 async def get_current_user(
@@ -21,7 +26,9 @@ async def get_current_user(
         if dev_user_id:
             try:
                 # We trust the dev header completely in TRS dev bypass
-                return CurrentUser(user_id=uuid.UUID(dev_user_id), token_version=1)
+                user = CurrentUser(user_id=uuid.UUID(dev_user_id), token_version=1)
+                _bind_user_context(user)
+                return user
             except ValueError:
                 raise InvalidTokenError("Invalid UUID format in dev header")
 
@@ -39,6 +46,8 @@ async def get_current_user(
         user_id = payload.get("sub")
         token_version = payload.get("token_version")
 
-        return CurrentUser(user_id=uuid.UUID(user_id), token_version=token_version)
+        user = CurrentUser(user_id=uuid.UUID(user_id), token_version=token_version)
+        _bind_user_context(user)
+        return user
     except jwt.InvalidTokenError:
         raise InvalidTokenError("Invalid or expired access token")

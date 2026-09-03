@@ -1,6 +1,9 @@
 """Validates an incoming turn request before any state loading occurs."""
 
+import time
 import uuid
+
+import structlog
 
 from app.db.models.participant import Participant
 from app.exceptions.turn_exceptions import (
@@ -13,6 +16,11 @@ from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.turn.turn_order import expected_participant
 
+logger = structlog.get_logger()
+
+EVENT_TURN_STEP_COMPLETED = "turn_step_completed"
+STEP_NAME = "request_receiver"
+
 
 async def receive_request(
     turn_input: TurnRequestInput,
@@ -20,6 +28,7 @@ async def receive_request(
     participant_repo: ParticipantRepo,
 ) -> TurnRequest:
     """Validate playthrough status, participant membership, and turn order."""
+    start = time.monotonic()
     playthrough = await playthrough_repo.get_by_id(turn_input.playthrough_id)
     if playthrough is None or playthrough.status != "active":
         raise PlaythroughNotActiveError()
@@ -32,6 +41,12 @@ async def receive_request(
     if len(participants) > 1:
         _validate_turn_order(participants, acting_participant, playthrough.turn_count)
 
+    logger.info(
+        EVENT_TURN_STEP_COMPLETED,
+        step_name=STEP_NAME,
+        playthrough_id=str(turn_input.playthrough_id),
+        duration_ms=(time.monotonic() - start) * 1000,
+    )
     return TurnRequest(
         playthrough_id=turn_input.playthrough_id,
         participant_id=turn_input.participant_id,

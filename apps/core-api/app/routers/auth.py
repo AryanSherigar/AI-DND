@@ -1,3 +1,4 @@
+import structlog
 from fastapi import APIRouter, Cookie, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +10,9 @@ from app.repositories.user_repo import UserRepo
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
+logger = structlog.get_logger()
+
+EVENT_AUTH_TOKEN_REFRESH_DENIED = "auth_token_refresh_denied"
 
 
 def get_auth_service(session: AsyncSession = Depends(get_db_session)) -> AuthService:
@@ -62,6 +66,7 @@ async def refresh_token(
             refresh_token, settings.secret_key, algorithms=[settings.jwt_algorithm]
         )
         if payload.get("type") != "refresh":
+            logger.warning(EVENT_AUTH_TOKEN_REFRESH_DENIED, reason="invalid_token_type")
             raise InvalidTokenError("Invalid token type")
 
         user_id = payload.get("sub")
@@ -73,6 +78,9 @@ async def refresh_token(
         user = await user_repo.get_by_id(uuid.UUID(user_id))
 
         if not user or user.token_version != token_version:
+            logger.warning(
+                EVENT_AUTH_TOKEN_REFRESH_DENIED, reason="revoked_or_user_not_found"
+            )
             raise InvalidTokenError("Token revoked or user not found")
 
         access_token = auth_service.generate_access_token(user)

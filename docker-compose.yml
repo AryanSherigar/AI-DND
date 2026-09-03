@@ -37,6 +37,7 @@ services:
       FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:3000","http://localhost:80"]}
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       PYTHONPATH: /app
     ports:
       - "${CORE_API_PORT:-8000}:8000"
@@ -59,6 +60,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:3000","http://localhost:80"]}
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "${TRS_PORT:-8001}:8001"
     depends_on:

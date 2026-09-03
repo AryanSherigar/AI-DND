@@ -9,8 +9,10 @@ bug documented in docs/adr/010 for BackgroundTasks). Committing here is what
 guarantees "done" is never emitted for a turn that isn't actually durable.
 """
 
+import time
 import uuid
 
+import structlog
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import settings
@@ -19,6 +21,12 @@ from app.models.turn import LoadedState, TurnRequest
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.turn_log_repo import TurnLogRepo
+
+logger = structlog.get_logger()
+
+EVENT_TURN_STEP_COMPLETED = "turn_step_completed"
+EVENT_TURN_STATE_WRITE_FAILED = "turn_state_write_failed"
+STEP_NAME = "state_writer"
 
 
 async def write_turn(
@@ -34,12 +42,13 @@ async def write_turn(
     Returns the updated turns_so_far list so callers (memory_writer) don't
     have to recompute it from Playthrough.state after the write.
     """
+    start = time.monotonic()
     new_turn_count = loaded_state.turn_count + 1
     updated_state = _append_turn(
         loaded_state.state, turn_request.action_text, narration_text
     )
 
-    await _persist_with_retry(
+    retry_count = await _persist_with_retry(
         turn_request,
         loaded_state.scenario_id,
         new_turn_count,
@@ -48,6 +57,12 @@ async def write_turn(
         playthrough_repo,
         turn_log_repo,
         scenario_repo,
+    )
+    logger.info(
+        EVENT_TURN_STEP_COMPLETED,
+        step_name=STEP_NAME,
+        duration_ms=(time.monotonic() - start) * 1000,
+        retry_count=retry_count,
     )
     return updated_state["narrative"]["turns_so_far"]
 
@@ -61,7 +76,7 @@ async def _persist_with_retry(
     playthrough_repo: PlaythroughRepo,
     turn_log_repo: TurnLogRepo,
     scenario_repo: ScenarioRepo,
-) -> None:
+) -> int:
     max_attempts = settings.state_write_max_retries + 1
     for attempt in range(max_attempts):
         try:
@@ -75,11 +90,17 @@ async def _persist_with_retry(
                 turn_log_repo,
                 scenario_repo,
             )
-            return
+            return attempt
         except SQLAlchemyError as exc:
             await playthrough_repo.session.rollback()
             if attempt == max_attempts - 1:
+                logger.error(
+                    EVENT_TURN_STATE_WRITE_FAILED,
+                    playthrough_id=str(turn_request.playthrough_id),
+                    retry_count=attempt,
+                )
                 raise StateWriteError() from exc
+    return max_attempts - 1
 
 
 async def _write_once(

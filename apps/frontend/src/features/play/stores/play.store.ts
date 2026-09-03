@@ -6,6 +6,10 @@ import {
   TurnLogItem,
 } from "../types/play.types";
 import { createPostSSEConnection } from "@/shared/lib/sse-client";
+import {
+  generateRequestId,
+  setCurrentRequestId,
+} from "@/shared/lib/request-id";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { queryClient } from "@/shared/lib/query-client";
 
@@ -99,6 +103,8 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     });
 
     const token = useAuthStore.getState().accessToken;
+    const requestId = generateRequestId();
+    setCurrentRequestId(requestId);
     let reachedTerminalEvent = false;
     const cancelFn = createPostSSEConnection(
       `${TRS_BASE_URL}/v1/turn`,
@@ -138,6 +144,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
           }
         },
       },
+      requestId,
     );
 
     set({ cancel_stream_fn: cancelFn });

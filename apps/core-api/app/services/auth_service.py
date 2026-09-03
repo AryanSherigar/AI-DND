@@ -11,6 +11,9 @@ from app.repositories.user_repo import UserRepo
 
 logger = structlog.get_logger()
 
+EVENT_AUTH_DEV_BYPASS_USED = "auth_dev_bypass_used"
+EVENT_AUTH_TOKEN_VERIFICATION_FAILED = "auth_token_verification_failed"
+
 
 class AuthService:
     def __init__(self, user_repo: UserRepo):
@@ -22,7 +25,7 @@ class AuthService:
             and not settings.firebase_project_id
         ):
             # Bypass/mock for local testing without Firebase
-            logger.info("Using dev bypass for firebase auth")
+            logger.info(EVENT_AUTH_DEV_BYPASS_USED)
             return await self._upsert_user("dev-firebase-id-123", "Dev User")
 
         try:
@@ -44,7 +47,7 @@ class AuthService:
             )
             return await self._upsert_user(uid, name)
         except Exception as e:
-            logger.error("firebase_verification_failed", error=str(e))
+            logger.warning(EVENT_AUTH_TOKEN_VERIFICATION_FAILED, error=str(e))
             raise InvalidTokenError(f"Firebase token verification failed: {e!s}")
 
     async def _upsert_user(self, auth_provider_id: str, display_name: str) -> User:

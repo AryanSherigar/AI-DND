@@ -11,6 +11,7 @@ mode doesn't use them (see docs/specs/trs-turn-endpoint-and-memory-wiring.spec.m
 import uuid
 from collections.abc import AsyncIterator
 
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 
@@ -32,6 +33,12 @@ from app.turn.steps import (
     state_writer,
 )
 from app.turn.turn_order import expected_participant
+
+logger = structlog.get_logger()
+
+EVENT_SSE_STREAM_OPENED = "sse_stream_opened"
+EVENT_SSE_STREAM_CLOSED = "sse_stream_closed"
+EVENT_SSE_STREAM_ERROR = "sse_stream_error"
 
 _DEGRADED_WRITE_MESSAGE = (
     "Your turn couldn't be saved. Please try submitting your action again."
@@ -73,6 +80,8 @@ async def _run_turn_events(
     scenario_repo: ScenarioRepo,
     participant_repo: ParticipantRepo,
 ) -> AsyncIterator[ServerSentEvent]:
+    playthrough_id = str(turn_request.playthrough_id)
+    logger.info(EVENT_SSE_STREAM_OPENED, playthrough_id=playthrough_id)
     context = await context_retrieval.retrieve_context(turn_request, loaded_state)
 
     chunks: list[str] = []
@@ -86,6 +95,9 @@ async def _run_turn_events(
             )
             yield response_streamer.narration_event(chunk)
     except NarrationGenerationError:
+        logger.warning(
+            EVENT_SSE_STREAM_ERROR, playthrough_id=playthrough_id, outcome="error"
+        )
         return
 
     try:
@@ -98,12 +110,16 @@ async def _run_turn_events(
             scenario_repo,
         )
     except StateWriteError:
+        logger.warning(
+            EVENT_SSE_STREAM_CLOSED, playthrough_id=playthrough_id, outcome="degraded"
+        )
         yield response_streamer.degraded_event(_DEGRADED_WRITE_MESSAGE)
         return
 
     await _after_successful_write(
         turn_request, loaded_state, updated_turns_so_far, participant_repo
     )
+    logger.info(EVENT_SSE_STREAM_CLOSED, playthrough_id=playthrough_id, outcome="done")
     yield response_streamer.done_event()
 
 

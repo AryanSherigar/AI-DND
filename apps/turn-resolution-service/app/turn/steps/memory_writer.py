@@ -5,14 +5,16 @@ Data Consistency section, memory writes are best-effort and must never block
 or fail a turn.
 """
 
-import logging
+import structlog
 
 from app.config import settings
 from app.integrations import memory_client
 from app.models.memory import MemoryIngestRequest, TurnBatchEntry
 from app.models.turn import LoadedState, TurnRequest
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
+
+EVENT_MEMORY_BATCH_INGEST_FAILED = "memory_batch_ingest_failed"
 
 
 async def maybe_flush_batch(
@@ -32,8 +34,9 @@ async def maybe_flush_batch(
         await memory_client.ingest_batch(request)
     except Exception:
         logger.warning(
-            "Memory batch ingest failed for playthrough %s",
-            turn_request.playthrough_id,
+            EVENT_MEMORY_BATCH_INGEST_FAILED,
+            playthrough_id=str(turn_request.playthrough_id),
+            new_turn_count=new_turn_count,
             exc_info=True,
         )
 

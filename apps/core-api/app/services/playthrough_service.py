@@ -2,6 +2,8 @@
 
 import uuid
 
+import structlog
+
 from app.db.models.participant import Participant
 from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
@@ -17,6 +19,7 @@ from app.exceptions.playthrough_exceptions import (
 )
 from app.exceptions.scenario_exceptions import ScenarioNotFoundError
 from app.integrations import memory_client
+from app.logging_config import log_audit_event
 from app.models.memory import MemoryTemplateCloneRequest
 from app.models.playthrough import (
     ParticipantSummary,
@@ -29,6 +32,10 @@ from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.share_repo import ShareRepo
 from app.repositories.turn_log_repo import TurnLogRepo
+
+logger = structlog.get_logger()
+
+EVENT_PLAYTHROUGH_STARTED = "playthrough_started"
 
 
 class PlaythroughService:
@@ -86,6 +93,12 @@ class PlaythroughService:
 
         created = await self.playthrough_repo.create(playthrough)
         created_participant = await self.participant_repo.create(participant)
+        log_audit_event(
+            logger,
+            EVENT_PLAYTHROUGH_STARTED,
+            playthrough_id=str(playthrough_id),
+            scenario_id=str(scenario.scenario_id),
+        )
         return _to_response(
             created,
             scenario.title,

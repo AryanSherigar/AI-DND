@@ -1,6 +1,7 @@
 import axios from "axios";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { refreshAccessToken } from "@/features/auth/api/auth.api";
+import { REQUEST_ID_HEADER, generateRequestId } from "./request-id";
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000",
@@ -31,6 +32,9 @@ apiClient.interceptors.request.use(
       config.headers["Authorization"] = `Bearer ${token}`;
     } else if (import.meta.env.DEV) {
       config.headers["X-Dev-User-Id"] = "00000000-0000-0000-0000-000000000001";
+    }
+    if (!config.headers[REQUEST_ID_HEADER]) {
+      config.headers[REQUEST_ID_HEADER] = generateRequestId();
     }
     return config;
   },

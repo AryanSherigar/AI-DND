@@ -9,6 +9,7 @@
  * the notifications endpoint. Using one mechanism for both GET and POST also
  * keeps this file's parsing logic single-sourced.
  */
+import { REQUEST_ID_HEADER } from "./request-id";
 
 export interface SSEHandlers {
   onEvent: (eventName: string, data: string) => void;
@@ -28,8 +29,16 @@ export function createGetSSEConnection(
   url: string,
   authToken: string | null,
   handlers: SSEHandlers,
+  requestId?: string,
 ): () => void {
-  return createFetchSSEConnection(url, "GET", undefined, authToken, handlers);
+  return createFetchSSEConnection(
+    url,
+    "GET",
+    undefined,
+    authToken,
+    handlers,
+    requestId,
+  );
 }
 
 /** One-shot POST-then-stream SSE connection (TRS's POST /v1/turn). */
@@ -38,8 +47,16 @@ export function createPostSSEConnection(
   body: unknown,
   authToken: string | null,
   handlers: SSEHandlers,
+  requestId?: string,
 ): () => void {
-  return createFetchSSEConnection(url, "POST", body, authToken, handlers);
+  return createFetchSSEConnection(
+    url,
+    "POST",
+    body,
+    authToken,
+    handlers,
+    requestId,
+  );
 }
 
 function createFetchSSEConnection(
@@ -48,9 +65,18 @@ function createFetchSSEConnection(
   body: unknown,
   authToken: string | null,
   handlers: SSEHandlers,
+  requestId?: string,
 ): () => void {
   const controller = new AbortController();
-  void streamRequest(url, method, body, authToken, handlers, controller.signal);
+  void streamRequest(
+    url,
+    method,
+    body,
+    authToken,
+    handlers,
+    controller.signal,
+    requestId,
+  );
   return () => controller.abort();
 }
 
@@ -66,6 +92,10 @@ function buildAuthHeaders(authToken: string | null): Record<string, string> {
   return {};
 }
 
+function buildRequestIdHeader(requestId?: string): Record<string, string> {
+  return requestId ? { [REQUEST_ID_HEADER]: requestId } : {};
+}
+
 async function streamRequest(
   url: string,
   method: "GET" | "POST",
@@ -73,6 +103,7 @@ async function streamRequest(
   authToken: string | null,
   handlers: SSEHandlers,
   signal: AbortSignal,
+  requestId?: string,
 ): Promise<void> {
   try {
     const response = await fetch(url, {
@@ -80,6 +111,7 @@ async function streamRequest(
       headers: {
         ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
         ...buildAuthHeaders(authToken),
+        ...buildRequestIdHeader(requestId),
       },
       body: method === "POST" ? JSON.stringify(body) : undefined,
       signal,

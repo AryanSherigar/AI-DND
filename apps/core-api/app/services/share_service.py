@@ -3,6 +3,8 @@
 import secrets
 import uuid
 
+import structlog
+
 from app.config import settings
 from app.db.models.share import PlaythroughShare
 from app.exceptions.playthrough_exceptions import (
@@ -10,12 +12,17 @@ from app.exceptions.playthrough_exceptions import (
     PlaythroughAccessDeniedError,
     PlaythroughNotFoundError,
 )
+from app.logging_config import log_audit_event
 from app.models.share import ShareMode
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.share_repo import ShareRepo
 
+logger = structlog.get_logger()
+
 _TOKEN_BYTES = 32
+
+EVENT_SHARE_LINK_CREATED = "share_link_created"
 
 
 class ShareService:
@@ -42,9 +49,16 @@ class ShareService:
         if existing:
             return existing
         token = secrets.token_urlsafe(_TOKEN_BYTES)
-        return await self.share_repo.create(
+        created = await self.share_repo.create(
             playthrough_id=playthrough_id, mode=mode, share_token=token
         )
+        log_audit_event(
+            logger,
+            EVENT_SHARE_LINK_CREATED,
+            playthrough_id=str(playthrough_id),
+            share_type=mode,
+        )
+        return created
 
     async def validate_token(
         self, share_token: str, required_mode: ShareMode | None = None

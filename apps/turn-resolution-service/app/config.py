@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     play_count_increment_turn_threshold: int = 10
     state_write_max_retries: int = 2
     memory_batch_turn_interval: int = 5
+    log_level: str = "INFO"
+    log_format: str = "json"
 
 
 settings = Settings()
