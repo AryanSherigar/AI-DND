@@ -60,6 +60,53 @@ def _get_client() -> genai.Client:
     return _client
 
 
+async def generate_with_tools(
+    system_instruction: str,
+    contents: list[types.Content],
+    timeout_seconds: int,
+    tools: list[types.Tool] | None,
+) -> types.GenerateContentResponse:
+    """Single non-streaming turn of a master-mode function-calling loop.
+
+    Non-streaming (not `generate_content_stream`) because the caller
+    (ai_orchestrator's tool-calling loop) must inspect `.function_calls`
+    before it can decide whether to continue the loop or finish — token-level
+    streaming and multi-turn function calling don't compose simply with this
+    SDK, so this call returns a complete response each round-trip. The
+    fixed generic tools are passed in by the caller (tool_definitions.py) —
+    this module stays generic, exactly like stream_narration above.
+
+    Manual function calling only (automatic_function_calling.disable=True):
+    the caller — not the SDK — decides whether each proposed mutation is
+    valid before continuing the conversation (ADR-4).
+    """
+    config = _build_generation_config(system_instruction)
+    if tools:
+        config.tools = tools
+        config.automatic_function_calling = types.AutomaticFunctionCallingConfig(
+            disable=True
+        )
+    logger.info(EVENT_GEMINI_STREAM_OPENED, model=settings.gemini_model_name)
+    try:
+        return await asyncio.wait_for(
+            _get_client().aio.models.generate_content(
+                model=settings.gemini_model_name, contents=contents, config=config
+            ),
+            timeout=timeout_seconds,
+        )
+    except asyncio.TimeoutError as exc:
+        logger.warning(EVENT_GEMINI_STREAM_ERROR, error_type="TimeoutError")
+        raise GeminiUnavailableError() from exc
+    except genai_errors.ServerError as exc:
+        logger.warning(EVENT_GEMINI_STREAM_ERROR, error_type="ServerError")
+        raise GeminiUnavailableError() from exc
+    except genai_errors.ClientError as exc:
+        if exc.code == _RATE_LIMIT_STATUS_CODE:
+            logger.warning(EVENT_GEMINI_STREAM_ERROR, error_type="RateLimitError")
+            raise GeminiUnavailableError() from exc
+        raise
+
+
 async def stream_narration(
     system_instruction: str, prompt: str, timeout_seconds: int
 ) -> AsyncIterator[str]:

@@ -12,6 +12,10 @@ from app.exceptions.playthrough_exceptions import (
     PlaythroughAccessDeniedError,
 )
 from app.models.playthrough import PlaythroughCreate
+from app.repositories.condition_repo import ConditionRepo
+from app.repositories.end_condition_repo import EndConditionRepo
+from app.repositories.entity_repo import EntityRepo
+from app.repositories.invariant_repo import InvariantRepo
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_repo import ScenarioRepo
@@ -51,6 +55,10 @@ async def _seed_playthrough_with_owner(db_session: AsyncSession):
         scenario_repo=ScenarioRepo(db_session),
         share_repo=ShareRepo(db_session),
         turn_log_repo=TurnLogRepo(db_session),
+        entity_repo=EntityRepo(db_session),
+        condition_repo=ConditionRepo(db_session),
+        invariant_repo=InvariantRepo(db_session),
+        end_condition_repo=EndConditionRepo(db_session),
     )
     response = await playthrough_service.create_playthrough(
         user_id=user.user_id,

@@ -3,12 +3,15 @@
 import uuid
 
 import pytest
+from google.genai import types
 
+from app.config import settings
 from app.exceptions.turn_exceptions import (
     GeminiUnavailableError,
     NarrationGenerationError,
 )
 from app.models.memory import Fact, MemoryQueryResponse
+from app.models.tool_call import MasterModeTurnResult
 from app.models.turn import LoadedState, TurnRequest
 from app.turn.steps import ai_orchestrator
 
@@ -160,3 +163,215 @@ async def test_generate_narration_prompt_omits_facts_block_on_abstention(
     ]
 
     assert "Known world facts:" not in calls[0]
+
+
+# --- Master mode: function-calling round-trip loop -------------------------
+
+
+class _FakeCandidate:
+    def __init__(self) -> None:
+        self.content = "fake-model-turn-content"
+
+
+class _FakeResponse:
+    def __init__(self, function_calls: list[types.FunctionCall], text: str) -> None:
+        self.function_calls = function_calls
+        self.text = text
+        self.candidates = [_FakeCandidate()]
+
+
+def _master_loaded_state() -> LoadedState:
+    return LoadedState(
+        scenario_id=uuid.uuid4(),
+        scenario_snapshot={
+            "mode": "master",
+            "narrator_persona": "Dry humor.",
+            "world_data": {},
+            "state_schema": {
+                "flags": {
+                    "type": "object",
+                    "fields": {
+                        "investigated_lore": {"type": "boolean", "initial": False}
+                    },
+                }
+            },
+            "entities": [],
+            "rule_invariants": [],
+            "scenario_conditions": [],
+        },
+        state={
+            "flags": {"investigated_lore": False},
+            "narrative": {"turns_so_far": []},
+        },
+        turn_count=0,
+        checkpoint=None,
+    )
+
+
+async def test_generate_narration_master_mode_tool_loop(monkeypatch) -> None:
+    responses = [
+        _FakeResponse(
+            [types.FunctionCall(name="roll_dice", args={"sides": 20, "modifier": 0})],
+            "",
+        ),
+        _FakeResponse(
+            [
+                types.FunctionCall(
+                    name="set_field",
+                    args={"path": "flags.investigated_lore", "value": "true"},
+                )
+            ],
+            "",
+        ),
+        _FakeResponse([], "You find a clue."),
+    ]
+
+    async def fake_generate_with_tools(
+        system_instruction, contents, timeout_seconds, tools
+    ):
+        return responses.pop(0)
+
+    monkeypatch.setattr(
+        ai_orchestrator.gemini_client, "generate_with_tools", fake_generate_with_tools
+    )
+
+    result_sink = MasterModeTurnResult(
+        final_state={
+            "flags": {"investigated_lore": False},
+            "narrative": {"turns_so_far": []},
+        }
+    )
+    chunks = [
+        chunk
+        async for chunk in ai_orchestrator.generate_narration(
+            _turn_request(),
+            _master_loaded_state(),
+            _abstained_context(),
+            [],
+            result_sink,
+        )
+    ]
+
+    assert "".join(chunks).strip() == "You find a clue."
+    assert [tc.tool_name for tc in result_sink.tool_calls] == ["roll_dice", "set_field"]
+    assert result_sink.tool_calls[0].is_valid is True
+    assert result_sink.tool_calls[1].is_valid is True
+    assert result_sink.final_state["flags"]["investigated_lore"] is True
+    assert result_sink.mutated_paths == ["flags.investigated_lore"]
+
+
+async def test_generate_narration_master_mode_rejects_invalid_mutation(
+    monkeypatch,
+) -> None:
+    responses = [
+        _FakeResponse(
+            [
+                types.FunctionCall(
+                    name="set_field",
+                    args={
+                        "path": "flags.investigated_lore",
+                        "value": "not-a-boolean-ish-value",
+                    },
+                )
+            ],
+            "",
+        ),
+        _FakeResponse([], "Nothing happens."),
+    ]
+
+    async def fake_generate_with_tools(
+        system_instruction, contents, timeout_seconds, tools
+    ):
+        return responses.pop(0)
+
+    monkeypatch.setattr(
+        ai_orchestrator.gemini_client, "generate_with_tools", fake_generate_with_tools
+    )
+
+    result_sink = MasterModeTurnResult(
+        final_state={
+            "flags": {"investigated_lore": False},
+            "narrative": {"turns_so_far": []},
+        }
+    )
+    [
+        chunk
+        async for chunk in ai_orchestrator.generate_narration(
+            _turn_request(),
+            _master_loaded_state(),
+            _abstained_context(),
+            [],
+            result_sink,
+        )
+    ]
+
+    assert result_sink.tool_calls[0].is_valid is False
+    assert result_sink.final_state["flags"]["investigated_lore"] is False
+    assert result_sink.mutated_paths == []
+
+
+async def test_generate_narration_master_mode_cap_hit(monkeypatch) -> None:
+    call_count = {"n": 0}
+    tools_seen: list[object] = []
+
+    async def fake_generate_with_tools(
+        system_instruction, contents, timeout_seconds, tools
+    ):
+        call_count["n"] += 1
+        tools_seen.append(tools)
+        if tools:
+            return _FakeResponse(
+                [types.FunctionCall(name="roll_dice", args={"sides": 6})], ""
+            )
+        return _FakeResponse([], "Finalized despite cap.")
+
+    monkeypatch.setattr(
+        ai_orchestrator.gemini_client, "generate_with_tools", fake_generate_with_tools
+    )
+
+    result_sink = MasterModeTurnResult(final_state={"narrative": {"turns_so_far": []}})
+    chunks = [
+        chunk
+        async for chunk in ai_orchestrator.generate_narration(
+            _turn_request(),
+            _master_loaded_state(),
+            _abstained_context(),
+            [],
+            result_sink,
+        )
+    ]
+
+    assert "".join(chunks).strip() == "Finalized despite cap."
+    assert call_count["n"] == settings.tool_call_max_round_trips + 1
+    assert tools_seen[-1] is None
+
+
+async def test_generate_narration_master_mode_includes_active_instructions_and_persona(
+    monkeypatch,
+) -> None:
+    captured = {}
+
+    async def fake_generate_with_tools(
+        system_instruction, contents, timeout_seconds, tools
+    ):
+        captured["system_instruction"] = system_instruction
+        return _FakeResponse([], "Narration.")
+
+    monkeypatch.setattr(
+        ai_orchestrator.gemini_client, "generate_with_tools", fake_generate_with_tools
+    )
+
+    result_sink = MasterModeTurnResult(final_state={"narrative": {"turns_so_far": []}})
+    [
+        chunk
+        async for chunk in ai_orchestrator.generate_narration(
+            _turn_request(),
+            _master_loaded_state(),
+            _abstained_context(),
+            ["Kestrel Vane now travels with the player."],
+            result_sink,
+        )
+    ]
+
+    assert "Dry humor." in captured["system_instruction"]
+    assert "Kestrel Vane now travels with the player." in captured["system_instruction"]

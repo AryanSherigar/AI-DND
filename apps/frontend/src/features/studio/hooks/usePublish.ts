@@ -1,14 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getScenario, publishScenario } from "../api/scenarios.api";
-
-const extractErrorMessage = (err: unknown): string => {
-  const anyErr = err as any;
-  return (
-    anyErr?.response?.data?.detail ||
-    anyErr?.message ||
-    "Failed to publish scenario."
-  );
-};
+import { extractErrorMessage } from "@/shared/lib/extractErrorMessage";
 
 export const usePublish = (scenarioId: string | null) => {
   const publishMutation = useMutation({
@@ -38,7 +30,7 @@ export const usePublish = (scenarioId: string | null) => {
     isTriggering: publishMutation.isPending,
     isPolling: status === "publishing",
     triggerError: publishMutation.error
-      ? extractErrorMessage(publishMutation.error)
+      ? extractErrorMessage(publishMutation.error, "Failed to publish scenario.")
       : null,
     publishError: scenario?.publish_error ?? null,
     publish: publishMutation.mutate,

@@ -152,11 +152,15 @@ class ScenarioRepo:
     async def has_user_played_min_turns(
         self, user_id: uuid.UUID, scenario_id: uuid.UUID, min_turns: int = 10
     ) -> bool:
-        """Check if user has a playthrough for scenario with at least min_turns."""
+        """Check if user has a non-playtest playthrough for scenario with at
+        least min_turns. Playtest playthroughs are excluded so a creator
+        cannot farm their own review eligibility by playtesting a draft.
+        """
         stmt = select(Playthrough).where(
             Playthrough.created_by == user_id,
             Playthrough.scenario_id == scenario_id,
             Playthrough.turn_count >= min_turns,
+            Playthrough.is_playtest.is_(False),
         )
         res = await self.session.execute(stmt)
         return res.scalars().first() is not None
@@ -234,6 +238,7 @@ class ScenarioRepo:
             select(Playthrough, User.display_name)
             .join(User, Playthrough.created_by == User.user_id)
             .where(Playthrough.scenario_id == scenario_id)
+            .where(Playthrough.is_playtest.is_(False))
             .order_by(Playthrough.updated_at.desc())
             .limit(limit)
         )

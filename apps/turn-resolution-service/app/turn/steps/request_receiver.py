@@ -6,6 +6,7 @@ import uuid
 import structlog
 
 from app.db.models.participant import Participant
+from app.db.models.playthrough import Playthrough as PlaythroughModel
 from app.exceptions.turn_exceptions import (
     ParticipantNotFoundError,
     PlaythroughNotActiveError,
@@ -19,6 +20,7 @@ from app.turn.turn_order import expected_participant
 logger = structlog.get_logger()
 
 EVENT_TURN_STEP_COMPLETED = "turn_step_completed"
+EVENT_TURN_REJECTED_NOT_ACTIVE = "turn_rejected_not_active"
 STEP_NAME = "request_receiver"
 
 
@@ -31,7 +33,12 @@ async def receive_request(
     start = time.monotonic()
     playthrough = await playthrough_repo.get_by_id(turn_input.playthrough_id)
     if playthrough is None or playthrough.status != "active":
-        raise PlaythroughNotActiveError()
+        logger.warning(
+            EVENT_TURN_REJECTED_NOT_ACTIVE,
+            playthrough_id=str(turn_input.playthrough_id),
+            status=playthrough.status if playthrough is not None else "not_found",
+        )
+        raise PlaythroughNotActiveError(_not_active_message(playthrough))
 
     participants = await participant_repo.list_by_playthrough(turn_input.playthrough_id)
     acting_participant = _find_participant(participants, turn_input.participant_id)
@@ -53,6 +60,13 @@ async def receive_request(
         action_text=turn_input.action_text,
         turn_count=playthrough.turn_count,
     )
+
+
+def _not_active_message(playthrough: PlaythroughModel | None) -> str:
+    """Distinguish a completed story from an abandoned or missing one."""
+    if playthrough is not None and playthrough.status == "completed":
+        return "This playthrough has already ended"
+    return "Playthrough is not active"
 
 
 def _find_participant(

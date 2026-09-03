@@ -46,3 +46,10 @@ class ScenarioCondition(Base, CreatedAtMixin):
         default=dict,
         nullable=False,
     )
+    # Effect C: optional direct state mutation applied pre-turn by TRS's
+    # condition_evaluator when this condition's expression is true
+    # (master-mode-turn-pipeline.spec.md). None means narrator-instruction
+    # -only, no mutation.
+    state_mutation: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB, nullable=True
+    )

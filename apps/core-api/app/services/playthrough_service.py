@@ -17,7 +17,10 @@ from app.exceptions.playthrough_exceptions import (
     ScenarioNotPublishedError,
     SoloScenarioJoinError,
 )
-from app.exceptions.scenario_exceptions import ScenarioNotFoundError
+from app.exceptions.scenario_exceptions import (
+    ScenarioAccessDeniedError,
+    ScenarioNotFoundError,
+)
 from app.integrations import memory_client
 from app.logging_config import log_audit_event
 from app.models.memory import MemoryTemplateCloneRequest
@@ -27,6 +30,10 @@ from app.models.playthrough import (
     PlaythroughResponse,
 )
 from app.models.turn_log import TurnLogListResponse, TurnLogResponse
+from app.repositories.condition_repo import ConditionRepo
+from app.repositories.end_condition_repo import EndConditionRepo
+from app.repositories.entity_repo import EntityRepo
+from app.repositories.invariant_repo import InvariantRepo
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_repo import ScenarioRepo
@@ -48,21 +55,55 @@ class PlaythroughService:
         scenario_repo: ScenarioRepo,
         share_repo: ShareRepo,
         turn_log_repo: TurnLogRepo,
+        entity_repo: EntityRepo,
+        condition_repo: ConditionRepo,
+        invariant_repo: InvariantRepo,
+        end_condition_repo: EndConditionRepo,
     ) -> None:
         self.playthrough_repo = playthrough_repo
         self.participant_repo = participant_repo
         self.scenario_repo = scenario_repo
         self.share_repo = share_repo
         self.turn_log_repo = turn_log_repo
+        self.entity_repo = entity_repo
+        self.condition_repo = condition_repo
+        self.invariant_repo = invariant_repo
+        self.end_condition_repo = end_condition_repo
+
+    async def create_playtest(
+        self, scenario_id: uuid.UUID, user_id: uuid.UUID
+    ) -> PlaythroughResponse:
+        """Start a playtest playthrough of the caller's own scenario.
+
+        Reuses create_playthrough with is_playtest=True so playtest sessions
+        run through the exact same pipeline as a real playthrough, but are
+        excluded from discovery, play_count, and rating eligibility. Unlike a
+        real playthrough, a playtest is allowed on a draft scenario and is
+        restricted to the scenario's own creator.
+        """
+        scenario = await self.scenario_repo.get_by_id(scenario_id)
+        if not scenario or scenario.status == "archived":
+            raise ScenarioNotFoundError()
+        if scenario.creator_id != user_id:
+            raise ScenarioAccessDeniedError()
+
+        return await self.create_playthrough(
+            user_id=user_id,
+            data=PlaythroughCreate(scenario_id=scenario_id),
+            is_playtest=True,
+        )
 
     async def create_playthrough(
-        self, user_id: uuid.UUID, data: PlaythroughCreate
+        self,
+        user_id: uuid.UUID,
+        data: PlaythroughCreate,
+        is_playtest: bool = False,
     ) -> PlaythroughResponse:
         """Create a playthrough: snapshot the scenario, seed state, clone memory."""
         scenario = await self.scenario_repo.get_by_id(data.scenario_id)
         if not scenario or scenario.status == "archived":
             raise ScenarioNotFoundError()
-        if scenario.status != "published":
+        if not is_playtest and scenario.status != "published":
             raise ScenarioNotPublishedError()
 
         _validate_setup_values(scenario.setup_schema, data.setup_values)
@@ -80,7 +121,8 @@ class PlaythroughService:
             created_by=user_id,
             state=_build_initial_state(data.setup_values),
             scenario_version=scenario.current_version,
-            scenario_snapshot=_build_snapshot(scenario),
+            scenario_snapshot=await self._build_snapshot(scenario),
+            is_playtest=is_playtest,
         )
         participant = Participant(
             playthrough_id=playthrough_id,
@@ -234,6 +276,105 @@ class PlaythroughService:
         except Exception as exc:
             raise PlaythroughMemoryCloneError(str(exc)) from exc
 
+    async def _build_snapshot(self, scenario: Scenario) -> dict[str, object]:
+        """Freeze the scenario content TRS and the frontend read for this
+        playthrough (ADR-8).
+
+        setup_schema is included alongside the fields ADR-8 names for TRS
+        (narrator_persona, state_schema, end_conditions, checkpoints) because
+        the same pinning principle applies to it: the play screen displays
+        setup field labels from this snapshot, not from Scenario directly, so
+        a later edit to the scenario's setup fields doesn't retroactively
+        relabel an already-active playthrough.
+
+        For master mode, also pins entity attributes_schema/obtainable/
+        narrator_instruction, rule_invariants, scenario_conditions
+        (including their state_mutation column), and end_conditions (sorted
+        by the creator's explicit priority, ascending — the source of truth
+        for end_condition_evaluator's "first match wins" rule,
+        master-mode-end-conditions.spec.md) — TRS never reads Scenario or its
+        sub-resource tables directly during a turn
+        (master-mode-turn-pipeline.spec.md).
+        """
+        snapshot: dict[str, object] = {
+            "mode": scenario.mode,
+            "narrator_persona": scenario.narrator_persona,
+            "world_data": scenario.world_data,
+            "setup_schema": scenario.setup_schema,
+            "state_schema": scenario.state_schema,
+            "checkpoints": scenario.checkpoints,
+        }
+        if scenario.mode == "master":
+            snapshot["entities"] = await self._snapshot_entities(scenario.scenario_id)
+            snapshot["scenario_conditions"] = await self._snapshot_conditions(
+                scenario.scenario_id
+            )
+            snapshot["rule_invariants"] = await self._snapshot_invariants(
+                scenario.scenario_id
+            )
+            snapshot["end_conditions"] = await self._snapshot_end_conditions(
+                scenario.scenario_id
+            )
+        return snapshot
+
+    async def _snapshot_entities(
+        self, scenario_id: uuid.UUID
+    ) -> list[dict[str, object]]:
+        entities = await self.entity_repo.list_by_scenario(scenario_id)
+        return [
+            {
+                "entity_id": str(e.entity_id),
+                "attributes_schema": e.attributes_schema,
+                "obtainable": e.obtainable,
+                "narrator_instruction": e.narrator_instruction,
+            }
+            for e in entities
+        ]
+
+    async def _snapshot_conditions(
+        self, scenario_id: uuid.UUID
+    ) -> list[dict[str, object]]:
+        conditions = await self.condition_repo.list_by_scenario(scenario_id)
+        return [
+            {
+                "label": c.label,
+                "condition_expression": c.condition_expression,
+                "narrator_instruction": c.narrator_instruction,
+                "state_mutation": c.state_mutation,
+            }
+            for c in conditions
+        ]
+
+    async def _snapshot_end_conditions(
+        self, scenario_id: uuid.UUID
+    ) -> list[dict[str, object]]:
+        end_conditions = await self.end_condition_repo.list_by_scenario(scenario_id)
+        return [
+            {
+                "condition_expression": ec.condition_expression,
+                "outcome_tag": ec.outcome_tag,
+                "outcome_title": ec.outcome_title,
+                "outcome_text": ec.outcome_text,
+                "is_secret": ec.is_secret,
+                "priority": ec.priority,
+            }
+            for ec in end_conditions
+        ]
+
+    async def _snapshot_invariants(
+        self, scenario_id: uuid.UUID
+    ) -> list[dict[str, object]]:
+        invariants = await self.invariant_repo.list_by_scenario(scenario_id)
+        return [
+            {
+                "label": i.label,
+                "invariant_expression": i.invariant_expression,
+                "applies_to": i.applies_to,
+                "narrator_text": i.narrator_text,
+            }
+            for i in invariants
+        ]
+
 
 def _validate_setup_values(
     setup_schema: list[object], setup_values: dict[str, object]
@@ -313,27 +454,6 @@ def _build_initial_state(setup_values: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _build_snapshot(scenario: Scenario) -> dict[str, object]:
-    """Freeze the scenario content TRS and the frontend read for this playthrough (ADR-8).
-
-    setup_schema is included alongside the fields ADR-8 names for TRS
-    (narrator_persona, state_schema, end_conditions, checkpoints) because the
-    same pinning principle applies to it: the play screen displays setup
-    field labels from this snapshot, not from Scenario directly, so a later
-    edit to the scenario's setup fields doesn't retroactively relabel an
-    already-active playthrough.
-    """
-    return {
-        "narrator_persona": scenario.narrator_persona,
-        "world_data": scenario.world_data,
-        "setup_schema": scenario.setup_schema,
-        "state_schema": scenario.state_schema,
-        "end_conditions": scenario.end_conditions,
-        "checkpoints": scenario.checkpoints,
-        "active_conditions": [],
-    }
-
-
 def _to_response(
     playthrough: Playthrough,
     scenario_title: str,
@@ -350,6 +470,7 @@ def _to_response(
         checkpoint=playthrough.checkpoint,
         turn_count=playthrough.turn_count,
         status=playthrough.status,
+        is_playtest=playthrough.is_playtest,
         scenario_version=playthrough.scenario_version,
         scenario_snapshot=playthrough.scenario_snapshot,
         created_at=playthrough.created_at,

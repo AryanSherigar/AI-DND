@@ -5,6 +5,7 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { LandingPage } from "@/features/landing/pages/LandingPage";
 import { DiscoveryPage } from "@/features/play/pages/DiscoveryPage";
 import { NewScenarioPage } from "@/features/studio/pages/NewScenarioPage";
+import { EditScenarioPage } from "@/features/studio/pages/EditScenarioPage";
 
 import { PlayPage } from "@/features/play/pages/PlayPage";
 import { SetupPage } from "@/features/play/pages/SetupPage";
@@ -86,6 +87,10 @@ export const router = createBrowserRouter([
   {
     path: "/studio/new",
     element: <NewScenarioPage />,
+  },
+  {
+    path: "/studio/:id/edit",
+    element: <EditScenarioPage />,
   },
   {
     path: "/studio",

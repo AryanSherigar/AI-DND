@@ -3,6 +3,15 @@
 MOCK IMPLEMENTATION — Phase 0-3. Honors the real API contract exactly
 (see app/models/memory.py). Supports authoring-time template ingestion
 and playthrough memory space cloning (ADR-7) in addition to runtime query/ingest.
+
+Authoring-time ingestion accepts two mutually exclusive request shapes,
+never both on the same request: newbie mode's world_data (LLM extraction)
+and master mode's entities/facts (direct write, no LLM extraction — the
+creator authored every entity and fact precisely, so nothing reinterprets
+them). The mock stores whichever shape it's given as-is; per
+master-mode-memory-contract.spec.md's locked "mock stays a mock" decision,
+it does not perform when_active/visibility filtering on the stored facts —
+that's real (future) memory-layer behavior, out of scope here.
 """
 
 from __future__ import annotations

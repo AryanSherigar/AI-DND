@@ -13,9 +13,16 @@ from app.exceptions.scenario_exceptions import (
     ScenarioNotFoundError,
     ScenarioValidationError,
 )
+from app.integrations import memory_client
+from app.models.entity import EntityCreate
+from app.models.fact import FactCreate
 from app.models.scenario import ScenarioCreate
+from app.repositories.entity_repo import EntityRepo
+from app.repositories.fact_repo import FactRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.user_repo import UserRepo
+from app.services.entity_service import EntityService
+from app.services.fact_service import FactService
 from app.services.publish_service import PublishService, _check_content_tag
 from app.services.scenario_service import ScenarioService
 
@@ -179,6 +186,135 @@ async def test_run_publish_job_republish_failure_keeps_scenario_live(
     assert failed.status == "publish_failed"
     assert failed.published_at is not None  # still considered live
     assert failed.publish_error is not None
+
+
+async def _create_master_draft(db_session: AsyncSession, user: User):
+    service = ScenarioService(ScenarioRepo(db_session))
+    return await service.create_scenario(
+        user.user_id,
+        ScenarioCreate(
+            title="The Hollow Cairn",
+            mode="master",
+            complexity_tier="master",
+            content_tag="all-ages",
+        ),
+    )
+
+
+def _capture_ingest_calls(monkeypatch):
+    """Patch memory_client.ingest_scenario_template and return the list of
+    requests it was called with, in order."""
+    calls = []
+    original = memory_client.ingest_scenario_template
+
+    async def _spy(request):
+        calls.append(request)
+        return await original(request)
+
+    monkeypatch.setattr(memory_client, "ingest_scenario_template", _spy)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_run_publish_job_master_mode_sends_entities_and_facts(
+    db_session: AsyncSession, sample_user: User, monkeypatch
+):
+    calls = _capture_ingest_calls(monkeypatch)
+    service = PublishService(ScenarioRepo(db_session))
+    created = await _create_master_draft(db_session, sample_user)
+
+    entity_service = EntityService(EntityRepo(db_session), ScenarioRepo(db_session))
+    warden = await entity_service.create_entity(
+        created.scenario_id,
+        sample_user.user_id,
+        EntityCreate(entity_type="character", canonical_name="The Warden"),
+    )
+    sigil = await entity_service.create_entity(
+        created.scenario_id,
+        sample_user.user_id,
+        EntityCreate(entity_type="item", canonical_name="Ember Sigil"),
+    )
+    fact_service = FactService(
+        FactRepo(db_session), EntityRepo(db_session), ScenarioRepo(db_session)
+    )
+    await fact_service.create_fact(
+        created.scenario_id,
+        sample_user.user_id,
+        FactCreate(
+            subject_entity_id=warden.entity_id,
+            predicate="vulnerable_to",
+            object_entity_id=sigil.entity_id,
+            hidden=True,
+        ),
+    )
+
+    await service.start_publish(created.scenario_id, sample_user.user_id)
+    await PublishService.run_publish_job(
+        created.scenario_id, _session_factory_for(db_session)
+    )
+
+    assert len(calls) == 1
+    request = calls[0]
+    assert request.mode == "master"
+    assert request.world_data == {}
+    assert {e.entity_id for e in request.entities} == {
+        warden.entity_id,
+        sigil.entity_id,
+    }
+    assert len(request.facts) == 1
+    fact = request.facts[0]
+    assert fact.subject_entity_id == warden.entity_id
+    assert fact.object_entity_id == sigil.entity_id
+    assert fact.predicate == "vulnerable_to"
+    assert fact.hidden is True  # hidden flag survives the ingest round-trip
+
+    published = await ScenarioRepo(db_session).get_by_id(created.scenario_id)
+    assert published.status == "published"
+
+
+@pytest.mark.asyncio
+async def test_run_publish_job_newbie_mode_sends_world_data_only(
+    db_session: AsyncSession, sample_user: User, monkeypatch
+):
+    """Regression: newbie-mode publish is unchanged by the master-mode branch."""
+    calls = _capture_ingest_calls(monkeypatch)
+    service = PublishService(ScenarioRepo(db_session))
+    created = await _create_draft(db_session, sample_user)
+    await service.start_publish(created.scenario_id, sample_user.user_id)
+
+    await PublishService.run_publish_job(
+        created.scenario_id, _session_factory_for(db_session)
+    )
+
+    assert len(calls) == 1
+    request = calls[0]
+    assert request.mode == "newbie"
+    assert request.entities == []
+    assert request.facts == []
+
+
+@pytest.mark.asyncio
+async def test_run_publish_job_empty_master_mode_scenario_still_ingests(
+    db_session: AsyncSession, sample_user: User, monkeypatch
+):
+    """A master-mode scenario with no entities/facts yet is still valid to
+    publish — ingestion runs with empty lists, not skipped."""
+    calls = _capture_ingest_calls(monkeypatch)
+    service = PublishService(ScenarioRepo(db_session))
+    created = await _create_master_draft(db_session, sample_user)
+    await service.start_publish(created.scenario_id, sample_user.user_id)
+
+    await PublishService.run_publish_job(
+        created.scenario_id, _session_factory_for(db_session)
+    )
+
+    assert len(calls) == 1
+    assert calls[0].mode == "master"
+    assert calls[0].entities == []
+    assert calls[0].facts == []
+
+    published = await ScenarioRepo(db_session).get_by_id(created.scenario_id)
+    assert published.status == "published"
 
 
 def test_check_content_tag_raises_for_missing_or_invalid_tag():

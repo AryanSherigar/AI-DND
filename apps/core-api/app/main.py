@@ -11,7 +11,18 @@ from app.db.connection import close_db_connection
 from app.logging_config import configure_logging
 from app.middleware.error_handler import setup_error_handlers
 from app.middleware.request_context import request_context_middleware
-from app.routers import auth, logs, playthroughs, scenarios, share
+from app.routers import (
+    auth,
+    conditions,
+    end_conditions,
+    entities,
+    facts,
+    invariants,
+    logs,
+    playthroughs,
+    scenarios,
+    share,
+)
 
 configure_logging(settings.log_level, settings.log_format)
 
@@ -42,6 +53,11 @@ app.middleware("http")(request_context_middleware)
 setup_error_handlers(app)
 app.include_router(auth.router)
 app.include_router(scenarios.router)
+app.include_router(entities.router)
+app.include_router(facts.router)
+app.include_router(conditions.router)
+app.include_router(end_conditions.router)
+app.include_router(invariants.router)
 app.include_router(playthroughs.router)
 app.include_router(share.router)
 app.include_router(logs.router)

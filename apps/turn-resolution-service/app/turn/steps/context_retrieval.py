@@ -5,7 +5,7 @@ import time
 import structlog
 
 from app.integrations import memory_client
-from app.models.memory import MemoryQueryRequest, MemoryQueryResponse
+from app.models.memory import Fact, MemoryQueryRequest, MemoryQueryResponse
 from app.models.turn import LoadedState, TurnRequest
 
 logger = structlog.get_logger()
@@ -29,6 +29,10 @@ async def retrieve_context(
         as_of_turn=loaded_state.turn_count,
     )
     response = await memory_client.query_memory(request)
+    revealed_fact_ids = {
+        str(fid) for fid in loaded_state.state.get("revealed_facts", [])
+    }
+    response.facts = _filter_hidden(response.facts, revealed_fact_ids)
     logger.info(
         EVENT_TURN_STEP_COMPLETED,
         step_name=STEP_NAME,
@@ -37,3 +41,8 @@ async def retrieve_context(
         duration_ms=(time.monotonic() - start) * 1000,
     )
     return response
+
+
+def _filter_hidden(facts: list[Fact], revealed_fact_ids: set[str]) -> list[Fact]:
+    """Drop facts flagged hidden unless this playthrough has revealed them."""
+    return [f for f in facts if not f.hidden or str(f.fact_id) in revealed_fact_ids]

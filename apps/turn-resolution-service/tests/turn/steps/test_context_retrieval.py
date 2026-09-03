@@ -2,7 +2,7 @@
 
 import uuid
 
-from app.models.memory import MemoryQueryResponse
+from app.models.memory import Fact, MemoryQueryResponse
 from app.models.turn import LoadedState, TurnRequest
 from app.turn.steps import context_retrieval
 
@@ -90,3 +90,76 @@ async def test_retrieve_context_uses_empty_string_checkpoint_when_none(
     await context_retrieval.retrieve_context(_turn_request(), loaded_state)
 
     assert captured_requests[0].checkpoint == ""
+
+
+async def test_retrieve_context_filters_hidden_facts_not_revealed(monkeypatch) -> None:
+    hidden_fact = Fact(
+        fact_id=uuid.uuid4(),
+        subject="the_warden",
+        predicate="vulnerable_to",
+        object="ember_sigil",
+        confidence=0.9,
+        hidden=True,
+    )
+    visible_fact = Fact(
+        fact_id=uuid.uuid4(),
+        subject="the_warden",
+        predicate="guards",
+        object="hollow_cairn",
+        confidence=0.9,
+        hidden=False,
+    )
+
+    async def fake_query_memory(request):
+        return MemoryQueryResponse(
+            facts=[hidden_fact, visible_fact], abstained=False, resolved_time_point=None
+        )
+
+    monkeypatch.setattr(
+        context_retrieval.memory_client, "query_memory", fake_query_memory
+    )
+
+    loaded_state = LoadedState(
+        scenario_id=uuid.uuid4(),
+        scenario_snapshot={},
+        state={"narrative": {"turns_so_far": []}, "revealed_facts": []},
+        turn_count=2,
+        checkpoint=None,
+    )
+    result = await context_retrieval.retrieve_context(_turn_request(), loaded_state)
+
+    assert result.facts == [visible_fact]
+
+
+async def test_retrieve_context_includes_revealed_hidden_facts(monkeypatch) -> None:
+    hidden_fact = Fact(
+        fact_id=uuid.uuid4(),
+        subject="the_warden",
+        predicate="vulnerable_to",
+        object="ember_sigil",
+        confidence=0.9,
+        hidden=True,
+    )
+
+    async def fake_query_memory(request):
+        return MemoryQueryResponse(
+            facts=[hidden_fact], abstained=False, resolved_time_point=None
+        )
+
+    monkeypatch.setattr(
+        context_retrieval.memory_client, "query_memory", fake_query_memory
+    )
+
+    loaded_state = LoadedState(
+        scenario_id=uuid.uuid4(),
+        scenario_snapshot={},
+        state={
+            "narrative": {"turns_so_far": []},
+            "revealed_facts": [str(hidden_fact.fact_id)],
+        },
+        turn_count=2,
+        checkpoint=None,
+    )
+    result = await context_retrieval.retrieve_context(_turn_request(), loaded_state)
+
+    assert result.facts == [hidden_fact]

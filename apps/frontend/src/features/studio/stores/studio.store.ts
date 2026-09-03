@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { MasterModeTabId } from "../components/Layout/MasterModeStudioLayout.types";
 
 export type SetupInputType =
   "single_select" | "multi_select" | "text" | "textarea" | "number";
@@ -103,6 +104,9 @@ interface StudioState {
   lastSaved: Date | null;
   isSaving: boolean;
   setSaveState: (isSaving: boolean, lastSaved?: Date) => void;
+
+  activeMasterTab: MasterModeTabId;
+  setActiveMasterTab: (tab: MasterModeTabId) => void;
 }
 
 export const useStudioStore = create<StudioState>((set) => ({
@@ -132,4 +136,7 @@ export const useStudioStore = create<StudioState>((set) => ({
       isSaving,
       lastSaved: lastSaved !== undefined ? lastSaved : state.lastSaved,
     })),
+
+  activeMasterTab: "entities",
+  setActiveMasterTab: (tab) => set({ activeMasterTab: tab }),
 }));

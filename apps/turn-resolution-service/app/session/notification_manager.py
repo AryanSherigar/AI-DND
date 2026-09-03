@@ -34,3 +34,18 @@ async def notify_next_turn(
     queue = _subscribers.get((playthrough_id, next_participant_id))
     if queue:
         await queue.put(("your_turn", ""))
+
+
+async def notify_playthrough_ended(
+    playthrough_id: uuid.UUID, outcome_title: str
+) -> None:
+    """Tell every connected participant a playthrough just ended.
+
+    Unlike notify_next_turn, this is a genuine broadcast — every participant
+    with an open connection needs to know, not just whoever acts next. A
+    no-op per participant with no open connection; they discover the ended
+    status on their next GET /v1/playthroughs/{id} poll.
+    """
+    for (subscribed_playthrough_id, _), queue in _subscribers.items():
+        if subscribed_playthrough_id == playthrough_id:
+            await queue.put(("playthrough_ended", outcome_title))

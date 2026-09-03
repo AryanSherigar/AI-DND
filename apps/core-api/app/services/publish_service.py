@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.db.models.entity import Entity
+from app.db.models.fact import Fact
 from app.db.models.scenario import Scenario
 from app.exceptions.scenario_exceptions import (
     ScenarioAccessDeniedError,
@@ -23,7 +25,13 @@ from app.exceptions.scenario_exceptions import (
 )
 from app.integrations import memory_client
 from app.logging_config import log_audit_event
-from app.models.memory import MemoryTemplateIngestRequest
+from app.models.memory import (
+    EntityIngestPayload,
+    FactIngestPayload,
+    MemoryTemplateIngestRequest,
+)
+from app.repositories.entity_repo import EntityRepo
+from app.repositories.fact_repo import FactRepo
 from app.repositories.scenario_repo import ScenarioRepo
 
 logger = structlog.get_logger()
@@ -88,13 +96,10 @@ class PublishService:
 
             try:
                 _check_content_tag(scenario)
-                await memory_client.ingest_scenario_template(
-                    MemoryTemplateIngestRequest(
-                        scenario_id=scenario.scenario_id,
-                        mode=scenario.mode,
-                        world_data=scenario.world_data,
-                    )
+                ingest_request = await _build_ingest_request(
+                    scenario, EntityRepo(session), FactRepo(session)
                 )
+                await memory_client.ingest_scenario_template(ingest_request)
             except Exception as exc:  # noqa: BLE001 - captured for publish_error
                 scenario.status = (
                     "draft" if scenario.published_at is None else "publish_failed"
@@ -126,3 +131,51 @@ def _check_content_tag(scenario: Scenario) -> None:
             f"content_tag must be one of {sorted(ALLOWED_CONTENT_TAGS)}, "
             f"got {scenario.content_tag!r}"
         )
+
+
+async def _build_ingest_request(
+    scenario: Scenario, entity_repo: EntityRepo, fact_repo: FactRepo
+) -> MemoryTemplateIngestRequest:
+    """Build the authoring-time ingestion request for a scenario's mode.
+
+    master mode sends entities/facts (direct write, no LLM extraction);
+    newbie mode sends world_data (LLM extraction) — mutually exclusive per
+    master-mode-memory-contract.spec.md.
+    """
+    if scenario.mode == "master":
+        entities = await entity_repo.list_by_scenario(scenario.scenario_id)
+        facts = await fact_repo.list_by_scenario(scenario.scenario_id)
+        return MemoryTemplateIngestRequest(
+            scenario_id=scenario.scenario_id,
+            mode="master",
+            entities=[_to_entity_payload(e) for e in entities],
+            facts=[_to_fact_payload(f) for f in facts],
+        )
+    return MemoryTemplateIngestRequest(
+        scenario_id=scenario.scenario_id,
+        mode="newbie",
+        world_data=scenario.world_data,
+    )
+
+
+def _to_entity_payload(entity: Entity) -> EntityIngestPayload:
+    return EntityIngestPayload(
+        entity_id=entity.entity_id,
+        entity_type=entity.entity_type,
+        canonical_name=entity.canonical_name,
+        aliases=entity.aliases,
+        description=entity.description,
+    )
+
+
+def _to_fact_payload(fact: Fact) -> FactIngestPayload:
+    return FactIngestPayload(
+        fact_id=fact.fact_id,
+        subject_entity_id=fact.subject_entity_id,
+        predicate=fact.predicate,
+        object_entity_id=fact.object_entity_id,
+        object_literal=fact.object_literal,
+        valid_from=fact.valid_from,
+        when_active=fact.when_active,
+        hidden=fact.hidden,
+    )

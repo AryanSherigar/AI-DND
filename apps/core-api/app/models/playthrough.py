@@ -37,6 +37,7 @@ class PlaythroughResponse(BaseModel):
     checkpoint: str | None = None
     turn_count: int
     status: str
+    is_playtest: bool = False
     scenario_version: int
     scenario_snapshot: dict[str, object]
     created_at: datetime

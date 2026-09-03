@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,10 @@ class Playthrough(Base, TimestampMixin):
         CheckConstraint(
             "status IN ('active', 'completed', 'abandoned')",
             name="ck_playthroughs_status",
+        ),
+        CheckConstraint(
+            "ended_outcome_tag IN ('win', 'lose')",
+            name="ck_playthroughs_ended_outcome_tag",
         ),
     )
 
@@ -59,4 +63,10 @@ class Playthrough(Base, TimestampMixin):
         server_default=text("'{}'::jsonb"),
         default=dict,
         nullable=False,
+    )
+    ended_outcome_tag: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    ended_outcome_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ended_outcome_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_playtest: Mapped[bool] = mapped_column(
+        Boolean, server_default="false", default=False, nullable=False
     )

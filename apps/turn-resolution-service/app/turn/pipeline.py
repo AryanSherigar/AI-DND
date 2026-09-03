@@ -1,11 +1,15 @@
 """Turn resolution pipeline.
 
 The only file that knows step order — steps in app/turn/steps/ never call
-each other directly (CLAUDE.md). This pipeline sequences seven steps:
-request_receiver, state_loader, context_retrieval, ai_orchestrator,
-state_writer, memory_writer, and response_streamer. Condition evaluation and
-master-mode tool-calling steps are intentionally not wired in yet — newbie
-mode doesn't use them (see docs/specs/trs-turn-endpoint-and-memory-wiring.spec.md).
+each other directly (CLAUDE.md). Newbie mode: request_receiver, state_loader,
+context_retrieval, ai_orchestrator, state_writer, memory_writer,
+response_streamer. Master mode additionally runs condition_evaluator between
+state_loader and context_retrieval (active conditions + Effect C, applied
+before the AI narrates — see docs/specs/master-mode-turn-pipeline.spec.md),
+carries the AI's validated tool-call mutations + tool-call log through to
+state_writer, and runs end_condition_evaluator immediately after
+state_writer, before memory_writer (see
+docs/specs/master-mode-end-conditions.spec.md).
 """
 
 import uuid
@@ -17,6 +21,7 @@ from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 
 from app.db.models.participant import Participant
 from app.exceptions.turn_exceptions import NarrationGenerationError, StateWriteError
+from app.models.tool_call import MasterModeTurnResult
 from app.models.turn import LoadedState, TurnRequest, TurnRequestInput
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
@@ -25,13 +30,16 @@ from app.repositories.turn_log_repo import TurnLogRepo
 from app.session import notification_manager, spectator_manager
 from app.turn.steps import (
     ai_orchestrator,
+    condition_evaluator,
     context_retrieval,
+    end_condition_evaluator,
     memory_writer,
     request_receiver,
     response_streamer,
     state_loader,
     state_writer,
 )
+from app.turn.steps.end_condition_evaluator import MatchedOutcome
 from app.turn.turn_order import expected_participant
 
 logger = structlog.get_logger()
@@ -82,12 +90,24 @@ async def _run_turn_events(
 ) -> AsyncIterator[ServerSentEvent]:
     playthrough_id = str(turn_request.playthrough_id)
     logger.info(EVENT_SSE_STREAM_OPENED, playthrough_id=playthrough_id)
+
+    is_master_mode = loaded_state.scenario_snapshot.get("mode") == "master"
+    active_instructions: list[str] = []
+    mutated_paths: set[str] = set()
+
+    if is_master_mode:
+        evaluation = condition_evaluator.evaluate_conditions(loaded_state)
+        loaded_state = loaded_state.model_copy(update={"state": evaluation.state})
+        active_instructions = evaluation.active_instructions
+        mutated_paths |= evaluation.mutated_paths
+
     context = await context_retrieval.retrieve_context(turn_request, loaded_state)
+    result_sink = MasterModeTurnResult(final_state=loaded_state.state)
 
     chunks: list[str] = []
     try:
         async for chunk in ai_orchestrator.generate_narration(
-            turn_request, loaded_state, context
+            turn_request, loaded_state, context, active_instructions, result_sink
         ):
             chunks.append(chunk)
             await spectator_manager.publish(
@@ -100,14 +120,24 @@ async def _run_turn_events(
         )
         return
 
+    working_state: dict[str, object] | None = None
+    tool_calls: list[dict[str, object]] | None = None
+    if is_master_mode:
+        mutated_paths |= set(result_sink.mutated_paths)
+        working_state = result_sink.final_state
+        tool_calls = [tc.model_dump() for tc in result_sink.tool_calls]
+
     try:
-        updated_turns_so_far = await state_writer.write_turn(
+        updated_state = await state_writer.write_turn(
             turn_request,
             loaded_state,
             "".join(chunks),
             playthrough_repo,
             turn_log_repo,
             scenario_repo,
+            working_state=working_state,
+            tool_calls=tool_calls,
+            mutated_paths=mutated_paths or None,
         )
     except StateWriteError:
         logger.warning(
@@ -116,11 +146,48 @@ async def _run_turn_events(
         yield response_streamer.degraded_event(_DEGRADED_WRITE_MESSAGE)
         return
 
+    matched_outcome: MatchedOutcome | None = None
+    if is_master_mode:
+        matched_outcome = end_condition_evaluator.evaluate_end_conditions(
+            loaded_state, updated_state
+        )
+        if matched_outcome:
+            await _finalize_ending(
+                turn_request.playthrough_id, matched_outcome, playthrough_repo
+            )
+
     await _after_successful_write(
-        turn_request, loaded_state, updated_turns_so_far, participant_repo
+        turn_request,
+        loaded_state,
+        updated_state["narrative"]["turns_so_far"],
+        participant_repo,
     )
+
+    if matched_outcome:
+        yield response_streamer.playthrough_ended_event(
+            matched_outcome.outcome_tag,
+            matched_outcome.outcome_title,
+            matched_outcome.outcome_text,
+        )
     logger.info(EVENT_SSE_STREAM_CLOSED, playthrough_id=playthrough_id, outcome="done")
     yield response_streamer.done_event()
+
+
+async def _finalize_ending(
+    playthrough_id: uuid.UUID,
+    matched_outcome: MatchedOutcome,
+    playthrough_repo: PlaythroughRepo,
+) -> None:
+    """Persist the matched outcome and broadcast it to other participants."""
+    await playthrough_repo.mark_ended(
+        playthrough_id,
+        matched_outcome.outcome_tag,
+        matched_outcome.outcome_title,
+        matched_outcome.outcome_text,
+    )
+    await notification_manager.notify_playthrough_ended(
+        playthrough_id, matched_outcome.outcome_title
+    )
 
 
 async def _after_successful_write(

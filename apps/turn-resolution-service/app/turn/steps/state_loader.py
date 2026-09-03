@@ -39,4 +39,5 @@ async def load_state(
         state=playthrough.state,
         turn_count=playthrough.turn_count,
         checkpoint=playthrough.checkpoint,
+        is_playtest=playthrough.is_playtest,
     )

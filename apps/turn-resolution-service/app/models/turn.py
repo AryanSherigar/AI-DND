@@ -27,3 +27,4 @@ class LoadedState(BaseModel):
     state: dict[str, object]
     turn_count: int
     checkpoint: str | None
+    is_playtest: bool = False

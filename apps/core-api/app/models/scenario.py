@@ -28,6 +28,10 @@ class ScenarioCreate(BaseModel):
     end_conditions: list[object] = Field(default_factory=list)
     checkpoints: list[object] = Field(default_factory=list)
     rules: dict[str, object] = Field(default_factory=dict)
+    opening_scene: str | None = None
+    narration_font: str | None = Field(default=None, max_length=50)
+    action_chips: list[str] = Field(default_factory=list)
+    setup_archetypes: list[object] = Field(default_factory=list)
 
 
 class ScenarioUpdate(BaseModel):
@@ -53,6 +57,10 @@ class ScenarioUpdate(BaseModel):
     end_conditions: list[object] | None = None
     checkpoints: list[object] | None = None
     rules: dict[str, object] | None = None
+    opening_scene: str | None = None
+    narration_font: str | None = Field(default=None, max_length=50)
+    action_chips: list[str] | None = None
+    setup_archetypes: list[object] | None = None
 
 
 class ScenarioResponse(BaseModel):
@@ -86,6 +94,10 @@ class ScenarioResponse(BaseModel):
     end_conditions: list[object] = Field(default_factory=list)
     checkpoints: list[object] = Field(default_factory=list)
     rules: dict[str, object] = Field(default_factory=dict)
+    opening_scene: str | None = None
+    narration_font: str | None = None
+    action_chips: list[str] = Field(default_factory=list)
+    setup_archetypes: list[object] = Field(default_factory=list)
     current_version: int = 1
     created_at: datetime
     updated_at: datetime

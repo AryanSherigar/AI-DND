@@ -124,3 +124,17 @@ class Scenario(Base, TimestampMixin):
     current_version: Mapped[int] = mapped_column(
         server_default="1", default=1, nullable=False
     )
+    opening_scene: Mapped[str | None] = mapped_column(Text, nullable=True)
+    narration_font: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    action_chips: Mapped[list[str]] = mapped_column(
+        ARRAY(Text),
+        server_default=text("'{}'::text[]"),
+        default=list,
+        nullable=False,
+    )
+    setup_archetypes: Mapped[list[object]] = mapped_column(
+        JSONB,
+        server_default=text("'[]'::jsonb"),
+        default=list,
+        nullable=False,
+    )

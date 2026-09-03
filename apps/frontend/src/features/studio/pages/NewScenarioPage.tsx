@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { useStudioStore } from "../stores/studio.store";
 import { StudioDocumentLayout } from "../components/Layout/StudioDocumentLayout";
+import { MasterModeCreateFlow } from "../components/MasterModeCreateFlow/MasterModeCreateFlow";
 
 export const NewScenarioPage: React.FC = () => {
   const { mode, setMode, isSaving, lastSaved, resetDraft } = useStudioStore();
@@ -64,15 +65,7 @@ export const NewScenarioPage: React.FC = () => {
         {mode === "newbie" ? (
           <StudioDocumentLayout />
         ) : (
-          <div className="flex-1 flex items-center justify-center p-8">
-            <div className="max-w-md text-center space-y-4">
-              <h2 className="text-2xl font-serif text-zinc-200">Master Mode</h2>
-              <p className="text-zinc-400 leading-relaxed">
-                Master mode provides full structural control over game state,
-                entities, and active conditions.
-              </p>
-            </div>
-          </div>
+          <MasterModeCreateFlow />
         )}
       </main>
     </div>

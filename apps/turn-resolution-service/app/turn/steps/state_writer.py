@@ -36,24 +36,39 @@ async def write_turn(
     playthrough_repo: PlaythroughRepo,
     turn_log_repo: TurnLogRepo,
     scenario_repo: ScenarioRepo,
-) -> list[dict[str, object]]:
+    working_state: dict[str, object] | None = None,
+    tool_calls: list[dict[str, object]] | None = None,
+    mutated_paths: set[str] | None = None,
+) -> dict[str, object]:
     """Persist a completed turn, retrying transient failures.
 
-    Returns the updated turns_so_far list so callers (memory_writer) don't
-    have to recompute it from Playthrough.state after the write.
+    working_state (master mode only) is the state as of after condition_
+    evaluator's Effect C mutations and the AI's validated tool-call
+    mutations — the base this appends narrative onto, instead of
+    loaded_state.state directly. mutated_paths (master mode) is persisted as
+    `_last_changed_fields`, read by next turn's condition_evaluator to scope
+    which conditions/invariants need re-evaluating.
+
+    Returns the full updated state so callers can extract turns_so_far
+    (memory_writer) or evaluate end conditions against it directly
+    (end_condition_evaluator), without recomputing it from Playthrough.state.
     """
     start = time.monotonic()
     new_turn_count = loaded_state.turn_count + 1
-    updated_state = _append_turn(
-        loaded_state.state, turn_request.action_text, narration_text
-    )
+    base_state = working_state if working_state is not None else loaded_state.state
+    updated_state = _append_turn(base_state, turn_request.action_text, narration_text)
+    if mutated_paths:
+        updated_state = dict(updated_state)
+        updated_state["_last_changed_fields"] = sorted(mutated_paths)
 
     retry_count = await _persist_with_retry(
         turn_request,
         loaded_state.scenario_id,
+        loaded_state.is_playtest,
         new_turn_count,
         narration_text,
         updated_state,
+        tool_calls or [],
         playthrough_repo,
         turn_log_repo,
         scenario_repo,
@@ -64,15 +79,17 @@ async def write_turn(
         duration_ms=(time.monotonic() - start) * 1000,
         retry_count=retry_count,
     )
-    return updated_state["narrative"]["turns_so_far"]
+    return updated_state
 
 
 async def _persist_with_retry(
     turn_request: TurnRequest,
     scenario_id: uuid.UUID,
+    is_playtest: bool,
     new_turn_count: int,
     narration_text: str,
     updated_state: dict[str, object],
+    tool_calls: list[dict[str, object]],
     playthrough_repo: PlaythroughRepo,
     turn_log_repo: TurnLogRepo,
     scenario_repo: ScenarioRepo,
@@ -83,9 +100,11 @@ async def _persist_with_retry(
             await _write_once(
                 turn_request,
                 scenario_id,
+                is_playtest,
                 new_turn_count,
                 narration_text,
                 updated_state,
+                tool_calls,
                 playthrough_repo,
                 turn_log_repo,
                 scenario_repo,
@@ -106,9 +125,11 @@ async def _persist_with_retry(
 async def _write_once(
     turn_request: TurnRequest,
     scenario_id: uuid.UUID,
+    is_playtest: bool,
     new_turn_count: int,
     narration_text: str,
     updated_state: dict[str, object],
+    tool_calls: list[dict[str, object]],
     playthrough_repo: PlaythroughRepo,
     turn_log_repo: TurnLogRepo,
     scenario_repo: ScenarioRepo,
@@ -119,11 +140,16 @@ async def _write_once(
         participant_id=turn_request.participant_id,
         action_text=turn_request.action_text,
         narration_text=narration_text,
+        tool_calls=tool_calls,
     )
     await playthrough_repo.update_state(
         turn_request.playthrough_id, updated_state, new_turn_count
     )
-    if new_turn_count == settings.play_count_increment_turn_threshold:
+    should_increment_play_count = (
+        new_turn_count == settings.play_count_increment_turn_threshold
+        and not is_playtest
+    )
+    if should_increment_play_count:
         await scenario_repo.increment_play_count(scenario_id)
     await playthrough_repo.session.commit()
 

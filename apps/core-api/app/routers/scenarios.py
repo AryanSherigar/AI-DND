@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.connection import get_db_session, get_session_factory
 from app.db.models.user import User
 from app.middleware.auth import get_current_user, get_optional_current_user
+from app.models.playthrough import PlaythroughResponse
 from app.models.review import (
     PublicPlaythroughSummary,
     ScenarioReviewCreate,
@@ -22,6 +23,8 @@ from app.models.scenario import (
     ScenarioUpdate,
 )
 from app.repositories.scenario_repo import ScenarioRepo
+from app.routers.playthroughs import get_playthrough_service
+from app.services.playthrough_service import PlaythroughService
 from app.services.publish_service import PublishService
 from app.services.scenario_service import ScenarioService
 
@@ -80,6 +83,44 @@ async def publish_scenario(
         PublishService.run_publish_job, scenario.scenario_id, session_factory
     )
     return ScenarioResponse.model_validate(scenario)
+
+
+@router.post(
+    "/{scenario_id}/playtest",
+    response_model=PlaythroughResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def playtest_scenario(
+    scenario_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[PlaythroughService, Depends(get_playthrough_service)],
+) -> PlaythroughResponse:
+    """Start a playtest playthrough of the caller's own scenario (draft or
+    published). Reuses PlaythroughService.create_playthrough via a flag —
+    the playtest playthrough never surfaces in discovery, play_count, or
+    rating eligibility (see ScenarioRepo.has_user_played_min_turns and
+    ScenarioRepo.list_public_playthroughs).
+    """
+    return await service.create_playtest(scenario_id=scenario_id, user_id=user.user_id)
+
+
+@router.post(
+    "/{scenario_id}/duplicate",
+    response_model=ScenarioResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def duplicate_scenario(
+    scenario_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[ScenarioService, Depends(get_scenario_service)],
+) -> ScenarioResponse:
+    """Deep-copy a scenario (and, for master mode, its entities/facts/
+    conditions/end conditions/invariants) as a new draft owned by the caller.
+    Only the source scenario's owner may duplicate it.
+    """
+    return await service.duplicate_scenario(
+        scenario_id=scenario_id, user_id=user.user_id
+    )
 
 
 @router.get(

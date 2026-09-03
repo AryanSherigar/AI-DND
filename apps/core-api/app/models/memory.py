@@ -77,12 +77,42 @@ class BatchStatus(BaseModel):
     retryable: bool = False
 
 
+class EntityIngestPayload(BaseModel):
+    """Direct-write shape for one entity at authoring-time ingestion."""
+
+    entity_id: UUID
+    entity_type: str
+    canonical_name: str
+    aliases: list[str] = Field(default_factory=list)
+    description: str | None = None
+
+
+class FactIngestPayload(BaseModel):
+    """Direct-write shape for one fact at authoring-time ingestion."""
+
+    fact_id: UUID
+    subject_entity_id: UUID
+    predicate: str
+    object_entity_id: UUID | None = None
+    object_literal: str | None = None
+    valid_from: str | None = None
+    when_active: dict[str, Any] | None = None
+    hidden: bool = False
+
+
 class MemoryTemplateIngestRequest(BaseModel):
-    """Request body for authoring-time template ingestion."""
+    """Request body for authoring-time template ingestion.
+
+    world_data is populated for newbie mode (LLM extraction); entities/facts
+    are populated for master mode (direct write, no LLM extraction) — a
+    scenario populates exactly one pair, never both, matching its fixed mode.
+    """
 
     scenario_id: UUID
     mode: Literal["newbie", "master"]
     world_data: dict[str, Any] = Field(default_factory=dict)
+    entities: list[EntityIngestPayload] = Field(default_factory=list)
+    facts: list[FactIngestPayload] = Field(default_factory=list)
 
 
 class MemoryTemplateIngestResponse(BaseModel):

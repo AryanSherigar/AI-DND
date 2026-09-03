@@ -34,6 +34,7 @@ class Fact(BaseModel):
     valid_from: str | None = None
     valid_until: str | None = None
     confidence: float
+    hidden: bool = False
 
 
 class MemoryQueryResponse(BaseModel):

@@ -19,6 +19,7 @@ async def test_load_state_returns_snapshot_and_state() -> None:
         state={"narrative": {"turns_so_far": []}},
         turn_count=3,
         checkpoint="chapter_1",
+        is_playtest=True,
     )
 
     loaded = await load_state(uuid.uuid4(), playthrough_repo)
@@ -27,6 +28,7 @@ async def test_load_state_returns_snapshot_and_state() -> None:
     assert loaded.scenario_snapshot == {"narrator_persona": "A grim voice."}
     assert loaded.turn_count == 3
     assert loaded.checkpoint == "chapter_1"
+    assert loaded.is_playtest is True
 
 
 async def test_load_state_never_queries_scenario_repo_directly() -> None:
@@ -38,6 +40,7 @@ async def test_load_state_never_queries_scenario_repo_directly() -> None:
         state={},
         turn_count=0,
         checkpoint=None,
+        is_playtest=False,
     )
 
     await load_state(uuid.uuid4(), playthrough_repo)

@@ -20,6 +20,7 @@ class TurnLogRepo:
         participant_id: uuid.UUID | None,
         action_text: str,
         narration_text: str | None,
+        tool_calls: list[dict[str, object]] | None = None,
     ) -> TurnLog:
         """Persist a new append-only TurnLog entity."""
         turn_log = TurnLog(
@@ -28,6 +29,7 @@ class TurnLogRepo:
             participant_id=participant_id,
             action_text=action_text,
             narration_text=narration_text,
+            tool_calls=tool_calls or [],
         )
         self.session.add(turn_log)
         await self.session.flush()

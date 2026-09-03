@@ -11,7 +11,7 @@ const renderMarkdown = (text: string) => {
   if (!text) return null;
   const lines = text.split("\n");
   return lines.map((line, index) => {
-    let parsedLine = line
+    const parsedLine = line
       .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.*?)\*/g, "<em>$1</em>");
 

@@ -32,3 +32,28 @@ class PlaythroughRepo:
             .where(Playthrough.playthrough_id == playthrough_id)
             .values(state=state, turn_count=turn_count)
         )
+
+    async def mark_ended(
+        self,
+        playthrough_id: uuid.UUID,
+        outcome_tag: str,
+        outcome_title: str,
+        outcome_text: str,
+    ) -> None:
+        """Complete a playthrough with the matched end condition's outcome.
+
+        Commits explicitly: called from inside the SSE generator after
+        state_writer's own commit, so nothing else would ever persist this
+        write (see state_writer.py's module docstring for why).
+        """
+        await self.session.execute(
+            update(Playthrough)
+            .where(Playthrough.playthrough_id == playthrough_id)
+            .values(
+                status="completed",
+                ended_outcome_tag=outcome_tag,
+                ended_outcome_title=outcome_title,
+                ended_outcome_text=outcome_text,
+            )
+        )
+        await self.session.commit()
