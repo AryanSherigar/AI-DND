@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { GENRE_COLORS } from "../../types/scenario";
 import { DisplayScenario } from "../../hooks/useDiscovery";
 import { UserIcon } from "../../../../shared/components/icons/PixelIcons";
@@ -11,10 +11,15 @@ interface WideScenarioCardProps {
 export const WideScenarioCard: React.FC<WideScenarioCardProps> = ({
   scenario,
 }) => {
+  const navigate = useNavigate();
   const [isHovered, setIsHovered] = useState(false);
 
   const scenarioId =
     "scenario_id" in scenario ? scenario.scenario_id : scenario.id;
+
+  const handleCardClick = () => {
+    navigate(`/scenario/${scenarioId}`);
+  };
   const title = scenario.title;
   const logline = scenario.logline || "No description provided.";
   const author =
@@ -69,6 +74,7 @@ export const WideScenarioCard: React.FC<WideScenarioCardProps> = ({
 
   return (
     <div
+      onClick={handleCardClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={cardContainerStyle}

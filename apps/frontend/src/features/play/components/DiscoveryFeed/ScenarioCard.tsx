@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { ScenarioCardProps } from "./ScenarioCard.types";
 import { GENRE_COLORS } from "../../types/scenario";
 import {
@@ -94,6 +95,7 @@ export const ScenarioCard: React.FC<ScenarioCardProps> = ({
   onHoverStart,
   onHoverEnd,
 }) => {
+  const navigate = useNavigate();
   const [isHovered, setIsHovered] = useState(false);
   const accentColor = GENRE_COLORS[scenario.genre] || DEFAULT_ACCENT_COLOR;
 
@@ -105,6 +107,10 @@ export const ScenarioCard: React.FC<ScenarioCardProps> = ({
   const handleMouseLeave = () => {
     setIsHovered(false);
     if (onHoverEnd) onHoverEnd();
+  };
+
+  const handleClick = () => {
+    navigate(`/scenario/${scenario.id}`);
   };
 
   const dimmedClass = isDimmed ? "opacity-40 blur-[0.5px]" : "opacity-100";
@@ -122,6 +128,7 @@ export const ScenarioCard: React.FC<ScenarioCardProps> = ({
 
   return (
     <div
+      onClick={handleClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       style={cardContainerStyle}

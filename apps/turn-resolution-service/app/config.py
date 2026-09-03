@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     turn_history_window_size: int = 10
     play_count_increment_turn_threshold: int = 10
     state_write_max_retries: int = 2
+    memory_batch_turn_interval: int = 5
 
 
 settings = Settings()

@@ -1,5 +1,6 @@
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { usePlayStore } from "../../stores/play.store";
+import { useTurnStream } from "../../hooks/useTurnStream";
 import { ActionModePills } from "./ActionModePills";
 
 const PLACEHOLDERS: Record<string, string> = {
@@ -15,11 +16,11 @@ export function ActionInput() {
 
   const active_mode = usePlayStore((s) => s.active_mode);
   const is_narrating = usePlayStore((s) => s.is_narrating);
-  const submitTurn = usePlayStore((s) => s.submitTurn);
-  const stopGeneration = usePlayStore((s) => s.stopGeneration);
+  const { start: submitTurn, stop: stopGeneration } = useTurnStream();
   const playthrough = usePlayStore((s) => s.playthrough);
 
   const is_spectator = playthrough?.is_spectator ?? false;
+  const is_not_my_turn = !is_spectator && playthrough?.can_act === false;
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -29,7 +30,7 @@ export function ActionInput() {
   }, [text]);
 
   const handleSubmit = () => {
-    if (!text.trim() || is_narrating || is_spectator) return;
+    if (!text.trim() || is_narrating || is_spectator || is_not_my_turn) return;
     submitTurn(text.trim());
     setText("");
     if (textareaRef.current) {
@@ -62,6 +63,29 @@ export function ActionInput() {
             />
           </svg>
           <span>You are spectating this session (Read-Only)</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (is_not_my_turn) {
+    return (
+      <div className="absolute bottom-4 left-0 right-0 z-30 px-4 pointer-events-none flex justify-center">
+        <div className="w-full max-w-2xl p-3 bg-stone-900/90 border border-amber-900/40 rounded-xl backdrop-blur-md text-center font-mono text-xs text-amber-300 flex items-center justify-center gap-2 pointer-events-auto">
+          <svg
+            className="w-4 h-4 text-amber-400 shrink-0 animate-pulse"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.75}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <span>Waiting for the other player's turn...</span>
         </div>
       </div>
     );

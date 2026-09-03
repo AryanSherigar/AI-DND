@@ -8,6 +8,9 @@ import { NewScenarioPage } from "@/features/studio/pages/NewScenarioPage";
 
 import { PlayPage } from "@/features/play/pages/PlayPage";
 import { SetupPage } from "@/features/play/pages/SetupPage";
+import { ScenarioFocusPage } from "@/features/play/pages/ScenarioFocusPage";
+import { SpectatorPage } from "@/features/play/pages/SpectatorPage";
+import { JoinPage } from "@/features/play/pages/JoinPage";
 
 const StudioPlaceholder: React.FC = () => {
   const { user, logout } = useAuth();
@@ -67,6 +70,18 @@ export const router = createBrowserRouter([
   {
     path: "/setup/:id",
     element: <SetupPage />,
+  },
+  {
+    path: "/scenario/:id",
+    element: <ScenarioFocusPage />,
+  },
+  {
+    path: "/spectate/:id",
+    element: <SpectatorPage />,
+  },
+  {
+    path: "/join",
+    element: <JoinPage />,
   },
   {
     path: "/studio/new",

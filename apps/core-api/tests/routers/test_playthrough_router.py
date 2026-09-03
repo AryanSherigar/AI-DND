@@ -7,6 +7,8 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.scenario import Scenario
+from app.db.models.turn_log import TurnLog
+from app.repositories.share_repo import ShareRepo
 from app.repositories.user_repo import UserRepo
 
 
@@ -118,3 +120,91 @@ async def test_get_playthrough_not_found(async_client: AsyncClient, dev_user):
         f"/v1/playthroughs/{uuid.uuid4()}", headers=headers
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_turns_returns_paginated_history_for_participant(
+    async_client: AsyncClient, dev_user, published_scenario, db_session: AsyncSession
+):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    create_resp = await async_client.post(
+        "/v1/playthroughs",
+        json={"scenario_id": str(published_scenario.scenario_id), "setup_values": {}},
+        headers=headers,
+    )
+    playthrough_id = create_resp.json()["playthrough_id"]
+
+    db_session.add_all(
+        [
+            TurnLog(
+                playthrough_id=uuid.UUID(playthrough_id),
+                turn_number=n,
+                action_text=f"action {n}",
+                narration_text=f"narration {n}",
+            )
+            for n in (1, 2, 3)
+        ]
+    )
+    await db_session.flush()
+
+    response = await async_client.get(
+        f"/v1/playthroughs/{playthrough_id}/turns",
+        params={"page": 1, "page_size": 2},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_count"] == 3
+    assert [item["turn_number"] for item in data["items"]] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_list_turns_accessible_via_valid_spectate_token(
+    async_client: AsyncClient,
+    dev_user,
+    dev_user2,
+    published_scenario,
+    db_session: AsyncSession,
+):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    create_resp = await async_client.post(
+        "/v1/playthroughs",
+        json={"scenario_id": str(published_scenario.scenario_id), "setup_values": {}},
+        headers=headers,
+    )
+    playthrough_id = create_resp.json()["playthrough_id"]
+
+    share = await ShareRepo(db_session).create(
+        playthrough_id=uuid.UUID(playthrough_id),
+        mode="spectate",
+        share_token=f"tok_{uuid.uuid4()}",
+    )
+
+    # A non-participant, unauthenticated except via the share token.
+    response = await async_client.get(
+        f"/v1/playthroughs/{playthrough_id}/turns",
+        params={"share_token": share.share_token},
+    )
+
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_list_turns_denies_non_participant_without_token(
+    async_client: AsyncClient, dev_user, dev_user2, published_scenario
+):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    create_resp = await async_client.post(
+        "/v1/playthroughs",
+        json={"scenario_id": str(published_scenario.scenario_id), "setup_values": {}},
+        headers=headers,
+    )
+    playthrough_id = create_resp.json()["playthrough_id"]
+
+    headers2 = {"x-dev-user-id": str(dev_user2.user_id)}
+    response = await async_client.get(
+        f"/v1/playthroughs/{playthrough_id}/turns", headers=headers2
+    )
+
+    assert response.status_code == 403

@@ -1,6 +1,9 @@
 """Shared pytest fixtures for Turn Resolution Service tests."""
 
+from collections.abc import AsyncGenerator
+
 import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -36,3 +39,20 @@ async def db_session(test_engine):
     async with async_session() as session:
         yield session
         await session.rollback()
+
+
+@pytest_asyncio.fixture
+async def async_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """HTTP client for router-level integration tests, bound to the test DB session."""
+    from app.db.connection import get_db_session
+    from app.main import app as fastapi_app
+
+    async def override_get_db_session():
+        yield db_session
+
+    fastapi_app.dependency_overrides[get_db_session] = override_get_db_session
+    async with AsyncClient(
+        transport=ASGITransport(app=fastapi_app), base_url="http://testserver"
+    ) as client:
+        yield client
+    fastapi_app.dependency_overrides.clear()

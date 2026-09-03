@@ -9,14 +9,14 @@ from app.config import settings
 from app.exceptions.auth_exceptions import InvalidTokenError
 from app.models.auth import CurrentUser
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
     request: Request,
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
 ) -> CurrentUser:
-    if settings.environment == "development":
+    if settings.environment in ("development", "testing"):
         dev_user_id = request.headers.get("x-dev-user-id")
         if dev_user_id:
             try:
@@ -24,6 +24,9 @@ async def get_current_user(
                 return CurrentUser(user_id=uuid.UUID(dev_user_id), token_version=1)
             except ValueError:
                 raise InvalidTokenError("Invalid UUID format in dev header")
+
+    if not credentials:
+        raise InvalidTokenError("Not authenticated")
 
     token = credentials.credentials
     try:

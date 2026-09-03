@@ -9,8 +9,11 @@ import { ActionInput } from "./ActionInput";
 import { SharePlaythroughModal } from "./Modals/SharePlaythroughModal";
 import { EditCharacterWarningModal } from "./Modals/EditCharacterWarningModal";
 import { EndPlaythroughModal } from "./Modals/EndPlaythroughModal";
+import { Toast } from "@/shared/components/feedback/Toast";
 
 export function PlayScreen() {
+  const degraded_message = usePlayStore((s) => s.degraded_message);
+  const clearDegradedMessage = usePlayStore((s) => s.clearDegradedMessage);
   const is_left_sidebar_open = usePlayStore((s) => s.is_left_sidebar_open);
   const is_right_sidebar_open = usePlayStore((s) => s.is_right_sidebar_open);
   const toggleLeftSidebar = usePlayStore((s) => s.toggleLeftSidebar);
@@ -79,6 +82,14 @@ export function PlayScreen() {
       <SharePlaythroughModal />
       <EditCharacterWarningModal />
       <EndPlaythroughModal />
+
+      {degraded_message && (
+        <Toast
+          message={degraded_message}
+          type="error"
+          onClose={clearDegradedMessage}
+        />
+      )}
     </div>
   );
 }

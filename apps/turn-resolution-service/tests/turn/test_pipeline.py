@@ -14,6 +14,7 @@ from app.db.models.turn_log import TurnLog
 from app.db.models.user import User
 from app.exceptions.turn_exceptions import StateWriteError
 from app.models.turn import TurnRequestInput
+from app.session import notification_manager
 from app.turn import pipeline
 from app.turn.steps import ai_orchestrator
 
@@ -135,3 +136,51 @@ async def test_run_turn_degrades_gracefully_on_write_failure(
     )
     turn_log = (await db_session.execute(turn_log_stmt)).scalars().first()
     assert turn_log is None
+
+
+async def test_run_turn_notifies_next_participant_in_multiplayer(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    async def fake_stream(system_instruction: str, prompt: str, timeout_seconds: int):
+        yield "The other adventurer watches."
+
+    monkeypatch.setattr(ai_orchestrator.gemini_client, "stream_narration", fake_stream)
+
+    playthrough, participant_one = await _seed_playthrough(db_session)
+    second_user_id = uuid.uuid4()
+    db_session.add(
+        User(
+            user_id=second_user_id,
+            display_name="Second Tester",
+            auth_provider_id=str(uuid.uuid4()),
+        )
+    )
+    await db_session.flush()
+    participant_two = Participant(
+        playthrough_id=playthrough.playthrough_id,
+        user_id=second_user_id,
+        role="joined",
+        turn_order_position=2,
+    )
+    db_session.add(participant_two)
+    await db_session.flush()
+
+    queue = notification_manager.subscribe(
+        playthrough.playthrough_id, participant_two.participant_id
+    )
+    try:
+        turn_input = TurnRequestInput(
+            playthrough_id=playthrough.playthrough_id,
+            participant_id=participant_one.participant_id,
+            action_text="I step forward.",
+        )
+        response = await pipeline.run_turn(turn_input, db_session)
+        [event async for event in response.body_iterator]
+
+        assert not queue.empty()
+        event_name, _ = queue.get_nowait()
+        assert event_name == "your_turn"
+    finally:
+        notification_manager.unsubscribe(
+            playthrough.playthrough_id, participant_two.participant_id
+        )

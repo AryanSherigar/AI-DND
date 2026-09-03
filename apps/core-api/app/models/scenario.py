@@ -62,6 +62,9 @@ class ScenarioResponse(BaseModel):
 
     scenario_id: uuid.UUID
     creator_id: uuid.UUID
+    creator_display_name: str | None = None
+    is_bookmarked: bool = False
+    can_review: bool = False
     title: str
     logline: str | None = None
     mode: str

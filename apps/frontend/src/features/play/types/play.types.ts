@@ -36,4 +36,10 @@ export interface PlaythroughData {
   custom_fields: CharacterSetupField[];
   turns: TurnLogItem[];
   is_spectator: boolean;
+  // The requesting user's own participant_id — required by POST /v1/turn.
+  // Absent for spectators, who never submit turns.
+  participant_id: string | null;
+  // Multiplayer turn-order gate: false when it's another participant's turn.
+  // Always true for solo playthroughs and irrelevant for spectators.
+  can_act: boolean;
 }

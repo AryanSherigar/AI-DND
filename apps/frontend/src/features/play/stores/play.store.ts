@@ -5,10 +5,11 @@ import {
   PlaythroughData,
   TurnLogItem,
 } from "../types/play.types";
-import {
-  INITIAL_MOCK_PLAYTHROUGH,
-  simulateTokenStream,
-} from "../mock/playthroughMock";
+import { createPostSSEConnection } from "@/shared/lib/sse-client";
+import { useAuthStore } from "@/features/auth/stores/auth.store";
+import { queryClient } from "@/shared/lib/query-client";
+
+const TRS_BASE_URL = import.meta.env.VITE_TRS_URL || "http://localhost:8001";
 
 interface PlayStoreState {
   playthrough: PlaythroughData | null;
@@ -21,6 +22,7 @@ interface PlayStoreState {
   is_share_modal_open: boolean;
   is_warning_modal_open: boolean;
   is_end_modal_open: boolean;
+  degraded_message: string | null;
   cancel_stream_fn: (() => void) | null;
 
   // Actions
@@ -41,10 +43,17 @@ interface PlayStoreState {
   retryLastTurn: () => void;
   editLastAction: () => string;
   updateCharacterFields: (updatedFields: CharacterSetupField[]) => void;
+  clearDegradedMessage: () => void;
+
+  // Internal — not part of the public store surface; other files should not
+  // call these directly. Exposed on the interface only because Zustand
+  // actions call each other through get(), which requires them typed here.
+  _commitStreamedTurn: (actionText: string) => void;
+  _degradeCurrentTurn: (message: string) => void;
 }
 
 export const usePlayStore = create<PlayStoreState>((set, get) => ({
-  playthrough: INITIAL_MOCK_PLAYTHROUGH,
+  playthrough: null,
   active_mode: "do",
   is_left_sidebar_open: true,
   is_right_sidebar_open: true,
@@ -54,6 +63,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   is_share_modal_open: false,
   is_warning_modal_open: false,
   is_end_modal_open: false,
+  degraded_message: null,
   cancel_stream_fn: null,
 
   setPlaythrough: (data: PlaythroughData) => set({ playthrough: data }),
@@ -72,50 +82,61 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   closeWarningModal: () => set({ is_warning_modal_open: false }),
   openEndModal: () => set({ is_end_modal_open: true }),
   closeEndModal: () => set({ is_end_modal_open: false }),
+  clearDegradedMessage: () => set({ degraded_message: null }),
 
   submitTurn: (actionText: string) => {
-    const { playthrough, active_mode, cancel_stream_fn } = get();
-    if (!playthrough || !actionText.trim()) return;
+    const { playthrough, cancel_stream_fn } = get();
+    if (!playthrough || !actionText.trim() || playthrough.is_spectator) return;
+    if (!playthrough.participant_id) return;
 
-    if (cancel_stream_fn) {
-      cancel_stream_fn();
-    }
+    if (cancel_stream_fn) cancel_stream_fn();
 
     set({
       is_narrating: true,
       streaming_text: "",
       last_submitted_action: actionText,
+      degraded_message: null,
     });
 
-    const cancelFn = simulateTokenStream(
-      active_mode,
-      (token: string) => {
-        set((s) => ({ streaming_text: s.streaming_text + token }));
+    const token = useAuthStore.getState().accessToken;
+    let reachedTerminalEvent = false;
+    const cancelFn = createPostSSEConnection(
+      `${TRS_BASE_URL}/v1/turn`,
+      {
+        playthrough_id: playthrough.playthrough_id,
+        participant_id: playthrough.participant_id,
+        action_text: actionText,
       },
-      () => {
-        const finalNarration = get().streaming_text;
-        const currentPlaythrough = get().playthrough;
-        if (!currentPlaythrough) return;
-
-        const nextTurnNumber = currentPlaythrough.turns.length + 1;
-        const newTurn: TurnLogItem = {
-          id: `turn-${Date.now()}`,
-          turn_number: nextTurnNumber,
-          action_mode: active_mode,
-          action_text: actionText,
-          narration_text: finalNarration,
-          created_at: new Date().toISOString(),
-        };
-
-        set({
-          playthrough: {
-            ...currentPlaythrough,
-            turns: [...currentPlaythrough.turns, newTurn],
-          },
-          is_narrating: false,
-          streaming_text: "",
-          cancel_stream_fn: null,
-        });
+      token,
+      {
+        onEvent: (eventName: string, data: string) => {
+          if (eventName === "narration") {
+            set((s) => ({ streaming_text: s.streaming_text + data }));
+          } else if (eventName === "done") {
+            reachedTerminalEvent = true;
+            get()._commitStreamedTurn(actionText);
+          } else if (eventName === "degraded") {
+            reachedTerminalEvent = true;
+            get()._degradeCurrentTurn(data);
+          }
+        },
+        onError: () => {
+          reachedTerminalEvent = true;
+          get()._degradeCurrentTurn(
+            "Connection lost. Your turn may not have saved — you can try again.",
+          );
+        },
+        onClose: () => {
+          // The connection ended without "done"/"degraded"/onError firing —
+          // e.g. the server's stream broke mid-generation after headers were
+          // already sent. Without this, the UI would hang on "thinking"
+          // forever with no way for the player to recover.
+          if (!reachedTerminalEvent) {
+            get()._degradeCurrentTurn(
+              "The narrator stopped responding unexpectedly. Please try again.",
+            );
+          }
+        },
       },
     );
 
@@ -173,6 +194,45 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
         custom_fields: updatedFields,
       },
       is_warning_modal_open: false,
+    });
+  },
+
+  // Internal helpers (not part of the public store surface — no consumer
+  // outside this file should call these directly).
+  _commitStreamedTurn: (actionText: string) => {
+    const { playthrough, streaming_text, active_mode } = get();
+    if (!playthrough) return;
+
+    const newTurn: TurnLogItem = {
+      id: `local-${Date.now()}`,
+      turn_number: playthrough.turns.length + 1,
+      action_mode: active_mode,
+      action_text: actionText,
+      narration_text: streaming_text,
+      created_at: new Date().toISOString(),
+    };
+
+    set({
+      playthrough: {
+        ...playthrough,
+        turns: [...playthrough.turns, newTurn],
+      },
+      is_narrating: false,
+      streaming_text: "",
+      cancel_stream_fn: null,
+    });
+
+    void queryClient.invalidateQueries({
+      queryKey: ["playthrough-turns", playthrough.playthrough_id],
+    });
+  },
+
+  _degradeCurrentTurn: (message: string) => {
+    set({
+      is_narrating: false,
+      streaming_text: "",
+      cancel_stream_fn: null,
+      degraded_message: message,
     });
   },
 }));

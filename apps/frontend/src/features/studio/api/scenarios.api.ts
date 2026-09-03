@@ -2,11 +2,7 @@ import { apiClient } from "@/shared/lib/api-client";
 import { SetupInputField } from "../stores/studio.store";
 
 export type ScenarioStatus =
-  | "draft"
-  | "publishing"
-  | "published"
-  | "publish_failed"
-  | "archived";
+  "draft" | "publishing" | "published" | "publish_failed" | "archived";
 
 export interface CreateScenarioPayload {
   title: string;

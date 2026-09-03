@@ -16,6 +16,8 @@ from app.models.playthrough import PlaythroughCreate
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_repo import ScenarioRepo
+from app.repositories.share_repo import ShareRepo
+from app.repositories.turn_log_repo import TurnLogRepo
 from app.repositories.user_repo import UserRepo
 from app.services.playthrough_service import PlaythroughService
 
@@ -25,6 +27,8 @@ async def _make_service(db_session: AsyncSession) -> PlaythroughService:
         playthrough_repo=PlaythroughRepo(db_session),
         participant_repo=ParticipantRepo(db_session),
         scenario_repo=ScenarioRepo(db_session),
+        share_repo=ShareRepo(db_session),
+        turn_log_repo=TurnLogRepo(db_session),
     )
 
 
@@ -223,3 +227,43 @@ async def test_create_playthrough_multiplayer_scenario_solo_start(
     )
     assert len(participants) == 1
     assert participants[0].role == "owner"
+
+
+@pytest.mark.asyncio
+async def test_create_playthrough_with_multi_select_and_object_options(
+    db_session: AsyncSession,
+):
+    service = await _make_service(db_session)
+    user = await _make_user(db_session)
+    scenario = await _make_scenario(
+        db_session,
+        user.user_id,
+        setup_schema=[
+            {
+                "key": "role",
+                "type": "single_select",
+                "required": True,
+                "options": [{"value": "mage", "label": "Mage"}],
+            },
+            {
+                "key": "skills",
+                "type": "multi_select",
+                "required": True,
+                "options": [
+                    {"value": "fireball", "label": "Fireball"},
+                    {"value": "teleport", "label": "Teleport"},
+                ],
+            },
+        ],
+    )
+
+    result = await service.create_playthrough(
+        user_id=user.user_id,
+        data=PlaythroughCreate(
+            scenario_id=scenario.scenario_id,
+            setup_values={"role": "mage", "skills": ["fireball", "teleport"]},
+        ),
+    )
+
+    assert result.state["setup"]["role"] == "mage"
+    assert result.state["setup"]["skills"] == ["fireball", "teleport"]

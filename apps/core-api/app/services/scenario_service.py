@@ -8,6 +8,12 @@ from app.exceptions.scenario_exceptions import (
     ScenarioAlreadyPublishingError,
     ScenarioNotFoundError,
 )
+from app.models.review import (
+    PublicPlaythroughSummary,
+    ScenarioReviewCreate,
+    ScenarioReviewListResponse,
+    ScenarioReviewResponse,
+)
 from app.models.scenario import (
     ScenarioCreate,
     ScenarioListResponse,
@@ -73,7 +79,129 @@ class ScenarioService:
         if scenario.status == "draft":
             self._ensure_creator_access(scenario, current_user_id, hide_as_404=True)
 
-        return ScenarioResponse.model_validate(scenario)
+        creator_name = await self.scenario_repo.get_creator_display_name(
+            scenario.creator_id
+        )
+        is_bookmarked = False
+        can_review = False
+
+        if current_user_id:
+            is_bookmarked = await self.scenario_repo.is_bookmarked(
+                current_user_id, scenario_id
+            )
+            can_review = await self.scenario_repo.has_user_played_min_turns(
+                current_user_id, scenario_id, min_turns=10
+            )
+
+        response = ScenarioResponse.model_validate(scenario)
+        response.creator_display_name = creator_name or "Anonymous Creator"
+        response.is_bookmarked = is_bookmarked
+        response.can_review = can_review
+        return response
+
+    async def toggle_bookmark(self, user_id: uuid.UUID, scenario_id: uuid.UUID) -> bool:
+        """Toggle scenario bookmark for user. Returns new bookmarked state."""
+        scenario = await self.scenario_repo.get_by_id(scenario_id)
+        if not scenario or scenario.status == "archived":
+            raise ScenarioNotFoundError()
+
+        is_currently_bookmarked = await self.scenario_repo.is_bookmarked(
+            user_id, scenario_id
+        )
+        if is_currently_bookmarked:
+            await self.scenario_repo.remove_bookmark(user_id, scenario_id)
+            return False
+        await self.scenario_repo.add_bookmark(user_id, scenario_id)
+        return True
+
+    async def list_reviews(
+        self, scenario_id: uuid.UUID, limit: int = 20, offset: int = 0
+    ) -> ScenarioReviewListResponse:
+        """Fetch list of reviews for a scenario."""
+        scenario = await self.scenario_repo.get_by_id(scenario_id)
+        if not scenario or scenario.status == "archived":
+            raise ScenarioNotFoundError()
+
+        items, total_count, avg_rating = await self.scenario_repo.list_reviews(
+            scenario_id, limit, offset
+        )
+        review_responses = [
+            ScenarioReviewResponse(
+                review_id=rev.review_id,
+                scenario_id=rev.scenario_id,
+                user_id=rev.user_id,
+                user_display_name=display_name,
+                rating=rev.rating,
+                comment=rev.comment,
+                created_at=rev.created_at,
+            )
+            for rev, display_name in items
+        ]
+        return ScenarioReviewListResponse(
+            items=review_responses,
+            total_count=total_count,
+            average_rating=avg_rating,
+        )
+
+    async def add_review(
+        self, user_id: uuid.UUID, scenario_id: uuid.UUID, data: ScenarioReviewCreate
+    ) -> ScenarioReviewResponse:
+        """Submit a rating and review after validating user has played >= 10 turns."""
+        scenario = await self.scenario_repo.get_by_id(scenario_id)
+        if not scenario or scenario.status == "archived":
+            raise ScenarioNotFoundError()
+
+        has_min_turns = await self.scenario_repo.has_user_played_min_turns(
+            user_id, scenario_id, min_turns=10
+        )
+        if not has_min_turns:
+            raise ScenarioAccessDeniedError(
+                "You must play at least 10 turns of this scenario before leaving a review."
+            )
+
+        review, display_name = await self.scenario_repo.create_or_update_review(
+            user_id=user_id,
+            scenario_id=scenario_id,
+            rating=data.rating,
+            comment=data.comment,
+        )
+        return ScenarioReviewResponse(
+            review_id=review.review_id,
+            scenario_id=review.scenario_id,
+            user_id=review.user_id,
+            user_display_name=display_name,
+            rating=review.rating,
+            comment=review.comment,
+            created_at=review.created_at,
+        )
+
+    async def list_public_playthroughs(
+        self, scenario_id: uuid.UUID, limit: int = 10
+    ) -> list[PublicPlaythroughSummary]:
+        """Fetch list of active/completed public playthroughs for scenario."""
+        scenario = await self.scenario_repo.get_by_id(scenario_id)
+        if not scenario or scenario.status == "archived":
+            raise ScenarioNotFoundError()
+
+        results = await self.scenario_repo.list_public_playthroughs(scenario_id, limit)
+        summaries: list[PublicPlaythroughSummary] = []
+        for pt, player_name in results:
+            char_name = None
+            if isinstance(pt.state, dict) and "character" in pt.state:
+                char_data = pt.state["character"]
+                if isinstance(char_data, dict):
+                    char_name = char_data.get("name")
+            summaries.append(
+                PublicPlaythroughSummary(
+                    playthrough_id=pt.playthrough_id,
+                    player_name=player_name,
+                    character_name=char_name,
+                    turn_count=pt.turn_count,
+                    status=pt.status,
+                    updated_at=pt.updated_at,
+                )
+            )
+        return summaries
 
     async def update_scenario(
         self,

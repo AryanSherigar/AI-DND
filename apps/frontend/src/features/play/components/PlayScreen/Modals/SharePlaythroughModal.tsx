@@ -1,20 +1,39 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePlayStore } from "../../../stores/play.store";
+import { createShare } from "../../../api/share.api";
 
 export function SharePlaythroughModal() {
   const isOpen = usePlayStore((s) => s.is_share_modal_open);
   const closeModal = usePlayStore((s) => s.closeShareModal);
   const playthrough = usePlayStore((s) => s.playthrough);
 
+  const [spectatorUrl, setSpectatorUrl] = useState<string | null>(null);
+  const [joinUrl, setJoinUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [copiedType, setCopiedType] = useState<"spectate" | "join" | null>(
     null,
   );
 
-  if (!isOpen || !playthrough) return null;
+  useEffect(() => {
+    if (!isOpen || !playthrough) return;
+    if (spectatorUrl && joinUrl) return;
 
-  const currentUrl = window.location.origin;
-  const spectatorUrl = `${currentUrl}/play/${playthrough.playthrough_id}?mode=spectate`;
-  const joinUrl = `${currentUrl}/play/${playthrough.playthrough_id}?mode=join`;
+    setIsLoading(true);
+    setError(null);
+    Promise.all([
+      createShare(playthrough.playthrough_id, "spectate"),
+      createShare(playthrough.playthrough_id, "join"),
+    ])
+      .then(([spectateShare, joinShare]) => {
+        setSpectatorUrl(spectateShare.url);
+        setJoinUrl(joinShare.url);
+      })
+      .catch(() => setError("Failed to generate share links. Try again."))
+      .finally(() => setIsLoading(false));
+  }, [isOpen, playthrough, spectatorUrl, joinUrl]);
+
+  if (!isOpen || !playthrough) return null;
 
   const handleCopy = (url: string, type: "spectate" | "join") => {
     navigator.clipboard.writeText(url);
@@ -52,49 +71,61 @@ export function SharePlaythroughModal() {
           </button>
         </div>
 
-        <div className="space-y-4">
-          {/* Spectate Link */}
-          <div className="space-y-1.5">
-            <label className="font-mono text-xs text-amber-400/90 block">
-              Spectator Link (Read-Only)
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                readOnly
-                value={spectatorUrl}
-                className="flex-1 bg-stone-900 text-stone-300 font-mono text-xs p-2.5 rounded border border-amber-900/30 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => handleCopy(spectatorUrl, "spectate")}
-                className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-mono text-xs font-bold rounded transition-colors cursor-pointer"
-              >
-                {copiedType === "spectate" ? "Copied!" : "Copy"}
-              </button>
-            </div>
-          </div>
+        {isLoading && (
+          <p className="font-mono text-xs text-stone-400 text-center py-4">
+            Generating share links...
+          </p>
+        )}
 
-          {/* Join Link */}
-          <div className="space-y-1.5">
-            <label className="font-mono text-xs text-amber-400/90 block">
-              Multiplayer Join Link
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                readOnly
-                value={joinUrl}
-                className="flex-1 bg-stone-900 text-stone-300 font-mono text-xs p-2.5 rounded border border-amber-900/30 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => handleCopy(joinUrl, "join")}
-                className="px-3 py-2 bg-stone-800 hover:bg-stone-700 text-amber-300 font-mono text-xs rounded border border-amber-900/40 transition-colors cursor-pointer"
-              >
-                {copiedType === "join" ? "Copied!" : "Copy"}
-              </button>
+        {error && <p className="font-mono text-xs text-red-400">{error}</p>}
+
+        {!isLoading && !error && (
+          <div className="space-y-4">
+            {/* Spectate Link */}
+            <div className="space-y-1.5">
+              <label className="font-mono text-xs text-amber-400/90 block">
+                Spectator Link (Read-Only)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={spectatorUrl ?? ""}
+                  className="flex-1 bg-stone-900 text-stone-300 font-mono text-xs p-2.5 rounded border border-amber-900/30 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={!spectatorUrl}
+                  onClick={() => spectatorUrl && handleCopy(spectatorUrl, "spectate")}
+                  className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-mono text-xs font-bold rounded transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {copiedType === "spectate" ? "Copied!" : "Copy"}
+                </button>
+              </div>
+            </div>
+
+            {/* Join Link */}
+            <div className="space-y-1.5">
+              <label className="font-mono text-xs text-amber-400/90 block">
+                Multiplayer Join Link
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={joinUrl ?? ""}
+                  className="flex-1 bg-stone-900 text-stone-300 font-mono text-xs p-2.5 rounded border border-amber-900/30 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={!joinUrl}
+                  onClick={() => joinUrl && handleCopy(joinUrl, "join")}
+                  className="px-3 py-2 bg-stone-800 hover:bg-stone-700 text-amber-300 font-mono text-xs rounded border border-amber-900/40 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {copiedType === "join" ? "Copied!" : "Copy"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

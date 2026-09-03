@@ -70,3 +70,38 @@ export interface GetScenariosParams {
   limit?: number;
   offset?: number;
 }
+
+export interface ScenarioDetailResponse extends ScenarioSummaryResponse {
+  creator_display_name?: string | null;
+  is_bookmarked?: boolean;
+  can_review?: boolean;
+  world_data?: Record<string, unknown>;
+  setup_schema?: SetupInputField[];
+  narrator_persona?: string | null;
+  rules?: Record<string, unknown>;
+}
+
+export interface ScenarioReviewResponse {
+  review_id: string;
+  scenario_id: string;
+  user_id: string;
+  user_display_name: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface ScenarioReviewListResponse {
+  items: ScenarioReviewResponse[];
+  total_count: number;
+  average_rating: number;
+}
+
+export interface PublicPlaythroughSummary {
+  playthrough_id: string;
+  player_name: string;
+  character_name: string | null;
+  turn_count: number;
+  status: string;
+  updated_at: string;
+}

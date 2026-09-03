@@ -1,12 +1,16 @@
 """Scenario data repository for direct database operations."""
 
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.bookmark import Bookmark
 from app.db.models.playthrough import Playthrough
+from app.db.models.review import ScenarioReview
 from app.db.models.scenario import Scenario
+from app.db.models.user import User
 
 
 class ScenarioRepo:
@@ -112,3 +116,126 @@ class ScenarioRepo:
         if sort_by == "rating_avg":
             return stmt.order_by(Scenario.rating_avg.desc())
         return stmt.order_by(Scenario.created_at.desc())
+
+    async def get_creator_display_name(self, creator_id: uuid.UUID) -> str | None:
+        """Fetch creator display name by user_id."""
+        stmt = select(User.display_name).where(User.user_id == creator_id)
+        res = await self.session.execute(stmt)
+        return res.scalar_one_or_none()
+
+    async def is_bookmarked(self, user_id: uuid.UUID, scenario_id: uuid.UUID) -> bool:
+        """Check if user has bookmarked a scenario."""
+        stmt = select(Bookmark).where(
+            Bookmark.user_id == user_id, Bookmark.scenario_id == scenario_id
+        )
+        res = await self.session.execute(stmt)
+        return res.scalars().first() is not None
+
+    async def add_bookmark(self, user_id: uuid.UUID, scenario_id: uuid.UUID) -> None:
+        """Add scenario bookmark for user if not existing."""
+        if not await self.is_bookmarked(user_id, scenario_id):
+            bm = Bookmark(user_id=user_id, scenario_id=scenario_id)
+            self.session.add(bm)
+            await self.session.flush()
+
+    async def remove_bookmark(self, user_id: uuid.UUID, scenario_id: uuid.UUID) -> None:
+        """Remove scenario bookmark for user."""
+        stmt = select(Bookmark).where(
+            Bookmark.user_id == user_id, Bookmark.scenario_id == scenario_id
+        )
+        res = await self.session.execute(stmt)
+        bm = res.scalars().first()
+        if bm:
+            await self.session.delete(bm)
+            await self.session.flush()
+
+    async def has_user_played_min_turns(
+        self, user_id: uuid.UUID, scenario_id: uuid.UUID, min_turns: int = 10
+    ) -> bool:
+        """Check if user has a playthrough for scenario with at least min_turns."""
+        stmt = select(Playthrough).where(
+            Playthrough.created_by == user_id,
+            Playthrough.scenario_id == scenario_id,
+            Playthrough.turn_count >= min_turns,
+        )
+        res = await self.session.execute(stmt)
+        return res.scalars().first() is not None
+
+    async def list_reviews(
+        self, scenario_id: uuid.UUID, limit: int = 20, offset: int = 0
+    ) -> tuple[list[tuple[ScenarioReview, str]], int, float]:
+        """Fetch reviews for a scenario with user display names."""
+        stmt = (
+            select(ScenarioReview, User.display_name)
+            .join(User, ScenarioReview.user_id == User.user_id)
+            .where(ScenarioReview.scenario_id == scenario_id)
+            .order_by(ScenarioReview.created_at.desc())
+        )
+        count_stmt = select(func.count()).select_from(
+            select(ScenarioReview)
+            .where(ScenarioReview.scenario_id == scenario_id)
+            .subquery()
+        )
+        avg_stmt = select(func.avg(ScenarioReview.rating)).where(
+            ScenarioReview.scenario_id == scenario_id
+        )
+        total = (await self.session.execute(count_stmt)).scalar_one() or 0
+        avg_val = (await self.session.execute(avg_stmt)).scalar_one() or 0.0
+
+        paginated_stmt = stmt.limit(limit).offset(offset)
+        res = await self.session.execute(paginated_stmt)
+        return list(res.all()), total, float(avg_val)
+
+    async def create_or_update_review(
+        self,
+        user_id: uuid.UUID,
+        scenario_id: uuid.UUID,
+        rating: int,
+        comment: str | None,
+    ) -> tuple[ScenarioReview, str]:
+        """Create or update user review for a scenario and update scenario rating_avg."""
+        stmt = select(ScenarioReview).where(
+            ScenarioReview.user_id == user_id, ScenarioReview.scenario_id == scenario_id
+        )
+        res = await self.session.execute(stmt)
+        review = res.scalars().first()
+        if review:
+            review.rating = rating
+            review.comment = comment
+        else:
+            review = ScenarioReview(
+                user_id=user_id, scenario_id=scenario_id, rating=rating, comment=comment
+            )
+            self.session.add(review)
+        await self.session.flush()
+
+        avg_stmt = select(func.avg(ScenarioReview.rating)).where(
+            ScenarioReview.scenario_id == scenario_id
+        )
+        new_avg = (await self.session.execute(avg_stmt)).scalar_one() or 0.0
+        scenario_stmt = select(Scenario).where(Scenario.scenario_id == scenario_id)
+        scen_res = await self.session.execute(scenario_stmt)
+        scen = scen_res.scalars().first()
+        if scen:
+            scen.rating_avg = round(Decimal(str(new_avg)), 2)
+            await self.session.flush()
+
+        user_stmt = select(User.display_name).where(User.user_id == user_id)
+        user_res = await self.session.execute(user_stmt)
+        display_name = user_res.scalar_one_or_none() or "Adventurer"
+
+        return review, display_name
+
+    async def list_public_playthroughs(
+        self, scenario_id: uuid.UUID, limit: int = 10
+    ) -> list[tuple[Playthrough, str]]:
+        """List active or completed playthroughs with player display names."""
+        stmt = (
+            select(Playthrough, User.display_name)
+            .join(User, Playthrough.created_by == User.user_id)
+            .where(Playthrough.scenario_id == scenario_id)
+            .order_by(Playthrough.updated_at.desc())
+            .limit(limit)
+        )
+        res = await self.session.execute(stmt)
+        return list(res.all())

@@ -10,7 +10,18 @@ class PlaythroughCreate(BaseModel):
     """Payload to start a new playthrough of a published scenario."""
 
     scenario_id: uuid.UUID
-    setup_values: dict[str, str] = Field(default_factory=dict)
+    setup_values: dict[str, object] = Field(default_factory=dict)
+
+
+class ParticipantSummary(BaseModel):
+    """Lightweight participant info for frontend turn-order derivation."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    participant_id: uuid.UUID
+    user_id: uuid.UUID
+    role: str
+    turn_order_position: int
 
 
 class PlaythroughResponse(BaseModel):
@@ -30,3 +41,7 @@ class PlaythroughResponse(BaseModel):
     scenario_snapshot: dict[str, object]
     created_at: datetime
     updated_at: datetime
+    # The requesting user's own participant_id — needed to submit turns
+    # (POST /v1/turn requires it) and absent from the RFC's original schema.
+    participant_id: uuid.UUID
+    participants: list[ParticipantSummary] = Field(default_factory=list)

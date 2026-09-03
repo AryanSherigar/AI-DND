@@ -9,6 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.connection import get_db_session, get_session_factory
 from app.db.models.user import User
 from app.middleware.auth import get_current_user, get_optional_current_user
+from app.models.review import (
+    PublicPlaythroughSummary,
+    ScenarioReviewCreate,
+    ScenarioReviewListResponse,
+    ScenarioReviewResponse,
+)
 from app.models.scenario import (
     ScenarioCreate,
     ScenarioListResponse,
@@ -152,3 +158,67 @@ async def list_scenarios(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post(
+    "/{scenario_id}/bookmark",
+    status_code=status.HTTP_200_OK,
+)
+async def toggle_bookmark(
+    scenario_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[ScenarioService, Depends(get_scenario_service)],
+) -> dict[str, bool]:
+    """Toggle scenario bookmark for current user."""
+    is_bookmarked = await service.toggle_bookmark(
+        user_id=user.user_id, scenario_id=scenario_id
+    )
+    return {"is_bookmarked": is_bookmarked}
+
+
+@router.get(
+    "/{scenario_id}/reviews",
+    response_model=ScenarioReviewListResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def list_reviews(
+    scenario_id: uuid.UUID,
+    service: Annotated[ScenarioService, Depends(get_scenario_service)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ScenarioReviewListResponse:
+    """List reviews and ratings for a scenario."""
+    return await service.list_reviews(
+        scenario_id=scenario_id, limit=limit, offset=offset
+    )
+
+
+@router.post(
+    "/{scenario_id}/reviews",
+    response_model=ScenarioReviewResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_review(
+    scenario_id: uuid.UUID,
+    data: ScenarioReviewCreate,
+    user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[ScenarioService, Depends(get_scenario_service)],
+) -> ScenarioReviewResponse:
+    """Submit a rating and review after validating user has played >= 10 turns."""
+    return await service.add_review(
+        user_id=user.user_id, scenario_id=scenario_id, data=data
+    )
+
+
+@router.get(
+    "/{scenario_id}/playthroughs",
+    response_model=list[PublicPlaythroughSummary],
+    status_code=status.HTTP_200_OK,
+)
+async def list_public_playthroughs(
+    scenario_id: uuid.UUID,
+    service: Annotated[ScenarioService, Depends(get_scenario_service)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+) -> list[PublicPlaythroughSummary]:
+    """List public active/completed playthroughs for a scenario."""
+    return await service.list_public_playthroughs(scenario_id=scenario_id, limit=limit)

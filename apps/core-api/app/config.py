@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     firebase_credentials_path: str = ""
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
     environment: str = "development"
+    frontend_base_url: str = "http://localhost:5173"
 
 
 settings = Settings()

@@ -11,6 +11,7 @@ from app.exceptions.turn_exceptions import (
 from app.models.turn import TurnRequest, TurnRequestInput
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
+from app.turn.turn_order import expected_participant
 
 
 async def receive_request(
@@ -53,10 +54,6 @@ def _validate_turn_order(
     acting_participant: Participant,
     turn_count: int,
 ) -> None:
-    # NOTE: no existing precedent in the codebase for "whose turn is it" — this
-    # derives it from turn_order_position (1-indexed) cycling with turn_count,
-    # so participant at position 1 acts on turn_count 0, position 2 on turn_count 1, etc.
-    ordered = sorted(participants, key=lambda p: p.turn_order_position)
-    expected_participant = ordered[turn_count % len(ordered)]
-    if acting_participant.participant_id != expected_participant.participant_id:
+    expected = expected_participant(participants, turn_count)
+    if acting_participant.participant_id != expected.participant_id:
         raise TurnOrderError()

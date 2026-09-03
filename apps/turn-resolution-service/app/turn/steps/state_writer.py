@@ -28,8 +28,12 @@ async def write_turn(
     playthrough_repo: PlaythroughRepo,
     turn_log_repo: TurnLogRepo,
     scenario_repo: ScenarioRepo,
-) -> None:
-    """Persist a completed turn, retrying transient failures."""
+) -> list[dict[str, object]]:
+    """Persist a completed turn, retrying transient failures.
+
+    Returns the updated turns_so_far list so callers (memory_writer) don't
+    have to recompute it from Playthrough.state after the write.
+    """
     new_turn_count = loaded_state.turn_count + 1
     updated_state = _append_turn(
         loaded_state.state, turn_request.action_text, narration_text
@@ -45,6 +49,7 @@ async def write_turn(
         turn_log_repo,
         scenario_repo,
     )
+    return updated_state["narrative"]["turns_so_far"]
 
 
 async def _persist_with_retry(

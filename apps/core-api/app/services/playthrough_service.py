@@ -7,18 +7,28 @@ from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
 from app.exceptions.playthrough_exceptions import (
     InvalidSetupValuesError,
+    InvalidShareTokenError,
     PlaythroughAccessDeniedError,
     PlaythroughMemoryCloneError,
     PlaythroughNotFoundError,
+    PlaythroughNotJoinableError,
     ScenarioNotPublishedError,
+    SoloScenarioJoinError,
 )
 from app.exceptions.scenario_exceptions import ScenarioNotFoundError
 from app.integrations import memory_client
 from app.models.memory import MemoryTemplateCloneRequest
-from app.models.playthrough import PlaythroughCreate, PlaythroughResponse
+from app.models.playthrough import (
+    ParticipantSummary,
+    PlaythroughCreate,
+    PlaythroughResponse,
+)
+from app.models.turn_log import TurnLogListResponse, TurnLogResponse
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_repo import ScenarioRepo
+from app.repositories.share_repo import ShareRepo
+from app.repositories.turn_log_repo import TurnLogRepo
 
 
 class PlaythroughService:
@@ -29,10 +39,14 @@ class PlaythroughService:
         playthrough_repo: PlaythroughRepo,
         participant_repo: ParticipantRepo,
         scenario_repo: ScenarioRepo,
+        share_repo: ShareRepo,
+        turn_log_repo: TurnLogRepo,
     ) -> None:
         self.playthrough_repo = playthrough_repo
         self.participant_repo = participant_repo
         self.scenario_repo = scenario_repo
+        self.share_repo = share_repo
+        self.turn_log_repo = turn_log_repo
 
     async def create_playthrough(
         self, user_id: uuid.UUID, data: PlaythroughCreate
@@ -71,8 +85,13 @@ class PlaythroughService:
         await self._clone_memory_space(scenario.scenario_id, playthrough_id)
 
         created = await self.playthrough_repo.create(playthrough)
-        await self.participant_repo.create(participant)
-        return _to_response(created, scenario.title)
+        created_participant = await self.participant_repo.create(participant)
+        return _to_response(
+            created,
+            scenario.title,
+            created_participant.participant_id,
+            [created_participant],
+        )
 
     async def get_playthrough(
         self, playthrough_id: uuid.UUID, user_id: uuid.UUID
@@ -90,7 +109,104 @@ class PlaythroughService:
 
         scenario = await self.scenario_repo.get_by_id(playthrough.scenario_id)
         scenario_title = scenario.title if scenario else ""
-        return _to_response(playthrough, scenario_title)
+        all_participants = await self.participant_repo.list_by_playthrough(
+            playthrough_id
+        )
+        return _to_response(
+            playthrough, scenario_title, participant.participant_id, all_participants
+        )
+
+    async def join_playthrough(
+        self, share_token: str, user_id: uuid.UUID
+    ) -> PlaythroughResponse:
+        """Join a playthrough as a multiplayer participant via a join-mode token."""
+        share = await self.share_repo.get_by_token(share_token)
+        if share is None or share.mode != "join":
+            raise InvalidShareTokenError()
+
+        playthrough = await self.playthrough_repo.get_by_id(share.playthrough_id)
+        if not playthrough:
+            raise PlaythroughNotFoundError()
+        if playthrough.status != "active":
+            raise PlaythroughNotJoinableError()
+
+        scenario = await self.scenario_repo.get_by_id(playthrough.scenario_id)
+        if scenario and scenario.player_count_support == "solo":
+            raise SoloScenarioJoinError()
+
+        joined_participant = await self._join_as_participant(playthrough, user_id)
+        all_participants = await self.participant_repo.list_by_playthrough(
+            playthrough.playthrough_id
+        )
+        return _to_response(
+            playthrough,
+            scenario.title if scenario else "",
+            joined_participant.participant_id,
+            all_participants,
+        )
+
+    async def _join_as_participant(
+        self, playthrough: Playthrough, user_id: uuid.UUID
+    ) -> Participant:
+        """Add user_id as a participant, no-op if they've already joined."""
+        existing = await self.participant_repo.get_by_playthrough_and_user(
+            playthrough.playthrough_id, user_id
+        )
+        if existing:
+            return existing
+        participants = await self.participant_repo.list_by_playthrough(
+            playthrough.playthrough_id
+        )
+        participant = Participant(
+            playthrough_id=playthrough.playthrough_id,
+            user_id=user_id,
+            role="joined",
+            turn_order_position=len(participants) + 1,
+        )
+        return await self.participant_repo.create(participant)
+
+    async def list_turns(
+        self,
+        playthrough_id: uuid.UUID,
+        user_id: uuid.UUID | None,
+        share_token: str | None,
+        page: int,
+        page_size: int,
+        from_turn: int | None,
+    ) -> TurnLogListResponse:
+        """Fetch paginated turn history. Participants and share-token holders only."""
+        if not await self.playthrough_repo.get_by_id(playthrough_id):
+            raise PlaythroughNotFoundError()
+        await self._require_turns_access(playthrough_id, user_id, share_token)
+
+        items, total = await self.turn_log_repo.list_by_playthrough(
+            playthrough_id,
+            limit=page_size,
+            offset=(page - 1) * page_size,
+            from_turn=from_turn,
+        )
+        return TurnLogListResponse(
+            items=[TurnLogResponse.model_validate(item) for item in items],
+            total_count=total,
+        )
+
+    async def _require_turns_access(
+        self,
+        playthrough_id: uuid.UUID,
+        user_id: uuid.UUID | None,
+        share_token: str | None,
+    ) -> None:
+        if user_id is not None:
+            participant = await self.participant_repo.get_by_playthrough_and_user(
+                playthrough_id, user_id
+            )
+            if participant:
+                return
+        if share_token:
+            share = await self.share_repo.get_by_token(share_token)
+            if share and share.playthrough_id == playthrough_id:
+                return
+        raise PlaythroughAccessDeniedError()
 
     async def _clone_memory_space(
         self, scenario_id: uuid.UUID, playthrough_id: uuid.UUID
@@ -107,27 +223,76 @@ class PlaythroughService:
 
 
 def _validate_setup_values(
-    setup_schema: list[object], setup_values: dict[str, str]
+    setup_schema: list[object], setup_values: dict[str, object]
 ) -> None:
     """Validate submitted setup values against the scenario's setup_schema."""
     for field in setup_schema:
         if not isinstance(field, dict):
             continue
-        field_key = field.get("field_key")
-        if field.get("required") and field_key not in setup_values:
-            raise InvalidSetupValuesError(f"Missing required setup field: {field_key}")
-        if field_key not in setup_values:
-            continue
-        if field.get("type") == "select":
-            options = field.get("options") or []
-            if setup_values[field_key] not in options:
-                raise InvalidSetupValuesError(
-                    f"Invalid value for setup field {field_key!r}: "
-                    f"must be one of {options}"
-                )
+        _validate_single_field(field, setup_values)
 
 
-def _build_initial_state(setup_values: dict[str, str]) -> dict[str, object]:
+def _validate_single_field(
+    field: dict[str, object], setup_values: dict[str, object]
+) -> None:
+    """Validate a single setup schema field against submitted values."""
+    field_key = str(field.get("field_key") or field.get("key") or field.get("id") or "")
+    if not field_key:
+        return
+    is_required = bool(field.get("required", False))
+    val = setup_values.get(field_key)
+
+    if is_required and (val is None or val == "" or val == []):
+        raise InvalidSetupValuesError(f"Missing required setup field: {field_key}")
+
+    if val is None or val == "":
+        return
+
+    field_type = str(field.get("type") or "")
+    if field_type in ("select", "single_select"):
+        _validate_select_field(field_key, val, field.get("options"))
+    elif field_type == "multi_select":
+        _validate_multi_select_field(field_key, val, field.get("options"))
+
+
+def _extract_option_values(options_raw: object) -> list[str]:
+    """Extract string values from option list (strings or dicts)."""
+    if not isinstance(options_raw, list):
+        return []
+    valid: list[str] = []
+    for opt in options_raw:
+        if isinstance(opt, str):
+            valid.append(opt)
+        elif isinstance(opt, dict) and "value" in opt:
+            valid.append(str(opt["value"]))
+    return valid
+
+
+def _validate_select_field(field_key: str, val: object, options_raw: object) -> None:
+    """Validate single-select value against options."""
+    valid_options = _extract_option_values(options_raw)
+    if valid_options and str(val) not in valid_options:
+        raise InvalidSetupValuesError(
+            f"Invalid value for setup field {field_key!r}: must be one of {valid_options}"
+        )
+
+
+def _validate_multi_select_field(
+    field_key: str, val: object, options_raw: object
+) -> None:
+    """Validate multi-select array value against options."""
+    valid_options = _extract_option_values(options_raw)
+    if not valid_options:
+        return
+    selected = val if isinstance(val, list) else [val]
+    for item in selected:
+        if str(item) not in valid_options:
+            raise InvalidSetupValuesError(
+                f"Invalid selection {item!r} for setup field {field_key!r}"
+            )
+
+
+def _build_initial_state(setup_values: dict[str, object]) -> dict[str, object]:
     """Seed Playthrough.state. Newbie-mode only: opening prompt + setup values."""
     return {
         "setup": dict(setup_values),
@@ -136,10 +301,19 @@ def _build_initial_state(setup_values: dict[str, str]) -> dict[str, object]:
 
 
 def _build_snapshot(scenario: Scenario) -> dict[str, object]:
-    """Freeze the scenario content TRS reads during turns (ADR-8)."""
+    """Freeze the scenario content TRS and the frontend read for this playthrough (ADR-8).
+
+    setup_schema is included alongside the fields ADR-8 names for TRS
+    (narrator_persona, state_schema, end_conditions, checkpoints) because the
+    same pinning principle applies to it: the play screen displays setup
+    field labels from this snapshot, not from Scenario directly, so a later
+    edit to the scenario's setup fields doesn't retroactively relabel an
+    already-active playthrough.
+    """
     return {
         "narrator_persona": scenario.narrator_persona,
         "world_data": scenario.world_data,
+        "setup_schema": scenario.setup_schema,
         "state_schema": scenario.state_schema,
         "end_conditions": scenario.end_conditions,
         "checkpoints": scenario.checkpoints,
@@ -147,7 +321,12 @@ def _build_snapshot(scenario: Scenario) -> dict[str, object]:
     }
 
 
-def _to_response(playthrough: Playthrough, scenario_title: str) -> PlaythroughResponse:
+def _to_response(
+    playthrough: Playthrough,
+    scenario_title: str,
+    participant_id: uuid.UUID,
+    participants: list[Participant],
+) -> PlaythroughResponse:
     """Map a Playthrough ORM entity to its response schema."""
     return PlaythroughResponse(
         playthrough_id=playthrough.playthrough_id,
@@ -162,4 +341,6 @@ def _to_response(playthrough: Playthrough, scenario_title: str) -> PlaythroughRe
         scenario_snapshot=playthrough.scenario_snapshot,
         created_at=playthrough.created_at,
         updated_at=playthrough.updated_at,
+        participant_id=participant_id,
+        participants=[ParticipantSummary.model_validate(p) for p in participants],
     )

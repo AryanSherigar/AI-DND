@@ -36,3 +36,24 @@ class PlaythroughMemoryCloneError(BaseAppException):
 
     def __init__(self, message: str = "Failed to initialize playthrough memory"):
         super().__init__(message=message, status_code=502)
+
+
+class InvalidShareTokenError(BaseAppException):
+    """Raised when a share token is missing, unknown, or the wrong mode."""
+
+    def __init__(self, message: str = "Invalid or expired share token"):
+        super().__init__(message=message, status_code=404)
+
+
+class SoloScenarioJoinError(BaseAppException):
+    """Raised when joining a scenario that only supports solo play."""
+
+    def __init__(self, message: str = "This scenario does not support multiplayer"):
+        super().__init__(message=message, status_code=409)
+
+
+class PlaythroughNotJoinableError(BaseAppException):
+    """Raised when attempting to join a non-active playthrough."""
+
+    def __init__(self, message: str = "This playthrough can no longer be joined"):
+        super().__init__(message=message, status_code=409)

@@ -1,11 +1,7 @@
 import { create } from "zustand";
 
 export type SetupInputType =
-  | "single_select"
-  | "multi_select"
-  | "text"
-  | "textarea"
-  | "number";
+  "single_select" | "multi_select" | "text" | "textarea" | "number";
 
 export interface SetupInputOption {
   id: string;

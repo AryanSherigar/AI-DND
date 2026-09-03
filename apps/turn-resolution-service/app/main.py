@@ -3,10 +3,12 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-
+from app.config import settings
 from app.db.connection import close_db_connection
 from app.middleware.error_handler import setup_error_handlers
+from app.routers import session, turn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
@@ -23,7 +25,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Required now that this service has a real HTTP entrypoint the frontend
+# calls directly from the browser (POST /v1/turn, session SSE) — previously
+# unnecessary since nothing outside tests reached this app over HTTP.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 setup_error_handlers(app)
+app.include_router(turn.router)
+app.include_router(session.router)
 
 
 @app.get("/health")
