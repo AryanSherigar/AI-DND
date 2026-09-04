@@ -12,11 +12,16 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Button } from "@/shared/components/ui/Button";
+import { EmptyState } from "@/shared/components/ui/EmptyState";
 import { Modal } from "@/shared/components/ui/Modal";
 import { useEndConditions } from "../../hooks/useEndConditions";
 import { useEntities } from "../../hooks/useEntities";
 import { useScenario } from "../../hooks/useScenario";
-import { EndConditionCreate } from "../../types/end_condition.types";
+import {
+  EndConditionCreate,
+  EndConditionResponse,
+  EndConditionUpdate,
+} from "../../types/end_condition.types";
 import { buildAvailableFields } from "../ConditionEditor/ExpressionBuilder/availableFields";
 import { EndConditionForm } from "./EndConditionForm";
 import { EndConditionRow } from "./EndConditionRow";
@@ -32,11 +37,16 @@ export const EndConditionsEditor: React.FC<EndConditionsEditorProps> = ({
     endConditions,
     isLoading,
     createEndCondition,
+    updateEndCondition,
     deleteEndCondition,
     reorderEndConditions,
     isCreating,
+    isUpdating,
     createError,
+    updateError,
   } = useEndConditions(scenarioId);
+  const [editingEndCondition, setEditingEndCondition] =
+    useState<EndConditionResponse | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor));
 
@@ -50,12 +60,32 @@ export const EndConditionsEditor: React.FC<EndConditionsEditorProps> = ({
     [scenario, entities],
   );
 
-  const handleOpenCreate = (): void => setIsFormOpen(true);
+  const handleOpenCreate = (): void => {
+    setEditingEndCondition(null);
+    setIsFormOpen(true);
+  };
+
+  const handleOpenEdit = (endCondition: EndConditionResponse): void => {
+    setEditingEndCondition(endCondition);
+    setIsFormOpen(true);
+  };
+
   const handleCloseForm = (): void => setIsFormOpen(false);
   const handleDelete = (endConditionId: string): void =>
     deleteEndCondition(endConditionId);
 
   const handleSubmit = (payload: EndConditionCreate): void => {
+    if (editingEndCondition) {
+      const updatePayload: EndConditionUpdate = payload;
+      updateEndCondition(
+        {
+          endConditionId: editingEndCondition.end_condition_id,
+          payload: updatePayload,
+        },
+        { onSuccess: handleCloseForm },
+      );
+      return;
+    }
     createEndCondition(payload, { onSuccess: handleCloseForm });
   };
 
@@ -79,6 +109,13 @@ export const EndConditionsEditor: React.FC<EndConditionsEditorProps> = ({
       {isLoading && (
         <p className="text-sm text-zinc-500">Loading end conditions…</p>
       )}
+      {!isLoading && orderedEndConditions.length === 0 && (
+        <EmptyState
+          title="No win or lose conditions yet"
+          description="End conditions define how a playthrough concludes, with an outcome, a message shown to the player, and an optional trigger."
+          example="Example: outcome_tag = win when party.gold >= 1000"
+        />
+      )}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -93,6 +130,7 @@ export const EndConditionsEditor: React.FC<EndConditionsEditorProps> = ({
               <EndConditionRow
                 key={endCondition.end_condition_id}
                 endCondition={endCondition}
+                onEdit={handleOpenEdit}
                 onDelete={handleDelete}
               />
             ))}
@@ -102,14 +140,15 @@ export const EndConditionsEditor: React.FC<EndConditionsEditorProps> = ({
       <Modal
         isOpen={isFormOpen}
         onClose={handleCloseForm}
-        title="New End Condition"
+        title={editingEndCondition ? "Edit End Condition" : "New End Condition"}
       >
         <EndConditionForm
           availableFields={availableFields}
+          endCondition={editingEndCondition}
           onSubmit={handleSubmit}
           onCancel={handleCloseForm}
-          isSubmitting={isCreating}
-          submitError={createError}
+          isSubmitting={isCreating || isUpdating}
+          submitError={editingEndCondition ? updateError : createError}
         />
       </Modal>
     </div>

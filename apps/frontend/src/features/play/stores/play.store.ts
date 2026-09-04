@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import {
   ActionMode,
-  CharacterSetupField,
+  EBookTheme,
   PlaythroughData,
   TurnLogItem,
 } from "../types/play.types";
@@ -18,8 +18,11 @@ const TRS_BASE_URL = import.meta.env.VITE_TRS_URL || "http://localhost:8001";
 interface PlayStoreState {
   playthrough: PlaythroughData | null;
   active_mode: ActionMode;
+  ebook_theme: EBookTheme;
   is_left_sidebar_open: boolean;
   is_right_sidebar_open: boolean;
+  is_action_drawer_open: boolean;
+  is_chronicle_modal_open: boolean;
   is_narrating: boolean;
   streaming_text: string;
   last_submitted_action: string;
@@ -32,10 +35,17 @@ interface PlayStoreState {
   // Actions
   setPlaythrough: (data: PlaythroughData) => void;
   setActiveMode: (mode: ActionMode) => void;
+  setEBookTheme: (theme: EBookTheme) => void;
+  toggleEBookTheme: () => void;
   toggleLeftSidebar: () => void;
   toggleRightSidebar: () => void;
   setLeftSidebarOpen: (isOpen: boolean) => void;
   setRightSidebarOpen: (isOpen: boolean) => void;
+  openActionDrawer: () => void;
+  closeActionDrawer: () => void;
+  toggleActionDrawer: () => void;
+  openChronicleModal: () => void;
+  closeChronicleModal: () => void;
   openShareModal: () => void;
   closeShareModal: () => void;
   openWarningModal: () => void;
@@ -43,10 +53,10 @@ interface PlayStoreState {
   openEndModal: () => void;
   closeEndModal: () => void;
   submitTurn: (actionText: string) => void;
+  continueTurn: () => void;
   stopGeneration: () => void;
   retryLastTurn: () => void;
   editLastAction: () => string;
-  updateCharacterFields: (updatedFields: CharacterSetupField[]) => void;
   clearDegradedMessage: () => void;
 
   // Internal — not part of the public store surface; other files should not
@@ -59,8 +69,11 @@ interface PlayStoreState {
 export const usePlayStore = create<PlayStoreState>((set, get) => ({
   playthrough: null,
   active_mode: "do",
+  ebook_theme: "dark-velvet",
   is_left_sidebar_open: true,
   is_right_sidebar_open: true,
+  is_action_drawer_open: false,
+  is_chronicle_modal_open: false,
   is_narrating: false,
   streaming_text: "",
   last_submitted_action: "",
@@ -72,6 +85,12 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
 
   setPlaythrough: (data: PlaythroughData) => set({ playthrough: data }),
   setActiveMode: (mode: ActionMode) => set({ active_mode: mode }),
+  setEBookTheme: (theme: EBookTheme) => set({ ebook_theme: theme }),
+  toggleEBookTheme: () =>
+    set((s) => ({
+      ebook_theme:
+        s.ebook_theme === "dark-velvet" ? "antique-sepia" : "dark-velvet",
+    })),
   toggleLeftSidebar: () =>
     set((s) => ({ is_left_sidebar_open: !s.is_left_sidebar_open })),
   toggleRightSidebar: () =>
@@ -80,6 +99,12 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     set({ is_left_sidebar_open: isOpen }),
   setRightSidebarOpen: (isOpen: boolean) =>
     set({ is_right_sidebar_open: isOpen }),
+  openActionDrawer: () => set({ is_action_drawer_open: true }),
+  closeActionDrawer: () => set({ is_action_drawer_open: false }),
+  toggleActionDrawer: () =>
+    set((s) => ({ is_action_drawer_open: !s.is_action_drawer_open })),
+  openChronicleModal: () => set({ is_chronicle_modal_open: true }),
+  closeChronicleModal: () => set({ is_chronicle_modal_open: false }),
   openShareModal: () => set({ is_share_modal_open: true }),
   closeShareModal: () => set({ is_share_modal_open: false }),
   openWarningModal: () => set({ is_warning_modal_open: true }),
@@ -87,6 +112,12 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   openEndModal: () => set({ is_end_modal_open: true }),
   closeEndModal: () => set({ is_end_modal_open: false }),
   clearDegradedMessage: () => set({ degraded_message: null }),
+
+  continueTurn: () => {
+    const { playthrough, is_narrating, submitTurn } = get();
+    if (!playthrough || is_narrating || playthrough.is_spectator) return;
+    submitTurn("Continue the story.");
+  },
 
   submitTurn: (actionText: string) => {
     const { playthrough, cancel_stream_fn } = get();
@@ -100,6 +131,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       streaming_text: "",
       last_submitted_action: actionText,
       degraded_message: null,
+      is_action_drawer_open: false,
     });
 
     const token = useAuthStore.getState().accessToken;
@@ -189,19 +221,6 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     });
 
     return lastTurn.action_text;
-  },
-
-  updateCharacterFields: (updatedFields: CharacterSetupField[]) => {
-    const { playthrough } = get();
-    if (!playthrough) return;
-
-    set({
-      playthrough: {
-        ...playthrough,
-        custom_fields: updatedFields,
-      },
-      is_warning_modal_open: false,
-    });
   },
 
   // Internal helpers (not part of the public store surface — no consumer

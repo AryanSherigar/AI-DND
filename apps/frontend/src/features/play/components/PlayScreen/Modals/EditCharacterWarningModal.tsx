@@ -1,15 +1,20 @@
 import { useState } from "react";
 import { usePlayStore } from "../../../stores/play.store";
 import { CharacterSetupField } from "../../../types/play.types";
+import { useUpdateCharacterFields } from "../../../hooks/useUpdateCharacterFields";
 
 export function EditCharacterWarningModal() {
   const isOpen = usePlayStore((s) => s.is_warning_modal_open);
   const closeModal = usePlayStore((s) => s.closeWarningModal);
   const playthrough = usePlayStore((s) => s.playthrough);
-  const updateCharacterFields = usePlayStore((s) => s.updateCharacterFields);
 
+  const [draftName, setDraftName] = useState(playthrough?.character_name ?? "");
   const [draftFields, setDraftFields] = useState<CharacterSetupField[]>(
     playthrough?.custom_fields ? [...playthrough.custom_fields] : [],
+  );
+
+  const updateCharacterFields = useUpdateCharacterFields(
+    playthrough?.playthrough_id ?? "",
   );
 
   if (!isOpen || !playthrough) return null;
@@ -21,7 +26,11 @@ export function EditCharacterWarningModal() {
   };
 
   const handleSave = () => {
-    updateCharacterFields(draftFields);
+    const setupValues: Record<string, string> = {
+      character_name: draftName,
+      ...Object.fromEntries(draftFields.map((f) => [f.key, f.value])),
+    };
+    updateCharacterFields.mutate(setupValues, { onSuccess: closeModal });
   };
 
   return (
@@ -59,6 +68,17 @@ export function EditCharacterWarningModal() {
           <h4 className="font-mono text-xs uppercase text-amber-400/90 tracking-wider">
             Edit Character Choices
           </h4>
+          <div className="space-y-1">
+            <label className="font-mono text-xs text-stone-400 block">
+              Character Name
+            </label>
+            <input
+              type="text"
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              className="w-full bg-stone-900 text-amber-100 font-serif text-sm p-2.5 rounded border border-amber-900/30 focus:border-amber-500 focus:outline-none"
+            />
+          </div>
           {draftFields.map((field) => (
             <div key={field.key} className="space-y-1">
               <label className="font-mono text-xs text-stone-400 block">
@@ -74,6 +94,12 @@ export function EditCharacterWarningModal() {
           ))}
         </div>
 
+        {updateCharacterFields.isError && (
+          <p className="font-mono text-xs text-red-400">
+            Failed to save changes. Please try again.
+          </p>
+        )}
+
         {/* Action Buttons */}
         <div className="flex items-center justify-end gap-3 pt-2 border-t border-amber-900/20">
           <button
@@ -85,10 +111,11 @@ export function EditCharacterWarningModal() {
           </button>
           <button
             type="button"
+            disabled={updateCharacterFields.isPending}
             onClick={handleSave}
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-mono text-xs font-bold rounded transition-colors cursor-pointer"
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-stone-950 font-mono text-xs font-bold rounded transition-colors cursor-pointer"
           >
-            Save Changes
+            {updateCharacterFields.isPending ? "Saving..." : "Save Changes"}
           </button>
         </div>
       </div>

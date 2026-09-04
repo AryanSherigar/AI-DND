@@ -293,7 +293,10 @@ class ScenarioService:
     async def list_scenarios(
         self,
         current_user_id: uuid.UUID | None = None,
+        creator_id: uuid.UUID | None = None,
         mine: bool = False,
+        saved: bool = False,
+        played: bool = False,
         genre_tags: list[str] | None = None,
         complexity_tier: str | None = None,
         player_count_support: str | None = None,
@@ -302,13 +305,13 @@ class ScenarioService:
         offset: int = 0,
     ) -> ScenarioListResponse:
         """List published scenarios for discovery or creator's own scenarios."""
-        creator_id = current_user_id if mine else None
+        target_creator_id = current_user_id if mine else creator_id
 
-        if mine and current_user_id is None:
+        if (mine or saved or played) and current_user_id is None:
             raise ScenarioAccessDeniedError("Must be logged in to view my scenarios")
 
         items, total_count = await self.scenario_repo.list_scenarios(
-            creator_id=creator_id,
+            creator_id=target_creator_id,
             published_only=not mine,
             genre_tags=genre_tags,
             complexity_tier=complexity_tier,
@@ -316,6 +319,8 @@ class ScenarioService:
             sort_by=sort_by,
             limit=limit,
             offset=offset,
+            saved_by_user_id=current_user_id if saved else None,
+            played_by_user_id=current_user_id if played else None,
         )
 
         summaries = [ScenarioSummaryResponse.model_validate(item) for item in items]

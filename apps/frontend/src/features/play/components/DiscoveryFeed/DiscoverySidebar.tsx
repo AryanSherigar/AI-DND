@@ -3,6 +3,38 @@ import { Link, useLocation } from "react-router-dom";
 import { GENRES } from "../../../../shared/constants/genres";
 import { GENRE_COLORS } from "../../types/scenario";
 
+interface DiscoverySidebarProps {
+  searchParams: URLSearchParams;
+}
+
+const YOU_FILTER_KEYS = ["mine", "saved", "played"] as const;
+
+const buildDiscoverHref = (
+  searchParams: URLSearchParams,
+  updates: Record<string, string | null>,
+): string => {
+  const newParams = new URLSearchParams(searchParams);
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === null) {
+      newParams.delete(key);
+    } else {
+      newParams.set(key, value);
+    }
+  }
+  return `/discover?${newParams.toString()}`;
+};
+
+const buildYouFilterHref = (
+  searchParams: URLSearchParams,
+  key: (typeof YOU_FILTER_KEYS)[number],
+): string => {
+  const updates: Record<string, string | null> = { [key]: "true" };
+  for (const otherKey of YOU_FILTER_KEYS) {
+    if (otherKey !== key) updates[otherKey] = null;
+  }
+  return buildDiscoverHref(searchParams, updates);
+};
+
 const SidebarSection: React.FC<{
   title?: string;
   children: React.ReactNode;
@@ -21,11 +53,13 @@ const SidebarLink: React.FC<{
   to: string;
   icon?: React.ReactNode;
   label: React.ReactNode;
-}> = ({ to, icon, label }) => {
+  isActive?: boolean;
+}> = ({ to, icon, label, isActive: isActiveProp }) => {
   const location = useLocation();
   const isActive =
-    location.pathname === to ||
-    location.search.includes(to.split("?")[1] || "invalid");
+    isActiveProp ??
+    (location.pathname === to ||
+      location.search.includes(to.split("?")[1] || "invalid"));
 
   return (
     <li>
@@ -48,7 +82,9 @@ const SidebarLink: React.FC<{
   );
 };
 
-export const DiscoverySidebar: React.FC = () => {
+export const DiscoverySidebar: React.FC<DiscoverySidebarProps> = ({
+  searchParams,
+}) => {
   return (
     <aside className="w-64 flex-shrink-0 h-full bg-[#0d0f14] border-r border-zinc-800 flex flex-col hidden md:flex overflow-y-auto custom-scrollbar">
       {/* Brand / Logo */}
@@ -72,14 +108,19 @@ export const DiscoverySidebar: React.FC = () => {
         {/* You Section */}
         <SidebarSection title="You">
           <SidebarLink
-            to="/discover?filter=history"
+            to={buildYouFilterHref(searchParams, "played")}
             label="Previous Scenarios"
+            isActive={searchParams.get("played") === "true"}
           />
-          <SidebarLink to="/discover?filter=saved" label="Saved Scenarios" />
-          <SidebarLink to="/discover?filter=liked" label="Liked Scenarios" />
           <SidebarLink
-            to="/discover?filter=created"
+            to={buildYouFilterHref(searchParams, "saved")}
+            label="Saved Scenarios"
+            isActive={searchParams.get("saved") === "true"}
+          />
+          <SidebarLink
+            to={buildYouFilterHref(searchParams, "mine")}
             label="Created Scenarios"
+            isActive={searchParams.get("mine") === "true"}
           />
         </SidebarSection>
 
@@ -88,7 +129,8 @@ export const DiscoverySidebar: React.FC = () => {
           {GENRES.map((genre) => (
             <SidebarLink
               key={genre}
-              to={`/discover?genre=${genre.toLowerCase()}`}
+              to={buildDiscoverHref(searchParams, { genre })}
+              isActive={searchParams.getAll("genre").includes(genre)}
               label={
                 <span className="flex items-center gap-2">
                   <span

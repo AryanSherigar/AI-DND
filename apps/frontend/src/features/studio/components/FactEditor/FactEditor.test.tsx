@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
+import { useStudioStore } from "../../stores/studio.store";
 import { EntityResponse } from "../../types/entity.types";
 import { FactResponse } from "../../types/fact.types";
 import { FactEditor } from "./FactEditor";
@@ -23,6 +24,7 @@ const buildEntity = (
   obtainable: null,
   attributes_schema: {},
   narrator_instruction: null,
+  fact_count: 0,
   ...overrides,
 });
 
@@ -66,6 +68,13 @@ const mockEntitiesAndFacts = (
 };
 
 describe("FactEditor", () => {
+  beforeEach(() => {
+    useStudioStore.setState({
+      factsEntityFilter: null,
+      activeMasterTab: "entities",
+    });
+  });
+
   it("clears the other object field when toggling object type, and blocks submit with neither set", async () => {
     const entity = buildEntity();
     mockEntitiesAndFacts([entity], []);
@@ -121,5 +130,98 @@ describe("FactEditor", () => {
     expect(
       await screen.findByText(/subject: this entity no longer exists/i),
     ).toBeInTheDocument();
+  });
+
+  it("opens the edit modal prefilled and calls update (not create) on submit", async () => {
+    const entity = buildEntity();
+    const fact = buildFact({ predicate: "guards", object_literal: "the gate" });
+    mockEntitiesAndFacts([entity], [fact]);
+
+    let receivedBody: unknown = null;
+    let wasCreateCalled = false;
+    server.use(
+      http.patch(
+        `${API_URL}/v1/scenarios/${SCENARIO_ID}/facts/${fact.fact_id}`,
+        async ({ request }) => {
+          receivedBody = await request.json();
+          return HttpResponse.json({ ...fact, predicate: "watches" });
+        },
+      ),
+      http.post(`${API_URL}/v1/scenarios/${SCENARIO_ID}/facts`, () => {
+        wasCreateCalled = true;
+        return HttpResponse.json(fact);
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderFactEditor();
+
+    await user.click(await screen.findByRole("button", { name: /^edit$/i }));
+
+    const predicateInput = screen.getByPlaceholderText(/^predicate$/i);
+    expect(predicateInput).toHaveValue("guards");
+    expect(screen.getByLabelText(/^subject$/i)).toBeDisabled();
+
+    await user.clear(predicateInput);
+    await user.type(predicateInput, "watches");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(receivedBody).toMatchObject({ predicate: "watches" }),
+    );
+    expect(wasCreateCalled).toBe(false);
+  });
+
+  it("filters the fact list to the entity selected in the filter dropdown", async () => {
+    const entityA = buildEntity({
+      entity_id: "entity-a",
+      canonical_name: "Warden",
+    });
+    const entityB = buildEntity({
+      entity_id: "entity-b",
+      canonical_name: "Cairn",
+    });
+    const factA = buildFact({
+      fact_id: "fact-a",
+      subject_entity_id: "entity-a",
+      predicate: "guards",
+    });
+    const factB = buildFact({
+      fact_id: "fact-b",
+      subject_entity_id: "entity-b",
+      predicate: "collapses",
+    });
+
+    server.use(
+      http.get(`${API_URL}/v1/scenarios/${SCENARIO_ID}/entities`, () =>
+        HttpResponse.json({ items: [entityA, entityB] }),
+      ),
+      http.get(
+        `${API_URL}/v1/scenarios/${SCENARIO_ID}/facts`,
+        ({ request }) => {
+          const entityId = new URL(request.url).searchParams.get("entity_id");
+          const items = entityId
+            ? [factA, factB].filter((f) => f.subject_entity_id === entityId)
+            : [factA, factB];
+          return HttpResponse.json({ items });
+        },
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderFactEditor();
+
+    await screen.findByText(/guards/i);
+    expect(screen.getByText(/collapses/i)).toBeInTheDocument();
+
+    await user.selectOptions(
+      screen.getByLabelText(/filter by entity/i),
+      "entity-a",
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByText(/collapses/i)).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText(/guards/i)).toBeInTheDocument();
   });
 });

@@ -2,11 +2,15 @@
 
 import asyncio
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.bookmark import Bookmark
+from app.db.models.playthrough import Playthrough
+from app.db.models.scenario import Scenario
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.user_repo import UserRepo
 
@@ -138,6 +142,92 @@ async def test_list_scenarios_my_dashboard(async_client: AsyncClient, dev_user):
     assert list_resp.status_code == 200
     data = list_resp.json()
     assert data["total_count"] >= 2
+
+
+@pytest.mark.asyncio
+async def test_list_scenarios_saved_filter(
+    async_client: AsyncClient, db_session: AsyncSession, dev_user, dev_user2
+):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    saved_scenario = Scenario(
+        creator_id=dev_user2.user_id,
+        title="Bookmarked Tale",
+        mode="newbie",
+        complexity_tier="newbie",
+        player_count_support="solo",
+        status="published",
+        published_at=datetime.now(UTC),
+    )
+    other_scenario = Scenario(
+        creator_id=dev_user2.user_id,
+        title="Unrelated Tale",
+        mode="newbie",
+        complexity_tier="newbie",
+        player_count_support="solo",
+        status="published",
+        published_at=datetime.now(UTC),
+    )
+    db_session.add_all([saved_scenario, other_scenario])
+    await db_session.commit()
+
+    db_session.add(
+        Bookmark(user_id=dev_user.user_id, scenario_id=saved_scenario.scenario_id)
+    )
+    await db_session.commit()
+
+    resp = await async_client.get("/v1/scenarios?saved=true", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_count"] == 1
+    assert data["items"][0]["scenario_id"] == str(saved_scenario.scenario_id)
+
+    unauth_resp = await async_client.get("/v1/scenarios?saved=true")
+    assert unauth_resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_list_scenarios_played_filter(
+    async_client: AsyncClient, db_session: AsyncSession, dev_user, dev_user2
+):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    played_scenario = Scenario(
+        creator_id=dev_user2.user_id,
+        title="Played Tale",
+        mode="newbie",
+        complexity_tier="newbie",
+        player_count_support="solo",
+        status="published",
+        published_at=datetime.now(UTC),
+    )
+    other_scenario = Scenario(
+        creator_id=dev_user2.user_id,
+        title="Never Played Tale",
+        mode="newbie",
+        complexity_tier="newbie",
+        player_count_support="solo",
+        status="published",
+        published_at=datetime.now(UTC),
+    )
+    db_session.add_all([played_scenario, other_scenario])
+    await db_session.commit()
+
+    db_session.add(
+        Playthrough(
+            scenario_id=played_scenario.scenario_id,
+            created_by=dev_user.user_id,
+            scenario_version=1,
+        )
+    )
+    await db_session.commit()
+
+    resp = await async_client.get("/v1/scenarios?played=true", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_count"] == 1
+    assert data["items"][0]["scenario_id"] == str(played_scenario.scenario_id)
+
+    unauth_resp = await async_client.get("/v1/scenarios?played=true")
+    assert unauth_resp.status_code == 403
 
 
 @pytest.mark.asyncio

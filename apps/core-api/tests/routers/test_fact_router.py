@@ -110,6 +110,59 @@ async def test_fact_object_exclusivity_rejected(
 
 
 @pytest.mark.asyncio
+async def test_fact_list_filters_by_entity_id(
+    async_client: AsyncClient, dev_user, master_scenario_id: str, warden_and_cairn_ids
+):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    warden_id, cairn_id = warden_and_cairn_ids
+
+    linked = await async_client.post(
+        f"/v1/scenarios/{master_scenario_id}/facts",
+        json={
+            "subject_entity_id": warden_id,
+            "predicate": "located_at",
+            "object_entity_id": cairn_id,
+        },
+        headers=headers,
+    )
+    assert linked.status_code == 201
+
+    unrelated = await async_client.post(
+        f"/v1/scenarios/{master_scenario_id}/facts",
+        json={
+            "subject_entity_id": cairn_id,
+            "predicate": "described_as",
+            "object_literal": "ancient and cold",
+        },
+        headers=headers,
+    )
+    assert unrelated.status_code == 201
+
+    filtered_by_warden = await async_client.get(
+        f"/v1/scenarios/{master_scenario_id}/facts",
+        params={"entity_id": warden_id},
+        headers=headers,
+    )
+    assert filtered_by_warden.status_code == 200
+    warden_items = filtered_by_warden.json()["items"]
+    assert len(warden_items) == 1
+    assert warden_items[0]["subject_entity_id"] == warden_id
+
+    filtered_by_cairn = await async_client.get(
+        f"/v1/scenarios/{master_scenario_id}/facts",
+        params={"entity_id": cairn_id},
+        headers=headers,
+    )
+    assert filtered_by_cairn.status_code == 200
+    assert len(filtered_by_cairn.json()["items"]) == 2
+
+    unfiltered = await async_client.get(
+        f"/v1/scenarios/{master_scenario_id}/facts", headers=headers
+    )
+    assert len(unfiltered.json()["items"]) == 2
+
+
+@pytest.mark.asyncio
 async def test_fact_invalid_entity_reference_rejected(
     async_client: AsyncClient, dev_user, master_scenario_id: str
 ):

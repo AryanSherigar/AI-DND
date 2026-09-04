@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Button } from "@/shared/components/ui/Button";
+import { EmptyState } from "@/shared/components/ui/EmptyState";
 import { Modal } from "@/shared/components/ui/Modal";
 import { useEntities } from "../../hooks/useEntities";
 import {
@@ -61,6 +62,13 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ scenarioId }) => {
         <Button onClick={handleOpenCreate}>New Entity</Button>
       </div>
       {isLoading && <p className="text-sm text-zinc-500">Loading entities…</p>}
+      {!isLoading && entities.length === 0 && (
+        <EmptyState
+          title="No entities yet"
+          description="Entities are the characters, locations, items, and factions your narrator can reference."
+          example="Example: a Location entity named 'Tavern' with a crowd_level attribute."
+        />
+      )}
       <div className="space-y-2">
         {entities.map((entity) => (
           <EntityRow
@@ -77,6 +85,7 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ scenarioId }) => {
         title={editingEntity ? "Edit Entity" : "New Entity"}
       >
         <EntityForm
+          scenarioId={scenarioId}
           entity={editingEntity}
           onSubmit={handleSubmit}
           onCancel={handleCloseForm}

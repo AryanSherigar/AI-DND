@@ -14,7 +14,9 @@ from app.models.entity import EntityCreate
 from app.models.invariant import InvariantCreate, InvariantUpdate
 from app.models.scenario import ScenarioCreate
 from app.repositories.entity_repo import EntityRepo
+from app.repositories.fact_repo import FactRepo
 from app.repositories.invariant_repo import InvariantRepo
+from app.repositories.scenario_entity_type_repo import ScenarioEntityTypeRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.user_repo import UserRepo
 from app.services.entity_service import EntityService
@@ -53,7 +55,12 @@ async def master_scenario(db_session: AsyncSession, creator: User):
 
 @pytest.fixture
 def entity_service(db_session: AsyncSession) -> EntityService:
-    return EntityService(EntityRepo(db_session), ScenarioRepo(db_session))
+    return EntityService(
+        EntityRepo(db_session),
+        ScenarioRepo(db_session),
+        FactRepo(db_session),
+        ScenarioEntityTypeRepo(db_session),
+    )
 
 
 @pytest.fixture

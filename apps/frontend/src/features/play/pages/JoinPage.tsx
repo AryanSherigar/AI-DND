@@ -41,8 +41,8 @@ export function JoinPage() {
     return (
       <div className="min-h-screen w-full bg-stone-950 text-stone-100 flex items-center justify-center p-6 text-center">
         <p className="font-mono text-sm text-red-400">
-          This join link is invalid, expired, or this scenario doesn't
-          support multiplayer.
+          This join link is invalid, expired, or this scenario doesn't support
+          multiplayer.
         </p>
       </div>
     );

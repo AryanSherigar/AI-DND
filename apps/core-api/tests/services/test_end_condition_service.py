@@ -12,6 +12,8 @@ from app.models.entity import EntityCreate
 from app.models.scenario import ScenarioCreate
 from app.repositories.end_condition_repo import EndConditionRepo
 from app.repositories.entity_repo import EntityRepo
+from app.repositories.fact_repo import FactRepo
+from app.repositories.scenario_entity_type_repo import ScenarioEntityTypeRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.user_repo import UserRepo
 from app.services.end_condition_service import EndConditionService
@@ -60,7 +62,12 @@ async def test_multiple_win_outcomes_persisted_independently(
     db_session: AsyncSession,
 ):
     """Two end conditions tagged 'win' on the same scenario are not deduplicated."""
-    entity_service = EntityService(EntityRepo(db_session), ScenarioRepo(db_session))
+    entity_service = EntityService(
+        EntityRepo(db_session),
+        ScenarioRepo(db_session),
+        FactRepo(db_session),
+        ScenarioEntityTypeRepo(db_session),
+    )
     warden = await entity_service.create_entity(
         master_scenario.scenario_id,
         creator.user_id,

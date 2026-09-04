@@ -48,3 +48,14 @@ export async function getPlaythrough(
   );
   return response.data;
 }
+
+export async function updateCharacterFields(
+  playthroughId: string,
+  setupValues: Record<string, unknown>,
+): Promise<PlaythroughResponse> {
+  const response = await apiClient.patch<PlaythroughResponse>(
+    `/v1/playthroughs/${playthroughId}/character`,
+    { setup_values: setupValues },
+  );
+  return response.data;
+}

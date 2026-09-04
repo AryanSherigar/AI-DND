@@ -1,5 +1,14 @@
 export type ActionMode = "say" | "do" | "story" | "see";
 
+export type EBookTheme = "dark-velvet" | "antique-sepia";
+
+export interface EntityHighlightItem {
+  id: string;
+  name: string;
+  category: string;
+  summary: string;
+}
+
 export interface TurnLogItem {
   id: string;
   turn_number: number;
@@ -26,6 +35,7 @@ export interface PlaythroughData {
   playthrough_id: string;
   scenario_id: string;
   scenario_title: string;
+  mode: "newbie" | "master";
   creator_name: string;
   cover_image_url?: string;
   opening_premise: string;

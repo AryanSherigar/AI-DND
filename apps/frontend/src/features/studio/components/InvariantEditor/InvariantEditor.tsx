@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Button } from "@/shared/components/ui/Button";
+import { EmptyState } from "@/shared/components/ui/EmptyState";
 import { Modal } from "@/shared/components/ui/Modal";
 import { SelectOption } from "@/shared/components/ui/Select";
 import { buildAvailableFields } from "../ConditionEditor/ExpressionBuilder/availableFields";
@@ -91,6 +92,13 @@ export const InvariantEditor: React.FC<InvariantEditorProps> = ({
       </div>
       {isLoading && (
         <p className="text-sm text-zinc-500">Loading invariants…</p>
+      )}
+      {!isLoading && invariants.length === 0 && (
+        <EmptyState
+          title="No always-true rules yet"
+          description="Always-true rules are constraints the narrator must never violate, regardless of what else happens in the story."
+          example="Example: the player character can never die permanently."
+        />
       )}
       <div className="space-y-2">
         {invariants.map((invariant) => (

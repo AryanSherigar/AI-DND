@@ -14,12 +14,20 @@ export const AdvancedFiltersModal: React.FC<AdvancedFiltersModalProps> = ({
   searchParams,
   onApply,
 }) => {
-  if (!isOpen) return null;
-
   // Local state for modal before applying
   const [localParams, setLocalParams] = React.useState(
     new URLSearchParams(searchParams),
   );
+
+  // Re-sync local state from the URL every time the modal opens, so it
+  // reflects filters set elsewhere (e.g. the sidebar) since it last opened.
+  React.useEffect(() => {
+    if (isOpen) {
+      setLocalParams(new URLSearchParams(searchParams));
+    }
+  }, [isOpen, searchParams]);
+
+  if (!isOpen) return null;
 
   const handleToggleGenre = (genre: string) => {
     const genres = localParams.getAll("genre");
@@ -106,13 +114,11 @@ export const AdvancedFiltersModal: React.FC<AdvancedFiltersModalProps> = ({
             </h3>
             <div className="flex flex-wrap gap-2">
               {GENRES.map((genre) => {
-                const isActive = localParams
-                  .getAll("genre")
-                  .includes(genre.toLowerCase());
+                const isActive = localParams.getAll("genre").includes(genre);
                 return (
                   <button
                     key={genre}
-                    onClick={() => handleToggleGenre(genre.toLowerCase())}
+                    onClick={() => handleToggleGenre(genre)}
                     className={`px-3 py-1.5 rounded-full font-mono text-xs border ${
                       isActive
                         ? "bg-zinc-200 border-zinc-200 text-[#0d0f14] font-semibold"

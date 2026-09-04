@@ -62,7 +62,10 @@ export interface ScenarioListResponse {
 }
 
 export interface GetScenariosParams {
+  creator_id?: string;
   mine?: boolean;
+  saved?: boolean;
+  played?: boolean;
   genre_tags?: string[];
   complexity_tier?: "newbie" | "master" | "intermediate";
   player_count_support?: "solo" | "multiplayer" | "both";

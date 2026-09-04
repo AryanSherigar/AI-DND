@@ -62,6 +62,8 @@ class ScenarioRepo:
         sort_by: str = "created_at",
         limit: int = 20,
         offset: int = 0,
+        saved_by_user_id: uuid.UUID | None = None,
+        played_by_user_id: uuid.UUID | None = None,
     ) -> tuple[list[Scenario], int]:
         """Fetch scenarios matching discovery or creator dashboard filters."""
         stmt = select(Scenario)
@@ -72,6 +74,8 @@ class ScenarioRepo:
             genre_tags,
             complexity_tier,
             player_count_support,
+            saved_by_user_id,
+            played_by_user_id,
         )
 
         count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -92,6 +96,8 @@ class ScenarioRepo:
         genre_tags: list[str] | None,
         complexity_tier: str | None,
         player_count_support: str | None,
+        saved_by_user_id: uuid.UUID | None = None,
+        played_by_user_id: uuid.UUID | None = None,
     ) -> select:
         """Apply query conditions for scenario filtering."""
         if creator_id is not None:
@@ -107,6 +113,16 @@ class ScenarioRepo:
             stmt = stmt.where(Scenario.player_count_support == player_count_support)
         if genre_tags:
             stmt = stmt.where(Scenario.genre_tags.overlap(genre_tags))
+        if saved_by_user_id is not None:
+            stmt = stmt.join(
+                Bookmark, Bookmark.scenario_id == Scenario.scenario_id
+            ).where(Bookmark.user_id == saved_by_user_id)
+        if played_by_user_id is not None:
+            stmt = (
+                stmt.join(Playthrough, Playthrough.scenario_id == Scenario.scenario_id)
+                .where(Playthrough.created_by == played_by_user_id)
+                .distinct()
+            )
         return stmt
 
     def _apply_sorting(self, stmt: select, sort_by: str) -> select:

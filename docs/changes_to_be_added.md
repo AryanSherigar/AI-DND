@@ -27,3 +27,16 @@
 - **Why:** TRS's ORM models (`app/db/models/`) mirror core-api's schema but declare no `relationship()` links between entities, only raw FK columns — SQLAlchemy's unit-of-work insert ordering leans on `relationship()`-derived dependency processors, so plain FK columns alone aren't enough for it to sequence multi-table inserts correctly within one flush.
 - **Where:** Worked around locally in TRS's test seed helpers (`apps/turn-resolution-service/tests/repositories/*.py`, `apps/turn-resolution-service/tests/turn/test_pipeline.py`) by flushing parent rows before dependent ones, one entity at a time. Not yet an issue in production code paths (state_writer.py's writes are single-table `update`/`create` calls), but worth keeping in mind for any future TRS (or core-api) code that batches multi-table inserts in one `flush()`.
 - **How:** Either keep flushing parent-before-child explicitly wherever multi-table inserts happen in one transaction, or add `relationship()` declarations between the mirrored models so SQLAlchemy's automatic dependency sort can be relied on instead.
+
+
+
+
+
+
+
+
+
+
+Note:- while stress-testing the new endpoint with back-to-back curl calls, I found the existing get_db_session dependency pattern (commit-after-response, used by every mutating endpoint in core-api, not just mine) has a narrow eventual-consistency window — an immediate GET right after a write can occasionally see the pre-write value for a fraction of a second. It's pre-existing and doesn't affect the actual feature (the frontend updates its cache directly from the PATCH response, it never re-fetches), but it's a latent architectural note if you ever want fully linearizable reads after writes.
+
+I didn't do a real browser/screenshot pass — no browser automation tool was available in this environment and standing up full Firebase auth + TRS for a visual check was out of scope for the fix itself. If you want that, let me know and I can look at wiring up Playwright against the dev server.

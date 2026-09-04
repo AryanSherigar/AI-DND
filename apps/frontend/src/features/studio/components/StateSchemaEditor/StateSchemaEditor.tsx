@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/shared/components/ui/Button";
+import { EmptyState } from "@/shared/components/ui/EmptyState";
 import { useScenario } from "../../hooks/useScenario";
 import { StateFieldDefinition } from "../../types/scenario.types";
 import { StateFieldMapEditor } from "./StateFieldMapEditor";
@@ -45,6 +46,13 @@ export const StateSchemaEditor: React.FC<StateSchemaEditorProps> = ({
         </Button>
       </div>
       {updateError && <p className="text-xs text-red-400">{updateError}</p>}
+      {Object.keys(schema).length === 0 && (
+        <EmptyState
+          title="No tracked values yet"
+          description="Tracked values are the numbers, flags, and variables that change as the story plays out — health, gold, faction standing, and the like."
+          example="Example: a number field 'gold', starting at 0."
+        />
+      )}
       <StateFieldMapEditor
         value={schema}
         onChange={setSchema}

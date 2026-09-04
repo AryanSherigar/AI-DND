@@ -20,8 +20,11 @@ from app.routers import (
     invariants,
     logs,
     playthroughs,
+    scenario_entity_types,
     scenarios,
     share,
+    uploads,
+    users,
 )
 
 configure_logging(settings.log_level, settings.log_format)
@@ -54,6 +57,7 @@ setup_error_handlers(app)
 app.include_router(auth.router)
 app.include_router(scenarios.router)
 app.include_router(entities.router)
+app.include_router(scenario_entity_types.router)
 app.include_router(facts.router)
 app.include_router(conditions.router)
 app.include_router(end_conditions.router)
@@ -61,6 +65,8 @@ app.include_router(invariants.router)
 app.include_router(playthroughs.router)
 app.include_router(share.router)
 app.include_router(logs.router)
+app.include_router(uploads.router)
+app.include_router(users.router)
 
 
 @app.get("/health")

@@ -208,3 +208,118 @@ async def test_list_turns_denies_non_participant_without_token(
     )
 
     assert response.status_code == 403
+
+
+@pytest.fixture
+async def published_scenario_with_setup_schema(db_session: AsyncSession, dev_user):
+    scenario = Scenario(
+        creator_id=dev_user.user_id,
+        title="Dragon's Lair",
+        mode="newbie",
+        complexity_tier="newbie",
+        player_count_support="solo",
+        status="published",
+        narrator_persona="A grim narrator.",
+        world_data={"lore": "A cave full of gold."},
+        setup_schema=[
+            {
+                "key": "character_class",
+                "label": "Class",
+                "type": "single_select",
+                "required": False,
+                "options": ["warrior", "mage"],
+            }
+        ],
+    )
+    db_session.add(scenario)
+    await db_session.flush()
+    return scenario
+
+
+@pytest.mark.asyncio
+async def test_update_character_fields_success(
+    async_client: AsyncClient, dev_user, published_scenario_with_setup_schema
+):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    create_resp = await async_client.post(
+        "/v1/playthroughs",
+        json={
+            "scenario_id": str(published_scenario_with_setup_schema.scenario_id),
+            "setup_values": {"character_name": "Old Name"},
+        },
+        headers=headers,
+    )
+    playthrough_id = create_resp.json()["playthrough_id"]
+
+    response = await async_client.patch(
+        f"/v1/playthroughs/{playthrough_id}/character",
+        json={
+            "setup_values": {
+                "character_name": "New Name",
+                "character_class": "mage",
+            }
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    setup = response.json()["state"]["setup"]
+    assert setup["character_name"] == "New Name"
+    assert setup["character_class"] == "mage"
+
+
+@pytest.mark.asyncio
+async def test_update_character_fields_denied_for_non_participant(
+    async_client: AsyncClient, dev_user, dev_user2, published_scenario
+):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    create_resp = await async_client.post(
+        "/v1/playthroughs",
+        json={"scenario_id": str(published_scenario.scenario_id), "setup_values": {}},
+        headers=headers,
+    )
+    playthrough_id = create_resp.json()["playthrough_id"]
+
+    headers2 = {"x-dev-user-id": str(dev_user2.user_id)}
+    response = await async_client.patch(
+        f"/v1/playthroughs/{playthrough_id}/character",
+        json={"setup_values": {"character_name": "New Name"}},
+        headers=headers2,
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_update_character_fields_not_found(async_client: AsyncClient, dev_user):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    response = await async_client.patch(
+        f"/v1/playthroughs/{uuid.uuid4()}/character",
+        json={"setup_values": {"character_name": "New Name"}},
+        headers=headers,
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_character_fields_invalid_setup_value(
+    async_client: AsyncClient, dev_user, published_scenario_with_setup_schema
+):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    create_resp = await async_client.post(
+        "/v1/playthroughs",
+        json={
+            "scenario_id": str(published_scenario_with_setup_schema.scenario_id),
+            "setup_values": {},
+        },
+        headers=headers,
+    )
+    playthrough_id = create_resp.json()["playthrough_id"]
+
+    response = await async_client.patch(
+        f"/v1/playthroughs/{playthrough_id}/character",
+        json={"setup_values": {"character_class": "not_an_option"}},
+        headers=headers,
+    )
+
+    assert response.status_code == 422

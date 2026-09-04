@@ -95,12 +95,16 @@ export const ScenarioBannerHero: React.FC<ScenarioBannerHeroProps> = ({
 
             {/* Creator info & Quick stats */}
             <div className="flex flex-wrap items-center gap-4 text-sm text-zinc-400 font-mono">
-              <span className="flex items-center gap-1.5 text-zinc-200">
-                <QuillIcon className="h-4 w-4 text-emerald-400" />
-                <span>
+              <Link
+                to={`/profile/${scenario.creator_id}`}
+                className="flex items-center gap-1.5 text-zinc-200 hover:text-amber-300 transition-colors group"
+                title="View Creator Chronicle"
+              >
+                <QuillIcon className="h-4 w-4 text-emerald-400 group-hover:text-amber-300 transition-colors" />
+                <span className="underline decoration-zinc-700 underline-offset-4 group-hover:decoration-amber-400">
                   {scenario.creator_display_name || "Anonymous Creator"}
                 </span>
-              </span>
+              </Link>
               <span className="text-zinc-700">•</span>
               <span className="flex items-center gap-1 text-yellow-500">
                 <HeartIcon className="h-4 w-4" />

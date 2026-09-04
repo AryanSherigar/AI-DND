@@ -56,11 +56,14 @@ class FactService:
         return FactResponse.model_validate(created)
 
     async def list_facts(
-        self, scenario_id: uuid.UUID, user_id: uuid.UUID
+        self,
+        scenario_id: uuid.UUID,
+        user_id: uuid.UUID,
+        entity_id: uuid.UUID | None = None,
     ) -> list[FactResponse]:
-        """List all facts for a scenario."""
+        """List facts for a scenario, optionally scoped to one entity."""
         await self._ensure_scenario_owner(scenario_id, user_id)
-        facts = await self.fact_repo.list_by_scenario(scenario_id)
+        facts = await self.fact_repo.list_by_scenario(scenario_id, entity_id)
         return [FactResponse.model_validate(f) for f in facts]
 
     async def get_fact(

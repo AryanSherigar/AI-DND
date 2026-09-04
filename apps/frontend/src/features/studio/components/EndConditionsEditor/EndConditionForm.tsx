@@ -4,30 +4,39 @@ import { Input } from "@/shared/components/ui/Input";
 import { Select, SelectOption } from "@/shared/components/ui/Select";
 import { OUTCOME_TAGS } from "../../types/end_condition.types";
 import { ExpressionBuilder } from "../ConditionEditor/ExpressionBuilder/ExpressionBuilder";
-import { EndConditionFormProps, EndConditionFormState } from "./EndConditionsEditor.types";
+import {
+  EndConditionFormProps,
+  EndConditionFormState,
+} from "./EndConditionsEditor.types";
 
 const OUTCOME_TAG_OPTIONS: SelectOption[] = OUTCOME_TAGS.map((tag) => ({
   value: tag,
   label: tag,
 }));
 
-const buildInitialState = (): EndConditionFormState => ({
-  outcomeTag: "win",
-  outcomeTitle: "",
-  outcomeText: "",
-  isSecret: false,
-  conditionExpression: null,
+const buildInitialState = (
+  endCondition?: EndConditionFormProps["endCondition"],
+): EndConditionFormState => ({
+  outcomeTag: endCondition?.outcome_tag ?? "win",
+  outcomeTitle: endCondition?.outcome_title ?? "",
+  outcomeText: endCondition?.outcome_text ?? "",
+  isSecret: endCondition?.is_secret ?? false,
+  conditionExpression:
+    (endCondition?.condition_expression as unknown as EndConditionFormState["conditionExpression"]) ??
+    null,
 });
 
 export const EndConditionForm: React.FC<EndConditionFormProps> = ({
   availableFields,
+  endCondition,
   onSubmit,
   onCancel,
   isSubmitting,
   submitError,
 }) => {
-  const [formState, setFormState] =
-    useState<EndConditionFormState>(buildInitialState);
+  const [formState, setFormState] = useState<EndConditionFormState>(() =>
+    buildInitialState(endCondition),
+  );
 
   const canSubmit = Boolean(formState.outcomeTitle.trim());
 

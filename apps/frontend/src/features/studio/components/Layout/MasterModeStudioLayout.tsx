@@ -9,6 +9,7 @@ import { PlaytestButton } from "../PlaytestButton/PlaytestButton";
 import { DuplicateScenarioButton } from "../DuplicateScenarioButton/DuplicateScenarioButton";
 import { StudioChatDrawer } from "./StudioChatDrawer";
 import { StudioSetupPanel } from "./StudioSetupPanel";
+import { TabHelpBanner } from "./TabHelpBanner";
 import {
   MASTER_MODE_TABS,
   MasterModeStudioLayoutProps,
@@ -16,13 +17,14 @@ import {
 } from "./MasterModeStudioLayout.types";
 import { useStudioStore } from "../../stores/studio.store";
 
-export const MasterModeStudioLayout: React.FC<
-  MasterModeStudioLayoutProps
-> = ({ scenarioId }) => {
+export const MasterModeStudioLayout: React.FC<MasterModeStudioLayoutProps> = ({
+  scenarioId,
+}) => {
   const activeTab = useStudioStore((state) => state.activeMasterTab);
   const setActiveTab = useStudioStore((state) => state.setActiveMasterTab);
 
   const handleTabClick = (tabId: MasterModeTabId) => () => setActiveTab(tabId);
+  const activeTabConfig = MASTER_MODE_TABS.find((tab) => tab.id === activeTab);
 
   return (
     <div className="flex flex-1 overflow-hidden bg-zinc-950 font-sans text-zinc-300">
@@ -46,6 +48,9 @@ export const MasterModeStudioLayout: React.FC<
         </div>
       </nav>
       <main className="flex-1 overflow-y-auto p-8">
+        {activeTabConfig && (
+          <TabHelpBanner key={activeTab} helpText={activeTabConfig.helpText} />
+        )}
         {activeTab === "entities" && <EntityEditor scenarioId={scenarioId} />}
         {activeTab === "facts" && <FactEditor scenarioId={scenarioId} />}
         {activeTab === "state" && <StateSchemaEditor scenarioId={scenarioId} />}

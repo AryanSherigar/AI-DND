@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { usePlayStore } from "../../stores/play.store";
+import { StoryCardsPanel } from "./StoryCardsPanel";
 
 interface WorldCodexSidebarProps {
   isOpen: boolean;
   onToggle: () => void;
+  mode: "newbie" | "master";
 }
 
 export function WorldCodexSidebar({
   isOpen,
   onToggle,
+  mode,
 }: WorldCodexSidebarProps) {
   const playthrough = usePlayStore((s) => s.playthrough);
   const [activeTab, setActiveTab] = useState<"lore" | "facts" | "cards">(
@@ -91,19 +94,21 @@ export function WorldCodexSidebar({
             {playthrough.key_facts.length}
           </span>
         </button>
-        <button
-          onClick={() => setActiveTab("cards")}
-          className={`flex-1 py-3 text-center transition-colors border-b-2 ${
-            activeTab === "cards"
-              ? "border-amber-500 text-stone-100 font-medium"
-              : "border-transparent text-stone-400 hover:text-stone-200"
-          }`}
-        >
-          Cards{" "}
-          <span className="text-stone-500 text-[11px] font-normal ml-0.5">
-            {playthrough.story_cards.length}
-          </span>
-        </button>
+        {mode === "master" && (
+          <button
+            onClick={() => setActiveTab("cards")}
+            className={`flex-1 py-3 text-center transition-colors border-b-2 ${
+              activeTab === "cards"
+                ? "border-amber-500 text-stone-100 font-medium"
+                : "border-transparent text-stone-400 hover:text-stone-200"
+            }`}
+          >
+            Cards{" "}
+            <span className="text-stone-500 text-[11px] font-normal ml-0.5">
+              {playthrough.story_cards.length}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Content Area */}
@@ -145,27 +150,8 @@ export function WorldCodexSidebar({
           </div>
         )}
 
-        {activeTab === "cards" && (
-          <div className="space-y-3">
-            {playthrough.story_cards.map((card) => (
-              <div
-                key={card.id}
-                className="p-3.5 rounded-lg bg-stone-900/60 hover:bg-stone-900/80 transition-colors"
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <h4 className="font-serif text-stone-200 font-semibold text-sm">
-                    {card.title}
-                  </h4>
-                  <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-stone-800/60 text-stone-400 uppercase tracking-wider">
-                    {card.category}
-                  </span>
-                </div>
-                <p className="font-serif text-xs text-stone-400 leading-relaxed">
-                  {card.content}
-                </p>
-              </div>
-            ))}
-          </div>
+        {activeTab === "cards" && mode === "master" && (
+          <StoryCardsPanel storyCards={playthrough.story_cards} />
         )}
       </div>
     </aside>

@@ -107,6 +107,9 @@ interface StudioState {
 
   activeMasterTab: MasterModeTabId;
   setActiveMasterTab: (tab: MasterModeTabId) => void;
+
+  factsEntityFilter: string | null;
+  setFactsEntityFilter: (entityId: string | null) => void;
 }
 
 export const useStudioStore = create<StudioState>((set) => ({
@@ -139,4 +142,7 @@ export const useStudioStore = create<StudioState>((set) => ({
 
   activeMasterTab: "entities",
   setActiveMasterTab: (tab) => set({ activeMasterTab: tab }),
+
+  factsEntityFilter: null,
+  setFactsEntityFilter: (entityId) => set({ factsEntityFilter: entityId }),
 }));

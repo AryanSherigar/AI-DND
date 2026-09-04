@@ -39,7 +39,16 @@ export const Header: React.FC = () => {
         <div className="flex items-center gap-4 font-mono">
           {user ? (
             <div className="flex items-center gap-4">
-              <span className="text-white/80 text-sm">{user.display_name}</span>
+              <Link
+                to="/profile"
+                className="flex items-center gap-1.5 text-white/90 text-sm hover:text-amber-300 transition-colors group"
+                title="View your Adventurer Chronicle"
+              >
+                <span className="group-hover:text-amber-300 font-bold transition-colors">
+                  {user.display_name}
+                </span>
+                <span className="text-amber-400 text-xs">✦</span>
+              </Link>
               <button
                 onClick={logout}
                 className="px-4 py-2 rounded-md bg-white/10 hover:bg-white/20 border border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.3)] transition-all text-white text-sm"

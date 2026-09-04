@@ -13,6 +13,8 @@ export type DisplayScenario = ScenarioSummaryResponse | ScenarioMock;
 export const useDiscovery = (searchParams: URLSearchParams) => {
   const params: GetScenariosParams = useMemo(() => {
     const mineParam = searchParams.get("mine");
+    const savedParam = searchParams.get("saved");
+    const playedParam = searchParams.get("played");
     const modeParam = searchParams.get("mode");
     const playerParam = searchParams.get("playerCount");
     const sortParam = searchParams.get("sort");
@@ -22,6 +24,14 @@ export const useDiscovery = (searchParams: URLSearchParams) => {
 
     if (mineParam === "true") {
       queryParams.mine = true;
+    }
+
+    if (savedParam === "true") {
+      queryParams.saved = true;
+    }
+
+    if (playedParam === "true") {
+      queryParams.played = true;
     }
 
     if (modeParam === "newbie" || modeParam === "master") {

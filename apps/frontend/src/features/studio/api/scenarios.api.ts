@@ -1,13 +1,21 @@
 import { apiClient } from "@/shared/lib/api-client";
 import {
   ScenarioCreate,
+  ScenarioListResponse,
   ScenarioResponse,
   ScenarioStatus,
   ScenarioUpdate,
 } from "../types/scenario.types";
 
-export type { ScenarioStatus, ScenarioResponse };
+export type { ScenarioStatus, ScenarioResponse, ScenarioListResponse };
 export type CreateScenarioPayload = ScenarioCreate;
+
+export interface ListScenariosParams {
+  mine?: boolean;
+  sort?: string;
+  limit?: number;
+  offset?: number;
+}
 
 export const createScenario = async (
   payload: CreateScenarioPayload,
@@ -57,4 +65,17 @@ export const publishScenario = async (
     `/v1/scenarios/${scenarioId}/publish`,
   );
   return response.data;
+};
+
+export const listScenarios = async (
+  params: ListScenariosParams,
+): Promise<ScenarioListResponse> => {
+  const response = await apiClient.get<ScenarioListResponse>("/v1/scenarios", {
+    params,
+  });
+  return response.data;
+};
+
+export const deleteScenario = async (scenarioId: string): Promise<void> => {
+  await apiClient.delete(`/v1/scenarios/${scenarioId}`);
 };

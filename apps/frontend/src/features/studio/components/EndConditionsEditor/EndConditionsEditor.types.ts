@@ -1,5 +1,12 @@
-import { AvailableField, FieldExpression } from "../ConditionEditor/ExpressionBuilder/ExpressionBuilder.types";
-import { EndConditionCreate, EndConditionResponse, OutcomeTag } from "../../types/end_condition.types";
+import {
+  AvailableField,
+  FieldExpression,
+} from "../ConditionEditor/ExpressionBuilder/ExpressionBuilder.types";
+import {
+  EndConditionCreate,
+  EndConditionResponse,
+  OutcomeTag,
+} from "../../types/end_condition.types";
 
 export interface EndConditionsEditorProps {
   scenarioId: string;
@@ -7,6 +14,7 @@ export interface EndConditionsEditorProps {
 
 export interface EndConditionRowProps {
   endCondition: EndConditionResponse;
+  onEdit: (endCondition: EndConditionResponse) => void;
   onDelete: (endConditionId: string) => void;
 }
 
@@ -20,6 +28,7 @@ export interface EndConditionFormState {
 
 export interface EndConditionFormProps {
   availableFields: AvailableField[];
+  endCondition?: EndConditionResponse | null;
   onSubmit: (payload: EndConditionCreate) => void;
   onCancel: () => void;
   isSubmitting: boolean;

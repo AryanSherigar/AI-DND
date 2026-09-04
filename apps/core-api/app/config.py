@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:5173"
     log_level: str = "INFO"
     log_format: str = "json"
+    gcs_bucket_name: str = ""
 
 
 settings = Settings()

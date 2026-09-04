@@ -35,7 +35,7 @@ export const DiscoveryPage: React.FC = () => {
   return (
     <div className="flex h-screen bg-[#0d0f14] text-white overflow-hidden">
       {/* Sidebar Navigation */}
-      <DiscoverySidebar />
+      <DiscoverySidebar searchParams={searchParams} />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">

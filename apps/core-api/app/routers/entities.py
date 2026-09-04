@@ -13,9 +13,13 @@ from app.models.entity import (
     EntityCreate,
     EntityListResponse,
     EntityResponse,
+    EntityTypeChangePreviewRequest,
+    EntityTypeChangePreviewResponse,
     EntityUpdate,
 )
 from app.repositories.entity_repo import EntityRepo
+from app.repositories.fact_repo import FactRepo
+from app.repositories.scenario_entity_type_repo import ScenarioEntityTypeRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.services.entity_service import EntityService
 
@@ -26,7 +30,12 @@ def get_entity_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> EntityService:
     """Dependency injector for EntityService."""
-    return EntityService(EntityRepo(session), ScenarioRepo(session))
+    return EntityService(
+        EntityRepo(session),
+        ScenarioRepo(session),
+        FactRepo(session),
+        ScenarioEntityTypeRepo(session),
+    )
 
 
 @router.post("", response_model=EntityResponse, status_code=status.HTTP_201_CREATED)
@@ -76,6 +85,25 @@ async def update_entity(
 ) -> EntityResponse:
     """Update an entity's fields."""
     return await service.update_entity(scenario_id, entity_id, user.user_id, data)
+
+
+@router.post(
+    "/{entity_id}/type-change-preview",
+    response_model=EntityTypeChangePreviewResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def preview_entity_type_change(
+    scenario_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    data: EntityTypeChangePreviewRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[EntityService, Depends(get_entity_service)],
+) -> EntityTypeChangePreviewResponse:
+    """Preview how changing an entity's type would compare against the new
+    type's attribute template, without committing the change."""
+    return await service.preview_type_change(
+        scenario_id, entity_id, user.user_id, data.new_entity_type
+    )
 
 
 @router.delete("/{entity_id}", status_code=status.HTTP_204_NO_CONTENT)

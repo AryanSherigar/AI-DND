@@ -3,7 +3,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connection import get_db_session
@@ -41,9 +41,10 @@ async def list_facts(
     scenario_id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
     service: Annotated[FactService, Depends(get_fact_service)],
+    entity_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> FactListResponse:
-    """List all facts for a scenario."""
-    items = await service.list_facts(scenario_id, user.user_id)
+    """List facts for a scenario, optionally filtered to those referencing one entity."""
+    items = await service.list_facts(scenario_id, user.user_id, entity_id)
     return FactListResponse(items=items)
 
 

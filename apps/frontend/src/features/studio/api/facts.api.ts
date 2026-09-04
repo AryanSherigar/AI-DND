@@ -8,9 +8,11 @@ import {
 
 export const listFacts = async (
   scenarioId: string,
+  entityId?: string | null,
 ): Promise<FactListResponse> => {
   const response = await apiClient.get<FactListResponse>(
     `/v1/scenarios/${scenarioId}/facts`,
+    entityId ? { params: { entity_id: entityId } } : undefined,
   );
   return response.data;
 };

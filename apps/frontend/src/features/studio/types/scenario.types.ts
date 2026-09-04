@@ -31,11 +31,7 @@ export interface SetupArchetype {
 export type ScenarioMode = "newbie" | "master";
 
 export type ScenarioStatus =
-  | "draft"
-  | "publishing"
-  | "published"
-  | "publish_failed"
-  | "archived";
+  "draft" | "publishing" | "published" | "publish_failed" | "archived";
 
 export type ScenarioComplexityTier = "newbie" | "intermediate" | "master";
 
@@ -89,6 +85,31 @@ export interface ScenarioUpdate {
   narration_font?: string;
   action_chips?: string[];
   setup_archetypes?: SetupArchetype[];
+}
+
+export interface ScenarioSummaryResponse {
+  scenario_id: string;
+  creator_id: string;
+  title: string;
+  logline: string | null;
+  mode: ScenarioMode;
+  status: ScenarioStatus;
+  genre_tags: string[];
+  complexity_tier: ScenarioComplexityTier;
+  player_count_support: ScenarioPlayerCountSupport;
+  estimated_playtime: string | null;
+  cover_image_url: string | null;
+  content_tag: string | null;
+  play_count: number;
+  rating_avg: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScenarioListResponse {
+  items: ScenarioSummaryResponse[];
+  next_cursor: string | null;
+  total_count: number;
 }
 
 export interface ScenarioResponse {

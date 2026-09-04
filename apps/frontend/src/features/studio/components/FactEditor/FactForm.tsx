@@ -6,23 +6,27 @@ import { FactFormProps, FactFormState, FactObjectType } from "./FactForm.types";
 
 const NO_SELECTION_OPTION: SelectOption = { value: "", label: "Select…" };
 
-const buildInitialState = (): FactFormState => ({
-  subjectEntityId: "",
-  predicate: "",
-  objectType: "entity",
-  objectEntityId: "",
-  objectLiteral: "",
-  hidden: false,
+const buildInitialState = (fact?: FactFormProps["fact"]): FactFormState => ({
+  subjectEntityId: fact?.subject_entity_id ?? "",
+  predicate: fact?.predicate ?? "",
+  objectType: fact?.object_literal ? "literal" : "entity",
+  objectEntityId: fact?.object_entity_id ?? "",
+  objectLiteral: fact?.object_literal ?? "",
+  hidden: fact?.hidden ?? false,
 });
 
 export const FactForm: React.FC<FactFormProps> = ({
   entities,
+  fact,
   onSubmit,
   onCancel,
   isSubmitting,
   submitError,
 }) => {
-  const [formState, setFormState] = useState<FactFormState>(buildInitialState);
+  const [formState, setFormState] = useState<FactFormState>(() =>
+    buildInitialState(fact),
+  );
+  const isEditing = Boolean(fact);
   const entityOptions: SelectOption[] = entities.map((entity) => ({
     value: entity.entity_id,
     label: entity.canonical_name,
@@ -71,7 +75,13 @@ export const FactForm: React.FC<FactFormProps> = ({
         onChange={(e) =>
           setFormState({ ...formState, subjectEntityId: e.target.value })
         }
+        disabled={isEditing}
       />
+      {isEditing && (
+        <p className="text-xs text-zinc-500">
+          The subject can't be changed after a fact is created.
+        </p>
+      )}
       <Input
         value={formState.predicate}
         onChange={(e) =>

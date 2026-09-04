@@ -2,10 +2,10 @@ import {
   AttributeFieldSchema,
   EntityCreate,
   EntityResponse,
-  EntityType,
 } from "../../types/entity.types";
 
 export interface EntityFormProps {
+  scenarioId: string;
   entity: EntityResponse | null;
   onSubmit: (payload: EntityCreate) => void;
   onCancel: () => void;
@@ -14,7 +14,7 @@ export interface EntityFormProps {
 }
 
 export interface EntityFormState {
-  entityType: EntityType;
+  entityType: string;
   canonicalName: string;
   aliasesText: string;
   description: string;

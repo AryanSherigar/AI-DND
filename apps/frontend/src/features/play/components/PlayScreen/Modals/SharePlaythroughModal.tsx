@@ -95,7 +95,9 @@ export function SharePlaythroughModal() {
                 <button
                   type="button"
                   disabled={!spectatorUrl}
-                  onClick={() => spectatorUrl && handleCopy(spectatorUrl, "spectate")}
+                  onClick={() =>
+                    spectatorUrl && handleCopy(spectatorUrl, "spectate")
+                  }
                   className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-mono text-xs font-bold rounded transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {copiedType === "spectate" ? "Copied!" : "Copy"}

@@ -16,9 +16,11 @@ from app.models.playthrough import PlaythroughCreate
 from app.repositories.condition_repo import ConditionRepo
 from app.repositories.end_condition_repo import EndConditionRepo
 from app.repositories.entity_repo import EntityRepo
+from app.repositories.fact_repo import FactRepo
 from app.repositories.invariant_repo import InvariantRepo
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
+from app.repositories.scenario_entity_type_repo import ScenarioEntityTypeRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.share_repo import ShareRepo
 from app.repositories.turn_log_repo import TurnLogRepo
@@ -314,7 +316,12 @@ async def test_create_playthrough_master_mode_snapshot_includes_entities_and_rul
     db_session.add(scenario)
     await db_session.flush()
 
-    entity_service = EntityService(EntityRepo(db_session), ScenarioRepo(db_session))
+    entity_service = EntityService(
+        EntityRepo(db_session),
+        ScenarioRepo(db_session),
+        FactRepo(db_session),
+        ScenarioEntityTypeRepo(db_session),
+    )
     warden = await entity_service.create_entity(
         scenario.scenario_id,
         user.user_id,

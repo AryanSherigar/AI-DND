@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.entity import Entity
@@ -31,6 +31,16 @@ class EntityRepo:
         stmt = select(Entity).where(Entity.scenario_id == scenario_id)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def count_by_type(self, scenario_id: uuid.UUID, entity_type: str) -> int:
+        """Count entities of a given type within a scenario (pre-delete check)."""
+        stmt = (
+            select(func.count())
+            .select_from(Entity)
+            .where(Entity.scenario_id == scenario_id, Entity.entity_type == entity_type)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one()
 
     async def update(self, entity: Entity) -> Entity:
         """Flush changes to an existing entity."""

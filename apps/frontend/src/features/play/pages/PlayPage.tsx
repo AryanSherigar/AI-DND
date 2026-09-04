@@ -34,7 +34,9 @@ function buildCustomFields(
   setupMap: Record<string, unknown>,
   setupSchema: SetupSchemaField[],
 ): CharacterSetupField[] {
-  const labelByKey = new Map(setupSchema.map((field) => [field.key, field.label]));
+  const labelByKey = new Map(
+    setupSchema.map((field) => [field.key, field.label]),
+  );
   return Object.entries(setupMap)
     .filter(([key]) => key !== "character_name")
     .map(([key, value]) => ({
@@ -50,11 +52,7 @@ export function PlayPage() {
   const setPlaythrough = usePlayStore((s) => s.setPlaythrough);
   const queryClient = useQueryClient();
 
-  const {
-    data: serverPlaythrough,
-    isLoading,
-    isError,
-  } = usePlaythrough(id);
+  const { data: serverPlaythrough, isLoading, isError } = usePlaythrough(id);
   const { data: turnsData } = usePlaythroughTurns(id);
 
   const isSpectatorMode = searchParams.get("mode") === "spectate";
@@ -84,6 +82,7 @@ export function PlayPage() {
     const worldData = (snapshot.world_data ?? {}) as NewbieWorldData;
     const setupSchema = (snapshot.setup_schema ?? []) as SetupSchemaField[];
     const customFields = buildCustomFields(setupMap, setupSchema);
+    const mode = (snapshot.mode as "newbie" | "master") || "newbie";
 
     const turns: TurnLogItem[] = (turnsData?.items ?? []).map((turn) => ({
       id: turn.turn_id,
@@ -104,6 +103,7 @@ export function PlayPage() {
       playthrough_id: serverPlaythrough.playthrough_id,
       scenario_id: serverPlaythrough.scenario_id,
       scenario_title: serverPlaythrough.scenario_title,
+      mode,
       creator_name: "Scenario Creator",
       opening_premise:
         worldData.openingPrompt ||
@@ -114,21 +114,17 @@ export function PlayPage() {
         worldData.singleLorePrompt ||
         "No world lore recorded.",
       key_facts: (worldData.facts ?? []).map((fact) => fact.text),
-      story_cards: (worldData.storyCards ?? []).map(
-        (card): StoryCard => ({
-          id: card.id,
-          title: card.name,
-          category: card.type,
-          content: card.content,
-        }),
-      ),
+      story_cards: (worldData.storyCards ?? []).map((card): StoryCard => ({
+        id: card.id,
+        title: card.name,
+        category: card.type,
+        content: card.content,
+      })),
       character_name: (setupMap.character_name as string) || "Adventurer",
       custom_fields: customFields,
       turns,
       is_spectator: isSpectatorMode,
-      participant_id: isSpectatorMode
-        ? null
-        : serverPlaythrough.participant_id,
+      participant_id: isSpectatorMode ? null : serverPlaythrough.participant_id,
       can_act: canAct,
     };
 

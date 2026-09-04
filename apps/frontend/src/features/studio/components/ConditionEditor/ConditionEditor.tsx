@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Button } from "@/shared/components/ui/Button";
+import { EmptyState } from "@/shared/components/ui/EmptyState";
 import { Modal } from "@/shared/components/ui/Modal";
 import { useConditions } from "../../hooks/useConditions";
 import { useEntities } from "../../hooks/useEntities";
@@ -76,6 +77,13 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
       </div>
       {isLoading && (
         <p className="text-sm text-zinc-500">Loading conditions…</p>
+      )}
+      {!isLoading && conditions.length === 0 && (
+        <EmptyState
+          title="No active rules yet"
+          description="Active rules watch tracked values and facts during play and trigger narrator behavior when they become true."
+          example="Example: when player.suspicion >= 80, alert the guards."
+        />
       )}
       <div className="space-y-2">
         {conditions.map((condition) => (

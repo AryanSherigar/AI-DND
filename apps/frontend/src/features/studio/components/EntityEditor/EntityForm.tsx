@@ -1,15 +1,29 @@
 import React, { useState } from "react";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
-import { Select } from "@/shared/components/ui/Select";
-import { ENTITY_TYPES, EntityType } from "../../types/entity.types";
+import { Select, SelectOption } from "@/shared/components/ui/Select";
+import { useEntityTypeChangePreview } from "../../hooks/useEntityTypeChangePreview";
+import { useScenarioEntityTypes } from "../../hooks/useScenarioEntityTypes";
+import {
+  ENTITY_TYPES,
+  EntityTypeChangePreviewResponse,
+} from "../../types/entity.types";
 import { AttributesSchemaEditor } from "./AttributesSchemaEditor";
+import { CustomEntityTypeForm } from "./CustomEntityTypeForm";
 import { EntityFormProps, EntityFormState } from "./EntityForm.types";
+import { EntityTypeChangeWarningModal } from "./EntityTypeChangeWarningModal";
 
-const ENTITY_TYPE_OPTIONS = ENTITY_TYPES.map((type) => ({
-  value: type,
-  label: type,
-}));
+const NEW_CUSTOM_TYPE_VALUE = "__new_custom_type__";
+const NEW_CUSTOM_TYPE_OPTION: SelectOption = {
+  value: NEW_CUSTOM_TYPE_VALUE,
+  label: "+ New custom type…",
+};
+
+interface PendingTypeChange {
+  entityType: string;
+  label: string;
+  preview: EntityTypeChangePreviewResponse;
+}
 
 const buildInitialState = (
   entity: EntityFormProps["entity"],
@@ -30,36 +44,119 @@ const parseAliases = (aliasesText: string): string[] =>
     .filter(Boolean);
 
 export const EntityForm: React.FC<EntityFormProps> = ({
+  scenarioId,
   entity,
   onSubmit,
   onCancel,
   isSubmitting,
   submitError,
 }) => {
+  const { entityTypes, createEntityTypeAsync } =
+    useScenarioEntityTypes(scenarioId);
+  const { previewTypeChange } = useEntityTypeChangePreview(scenarioId);
+
   const [formState, setFormState] = useState<EntityFormState>(() =>
     buildInitialState(entity),
   );
+  const [customTypeKey, setCustomTypeKey] = useState("");
+  const [customTypeLabel, setCustomTypeLabel] = useState("");
+  const [customTypeAttributesSchema, setCustomTypeAttributesSchema] = useState<
+    EntityFormState["attributesSchema"]
+  >({});
+  const [pendingTypeChange, setPendingTypeChange] =
+    useState<PendingTypeChange | null>(null);
+  const [isSavingCustomType, setIsSavingCustomType] = useState(false);
+
+  const isNewCustomType = formState.entityType === NEW_CUSTOM_TYPE_VALUE;
   const isItemType = formState.entityType === "item";
 
-  const handleSubmit = (event: React.FormEvent): void => {
+  const entityTypeOptions: SelectOption[] = [
+    ...ENTITY_TYPES.map((type) => ({ value: type, label: type })),
+    ...entityTypes.map((type) => ({
+      value: type.type_key,
+      label: type.display_label,
+    })),
+    NEW_CUSTOM_TYPE_OPTION,
+  ];
+
+  const resolveOptionLabel = (value: string): string =>
+    entityTypeOptions.find((option) => option.value === value)?.label ?? value;
+
+  const handleTypeSelectChange = (
+    event: React.ChangeEvent<HTMLSelectElement>,
+  ): void => {
+    const nextType = event.target.value;
+    if (
+      nextType === NEW_CUSTOM_TYPE_VALUE ||
+      !entity ||
+      nextType === entity.entity_type
+    ) {
+      setFormState({ ...formState, entityType: nextType });
+      return;
+    }
+
+    previewTypeChange(
+      { entityId: entity.entity_id, newEntityType: nextType },
+      {
+        onSuccess: (preview) => {
+          if (preview.dropped_fields.length === 0) {
+            setFormState((current) => ({ ...current, entityType: nextType }));
+            return;
+          }
+          setPendingTypeChange({
+            entityType: nextType,
+            label: resolveOptionLabel(nextType),
+            preview,
+          });
+        },
+      },
+    );
+  };
+
+  const handleConfirmTypeChange = (): void => {
+    if (!pendingTypeChange) return;
+    setFormState((current) => ({
+      ...current,
+      entityType: pendingTypeChange.entityType,
+    }));
+    setPendingTypeChange(null);
+  };
+
+  const handleCancelTypeChange = (): void => setPendingTypeChange(null);
+
+  const handleSubmit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault();
+
+    let finalEntityType = formState.entityType;
+    let finalAttributesSchema = formState.attributesSchema;
+
+    if (isNewCustomType) {
+      if (!customTypeLabel.trim() || !customTypeKey) return;
+      setIsSavingCustomType(true);
+      try {
+        const created = await createEntityTypeAsync({
+          type_key: customTypeKey,
+          display_label: customTypeLabel,
+          attributes_schema: customTypeAttributesSchema,
+        });
+        finalEntityType = created.type_key;
+        finalAttributesSchema = {
+          ...customTypeAttributesSchema,
+          ...formState.attributesSchema,
+        };
+      } finally {
+        setIsSavingCustomType(false);
+      }
+    }
+
     onSubmit({
-      entity_type: formState.entityType,
+      entity_type: finalEntityType,
       canonical_name: formState.canonicalName,
       aliases: parseAliases(formState.aliasesText),
       description: formState.description || undefined,
-      obtainable: isItemType ? formState.obtainable : undefined,
+      obtainable: finalEntityType === "item" ? formState.obtainable : undefined,
       narrator_instruction: formState.narratorInstruction || undefined,
-      attributes_schema: formState.attributesSchema,
-    });
-  };
-
-  const handleTypeChange = (
-    event: React.ChangeEvent<HTMLSelectElement>,
-  ): void => {
-    setFormState({
-      ...formState,
-      entityType: event.target.value as EntityType,
+      attributes_schema: finalAttributesSchema,
     });
   };
 
@@ -67,10 +164,20 @@ export const EntityForm: React.FC<EntityFormProps> = ({
     <form onSubmit={handleSubmit} className="space-y-3">
       <Select
         aria-label="Entity type"
-        options={ENTITY_TYPE_OPTIONS}
+        options={entityTypeOptions}
         value={formState.entityType}
-        onChange={handleTypeChange}
+        onChange={handleTypeSelectChange}
       />
+      {isNewCustomType && (
+        <CustomEntityTypeForm
+          typeKey={customTypeKey}
+          displayLabel={customTypeLabel}
+          attributesSchema={customTypeAttributesSchema}
+          onTypeKeyChange={setCustomTypeKey}
+          onDisplayLabelChange={setCustomTypeLabel}
+          onAttributesSchemaChange={setCustomTypeAttributesSchema}
+        />
+      )}
       <Input
         value={formState.canonicalName}
         onChange={(e) =>
@@ -95,7 +202,7 @@ export const EntityForm: React.FC<EntityFormProps> = ({
         className="w-full border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300"
         rows={3}
       />
-      {isItemType && (
+      {isItemType && !isNewCustomType && (
         <label className="flex items-center gap-2 text-sm text-zinc-300">
           <input
             type="checkbox"
@@ -116,21 +223,30 @@ export const EntityForm: React.FC<EntityFormProps> = ({
         className="w-full border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300"
         rows={2}
       />
-      <AttributesSchemaEditor
-        value={formState.attributesSchema}
-        onChange={(attributesSchema) =>
-          setFormState({ ...formState, attributesSchema })
-        }
-      />
+      {!isNewCustomType && (
+        <AttributesSchemaEditor
+          value={formState.attributesSchema}
+          onChange={(attributesSchema) =>
+            setFormState({ ...formState, attributesSchema })
+          }
+        />
+      )}
       {submitError && <p className="text-xs text-red-400">{submitError}</p>}
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Saving…" : "Save"}
+        <Button type="submit" disabled={isSubmitting || isSavingCustomType}>
+          {isSubmitting || isSavingCustomType ? "Saving…" : "Save"}
         </Button>
       </div>
+      <EntityTypeChangeWarningModal
+        isOpen={pendingTypeChange !== null}
+        newTypeLabel={pendingTypeChange?.label ?? ""}
+        preview={pendingTypeChange?.preview ?? null}
+        onConfirm={handleConfirmTypeChange}
+        onCancel={handleCancelTypeChange}
+      />
     </form>
   );
 };

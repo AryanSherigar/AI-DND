@@ -13,14 +13,17 @@ const requireScenarioId = (scenarioId: string | null): string => {
   return scenarioId;
 };
 
-export const useFacts = (scenarioId: string | null) => {
+export const useFacts = (
+  scenarioId: string | null,
+  entityId: string | null = null,
+) => {
   const queryClient = useQueryClient();
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["facts", scenarioId] });
 
   const factsQuery = useQuery<FactListResponse, Error>({
-    queryKey: ["facts", scenarioId],
-    queryFn: () => listFacts(scenarioId as string),
+    queryKey: ["facts", scenarioId, entityId],
+    queryFn: () => listFacts(scenarioId as string, entityId),
     enabled: Boolean(scenarioId),
   });
 

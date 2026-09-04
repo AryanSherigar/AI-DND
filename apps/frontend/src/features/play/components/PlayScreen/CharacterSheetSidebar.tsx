@@ -75,9 +75,6 @@ export function CharacterSheetSidebar({
               <div className="font-serif text-stone-100 font-semibold text-base leading-tight">
                 {playthrough.character_name}
               </div>
-              <div className="font-mono text-[11px] text-stone-400 uppercase tracking-wider mt-1">
-                Newbie Protagonist
-              </div>
             </div>
           </div>
         </div>

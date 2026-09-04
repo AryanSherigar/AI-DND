@@ -19,6 +19,7 @@ from app.models.fact import FactCreate
 from app.models.scenario import ScenarioCreate
 from app.repositories.entity_repo import EntityRepo
 from app.repositories.fact_repo import FactRepo
+from app.repositories.scenario_entity_type_repo import ScenarioEntityTypeRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.user_repo import UserRepo
 from app.services.entity_service import EntityService
@@ -223,7 +224,12 @@ async def test_run_publish_job_master_mode_sends_entities_and_facts(
     service = PublishService(ScenarioRepo(db_session))
     created = await _create_master_draft(db_session, sample_user)
 
-    entity_service = EntityService(EntityRepo(db_session), ScenarioRepo(db_session))
+    entity_service = EntityService(
+        EntityRepo(db_session),
+        ScenarioRepo(db_session),
+        FactRepo(db_session),
+        ScenarioEntityTypeRepo(db_session),
+    )
     warden = await entity_service.create_entity(
         created.scenario_id,
         sample_user.user_id,

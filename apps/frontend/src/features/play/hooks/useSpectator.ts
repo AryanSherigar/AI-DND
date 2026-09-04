@@ -9,7 +9,10 @@ export interface SpectatorEvent {
 }
 
 /** Read-only live narration stream for spectators, gated on a share token. */
-export function useSpectator(playthroughId: string | null, shareToken: string | null) {
+export function useSpectator(
+  playthroughId: string | null,
+  shareToken: string | null,
+) {
   const [streamingText, setStreamingText] = useState("");
   const [isLive, setIsLive] = useState(false);
 

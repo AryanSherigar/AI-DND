@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { renderHook } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { delay, http, HttpResponse } from "msw";
 import React from "react";
 import { describe, expect, it } from "vitest";
@@ -55,8 +56,16 @@ describe("buildReorderedIds", () => {
 describe("EndConditionsEditor", () => {
   it("calls the reorder mutation with the new ordered ids and re-renders the list optimistically before the network resolves", async () => {
     mockScenarioAndEntities();
-    const first = buildEndCondition({ end_condition_id: "a", priority: 0, outcome_title: "Alpha" });
-    const second = buildEndCondition({ end_condition_id: "b", priority: 1, outcome_title: "Beta" });
+    const first = buildEndCondition({
+      end_condition_id: "a",
+      priority: 0,
+      outcome_title: "Alpha",
+    });
+    const second = buildEndCondition({
+      end_condition_id: "b",
+      priority: 1,
+      outcome_title: "Beta",
+    });
     server.use(
       http.get(`${API_URL}/v1/scenarios/${SCENARIO_ID}/end_conditions`, () =>
         HttpResponse.json({ items: [first, second] }),
@@ -78,12 +87,8 @@ describe("EndConditionsEditor", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const wrapper: React.FC<{ children: React.ReactNode }> = ({
-      children,
-    }) => (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
+    const wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
 
     render(
@@ -111,5 +116,59 @@ describe("EndConditionsEditor", () => {
     await waitFor(() => {
       expect(receivedBody).toEqual({ ordered_end_condition_ids: ["b", "a"] });
     });
+  });
+
+  it("opens the edit modal prefilled and calls update (not create) on submit", async () => {
+    mockScenarioAndEntities();
+    const endCondition = buildEndCondition();
+    server.use(
+      http.get(`${API_URL}/v1/scenarios/${SCENARIO_ID}/end_conditions`, () =>
+        HttpResponse.json({ items: [endCondition] }),
+      ),
+    );
+
+    let receivedBody: unknown = null;
+    let wasCreateCalled = false;
+    server.use(
+      http.patch(
+        `${API_URL}/v1/scenarios/${SCENARIO_ID}/end_conditions/${endCondition.end_condition_id}`,
+        async ({ request }) => {
+          receivedBody = await request.json();
+          return HttpResponse.json({
+            ...endCondition,
+            outcome_title: "Vanquished",
+          });
+        },
+      ),
+      http.post(`${API_URL}/v1/scenarios/${SCENARIO_ID}/end_conditions`, () => {
+        wasCreateCalled = true;
+        return HttpResponse.json(endCondition);
+      }),
+    );
+
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <EndConditionsEditor scenarioId={SCENARIO_ID} />
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: /^edit$/i }));
+
+    const titleInput = screen.getByLabelText(/outcome title/i);
+    expect(titleInput).toHaveValue(endCondition.outcome_title);
+
+    await user.clear(titleInput);
+    await user.type(titleInput, "Vanquished");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(receivedBody).toMatchObject({ outcome_title: "Vanquished" }),
+    );
+    expect(wasCreateCalled).toBe(false);
   });
 });

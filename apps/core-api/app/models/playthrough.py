@@ -13,6 +13,16 @@ class PlaythroughCreate(BaseModel):
     setup_values: dict[str, object] = Field(default_factory=dict)
 
 
+class PlaythroughCharacterUpdate(BaseModel):
+    """Payload to edit character setup values on an active playthrough.
+
+    Merged into the existing state.setup dict rather than replacing it, so
+    callers only need to send the fields they are editing.
+    """
+
+    setup_values: dict[str, object] = Field(default_factory=dict)
+
+
 class ParticipantSummary(BaseModel):
     """Lightweight participant info for frontend turn-order derivation."""
 

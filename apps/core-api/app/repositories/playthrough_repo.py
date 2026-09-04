@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.playthrough import Playthrough
+from app.db.models.scenario import Scenario
 
 
 class PlaythroughRepo:
@@ -48,3 +49,19 @@ class PlaythroughRepo:
         stmt = select(Playthrough).where(Playthrough.created_by == created_by)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def list_by_user_with_scenarios(
+        self, created_by: uuid.UUID, status: str | None = None
+    ) -> list[tuple[Playthrough, Scenario]]:
+        """Fetch all non-playtest playthroughs with scenario details for a user."""
+        stmt = (
+            select(Playthrough, Scenario)
+            .join(Scenario, Playthrough.scenario_id == Scenario.scenario_id)
+            .where(Playthrough.created_by == created_by)
+            .where(Playthrough.is_playtest.is_(False))
+        )
+        if status:
+            stmt = stmt.where(Playthrough.status == status)
+        stmt = stmt.order_by(Playthrough.updated_at.desc())
+        result = await self.session.execute(stmt)
+        return list(result.all())

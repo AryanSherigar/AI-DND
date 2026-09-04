@@ -140,10 +140,21 @@ export const WideScenarioCard: React.FC<WideScenarioCardProps> = ({
 
         {/* Metadata Row */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm font-mono text-zinc-400">
-          <span className="flex items-center gap-1.5 text-zinc-300">
-            <UserIcon className="w-4 h-4 opacity-70" />
-            {author}
-          </span>
+          {"creator_id" in scenario && scenario.creator_id ? (
+            <Link
+              to={`/profile/${scenario.creator_id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1.5 text-zinc-300 hover:text-amber-300 transition-colors"
+            >
+              <UserIcon className="w-4 h-4 opacity-70" />
+              <span className="hover:underline">{author}</span>
+            </Link>
+          ) : (
+            <span className="flex items-center gap-1.5 text-zinc-300">
+              <UserIcon className="w-4 h-4 opacity-70" />
+              {author}
+            </span>
+          )}
           <span className="hidden md:inline text-zinc-600">•</span>
           <span>{playerCount.toLocaleString()} plays</span>
           <span className="hidden md:inline text-zinc-600">•</span>

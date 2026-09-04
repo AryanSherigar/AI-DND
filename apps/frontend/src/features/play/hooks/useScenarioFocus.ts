@@ -164,7 +164,9 @@ export const useScenarioFocus = (scenarioId: string | undefined) => {
       // for what was just written, so merge it in directly and unconditionally.
       queryClient.setQueryData(
         ["scenario-reviews", scenarioId],
-        (old: ScenarioReviewListResponse | undefined): ScenarioReviewListResponse => {
+        (
+          old: ScenarioReviewListResponse | undefined,
+        ): ScenarioReviewListResponse => {
           const items = old?.items ?? [];
           const existingIndex = items.findIndex(
             (r) => r.user_id === submittedReview.user_id,

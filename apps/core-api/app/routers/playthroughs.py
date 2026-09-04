@@ -9,7 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.connection import get_db_session
 from app.db.models.user import User
 from app.middleware.auth import get_current_user, get_optional_current_user
-from app.models.playthrough import PlaythroughCreate, PlaythroughResponse
+from app.models.playthrough import (
+    PlaythroughCharacterUpdate,
+    PlaythroughCreate,
+    PlaythroughResponse,
+)
 from app.models.share import JoinRequest
 from app.models.turn_log import TurnLogListResponse
 from app.repositories.condition_repo import ConditionRepo
@@ -73,6 +77,23 @@ async def join_playthrough(
     )
 
 
+@router.patch(
+    "/{playthrough_id}/character",
+    response_model=PlaythroughResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def update_character_fields(
+    playthrough_id: uuid.UUID,
+    data: PlaythroughCharacterUpdate,
+    user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[PlaythroughService, Depends(get_playthrough_service)],
+) -> PlaythroughResponse:
+    """Edit character setup values (name, custom fields) on an active playthrough."""
+    return await service.update_character_fields(
+        playthrough_id=playthrough_id, user_id=user.user_id, data=data
+    )
+
+
 @router.get(
     "/{playthrough_id}",
     response_model=PlaythroughResponse,
@@ -85,6 +106,22 @@ async def get_playthrough(
 ) -> PlaythroughResponse:
     """Fetch a playthrough by ID. Participant-only access."""
     return await service.get_playthrough(
+        playthrough_id=playthrough_id, user_id=user.user_id
+    )
+
+
+@router.post(
+    "/{playthrough_id}/abandon",
+    response_model=PlaythroughResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def abandon_playthrough(
+    playthrough_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[PlaythroughService, Depends(get_playthrough_service)],
+) -> PlaythroughResponse:
+    """Mark an active playthrough as abandoned."""
+    return await service.abandon_playthrough(
         playthrough_id=playthrough_id, user_id=user.user_id
     )
 

@@ -4,14 +4,17 @@ import { BackgroundMist } from "./BackgroundMist";
 import { PlayHeader } from "./PlayHeader";
 import { WorldCodexSidebar } from "./WorldCodexSidebar";
 import { CharacterSheetSidebar } from "./CharacterSheetSidebar";
+import { NewbieActionSidebar } from "./NewbieActionSidebar";
 import { TurnHistory } from "./TurnHistory/TurnHistory";
 import { ActionInput } from "./ActionInput";
 import { SharePlaythroughModal } from "./Modals/SharePlaythroughModal";
 import { EditCharacterWarningModal } from "./Modals/EditCharacterWarningModal";
 import { EndPlaythroughModal } from "./Modals/EndPlaythroughModal";
 import { Toast } from "@/shared/components/feedback/Toast";
+import { NewbiePlayScreen } from "./NewbiePlayScreen";
 
 export function PlayScreen() {
+  const mode = usePlayStore((s) => s.playthrough?.mode) ?? "newbie";
   const degraded_message = usePlayStore((s) => s.degraded_message);
   const clearDegradedMessage = usePlayStore((s) => s.clearDegradedMessage);
   const is_left_sidebar_open = usePlayStore((s) => s.is_left_sidebar_open);
@@ -33,6 +36,10 @@ export function PlayScreen() {
     return () => window.removeEventListener("resize", handleResize);
   }, [setLeftSidebarOpen, setRightSidebarOpen]);
 
+  if (mode === "newbie") {
+    return <NewbiePlayScreen />;
+  }
+
   return (
     <div className="relative h-screen h-[100dvh] w-full bg-stone-950 text-stone-100 flex flex-col overflow-hidden font-sans selection:bg-amber-500/30 selection:text-amber-200">
       {/* Background Mist Motion Layer */}
@@ -47,6 +54,7 @@ export function PlayScreen() {
         <WorldCodexSidebar
           isOpen={is_left_sidebar_open}
           onToggle={toggleLeftSidebar}
+          mode={mode}
         />
 
         {/* Mobile Left Sidebar Backdrop */}
@@ -60,7 +68,7 @@ export function PlayScreen() {
         {/* Center Column: Narrative Feed & Floating Action Input */}
         <main className="flex-1 flex flex-col min-w-0 h-full bg-transparent relative overflow-hidden">
           <TurnHistory />
-          <ActionInput />
+          {mode === "master" && <ActionInput />}
         </main>
 
         {/* Mobile Right Sidebar Backdrop */}
@@ -71,11 +79,18 @@ export function PlayScreen() {
           />
         )}
 
-        {/* Right Sidebar: Character Sheet */}
-        <CharacterSheetSidebar
-          isOpen={is_right_sidebar_open}
-          onToggle={toggleRightSidebar}
-        />
+        {/* Right Sidebar: Character Sheet (master) or Action + Story Cards (newbie) */}
+        {mode === "master" ? (
+          <CharacterSheetSidebar
+            isOpen={is_right_sidebar_open}
+            onToggle={toggleRightSidebar}
+          />
+        ) : (
+          <NewbieActionSidebar
+            isOpen={is_right_sidebar_open}
+            onToggle={toggleRightSidebar}
+          />
+        )}
       </div>
 
       {/* Modals Layer */}

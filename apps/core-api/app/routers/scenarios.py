@@ -179,7 +179,10 @@ async def delete_scenario(
 async def list_scenarios(
     user: Annotated[User | None, Depends(get_optional_current_user)],
     service: Annotated[ScenarioService, Depends(get_scenario_service)],
+    creator_id: Annotated[uuid.UUID | None, Query()] = None,
     mine: bool = False,
+    saved: bool = False,
+    played: bool = False,
     genre_tags: Annotated[list[str] | None, Query()] = None,
     complexity_tier: Annotated[str | None, Query()] = None,
     player_count_support: Annotated[str | None, Query()] = None,
@@ -191,7 +194,10 @@ async def list_scenarios(
     current_user_id = user.user_id if user else None
     return await service.list_scenarios(
         current_user_id=current_user_id,
+        creator_id=creator_id,
         mine=mine,
+        saved=saved,
+        played=played,
         genre_tags=genre_tags,
         complexity_tier=complexity_tier,
         player_count_support=player_count_support,

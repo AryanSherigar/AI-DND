@@ -32,3 +32,6 @@ class User(Base, CreatedAtMixin):
         default=1,
         nullable=False,
     )
+    bio: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    banner_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)

@@ -1,11 +1,21 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useStudioStore } from "../../stores/studio.store";
 import { GENRES } from "../../../../shared/constants/genres";
+import {
+  ALLOWED_COVER_IMAGE_ACCEPT,
+  ALLOWED_COVER_IMAGE_TYPES,
+  MAX_COVER_IMAGE_BYTES,
+} from "../../constants/upload";
+import { useUploadCoverImage } from "../../hooks/useUploadCoverImage";
 
 export const Step1Meta: React.FC = () => {
   const { newbieDraft, updateNewbieDraft } = useStudioStore();
   const [localTitle, setLocalTitle] = useState(newbieDraft.title);
   const [localLogline, setLocalLogline] = useState(newbieDraft.logline);
+  const [isDraggingOverCover, setIsDraggingOverCover] = useState(false);
+  const [coverError, setCoverError] = useState<string | null>(null);
+  const coverFileInputRef = useRef<HTMLInputElement>(null);
+  const uploadCoverImage = useUploadCoverImage();
 
   // Sync state to studio store on change
   useEffect(() => {
@@ -19,6 +29,46 @@ export const Step1Meta: React.FC = () => {
       ? current.filter((g) => g !== genre)
       : [...current, genre];
     updateNewbieDraft({ genre_tags: updated });
+  };
+
+  const handleCoverFile = (file: File) => {
+    setCoverError(null);
+    if (!ALLOWED_COVER_IMAGE_TYPES.includes(file.type)) {
+      setCoverError("Unsupported image format. Use JPEG, PNG, or WebP.");
+      return;
+    }
+    if (file.size > MAX_COVER_IMAGE_BYTES) {
+      setCoverError("Image exceeds the 5MB size limit.");
+      return;
+    }
+    uploadCoverImage.mutate(file, {
+      onSuccess: (data) => {
+        updateNewbieDraft({ cover_image_url: data.url });
+      },
+      onError: () => {
+        setCoverError(
+          "Upload failed — try a smaller file or a different format.",
+        );
+      },
+    });
+  };
+
+  const handleCoverInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleCoverFile(file);
+    e.target.value = "";
+  };
+
+  const handleCoverDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDraggingOverCover(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleCoverFile(file);
+  };
+
+  const handleRemoveCoverImage = () => {
+    updateNewbieDraft({ cover_image_url: "" });
+    setCoverError(null);
   };
 
   return (
@@ -90,17 +140,60 @@ export const Step1Meta: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-3">
           <label className="block text-sm font-semibold tracking-wide text-zinc-300 uppercase">
-            Cover Image URL
+            Cover Image
           </label>
           <input
-            type="text"
-            value={newbieDraft.cover_image_url}
-            onChange={(e) =>
-              updateNewbieDraft({ cover_image_url: e.target.value })
-            }
-            placeholder="https://..."
-            className="w-full bg-zinc-950 border border-zinc-700 rounded-none px-4 py-3 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-300 transition-colors font-sans text-sm"
+            ref={coverFileInputRef}
+            type="file"
+            accept={ALLOWED_COVER_IMAGE_ACCEPT}
+            onChange={handleCoverInputChange}
+            className="hidden"
           />
+          {newbieDraft.cover_image_url ? (
+            <div className="relative border border-zinc-700 group">
+              <img
+                src={newbieDraft.cover_image_url}
+                alt="Cover preview"
+                className="w-full h-40 object-cover"
+              />
+              <button
+                type="button"
+                onClick={handleRemoveCoverImage}
+                className="absolute top-2 right-2 px-3 py-1.5 bg-zinc-950/80 text-zinc-100 text-xs font-semibold uppercase tracking-wide border border-zinc-700 hover:bg-zinc-900 transition-colors"
+              >
+                Remove image
+              </button>
+            </div>
+          ) : (
+            <div
+              onClick={() => coverFileInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDraggingOverCover(true);
+              }}
+              onDragLeave={() => setIsDraggingOverCover(false)}
+              onDrop={handleCoverDrop}
+              className={`w-full h-40 flex flex-col items-center justify-center gap-2 border rounded-none cursor-pointer transition-colors font-sans text-sm ${
+                isDraggingOverCover
+                  ? "border-zinc-300 bg-zinc-900"
+                  : "border-zinc-700 bg-zinc-950 hover:border-zinc-500"
+              }`}
+            >
+              {uploadCoverImage.isPending ? (
+                <span className="text-zinc-400">Uploading...</span>
+              ) : (
+                <>
+                  <span className="text-zinc-400">
+                    Click to upload or drag an image here
+                  </span>
+                  <span className="text-zinc-600 text-xs">
+                    JPEG, PNG, or WebP — up to 5MB
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+          {coverError && <p className="text-sm text-red-400">{coverError}</p>}
         </div>
         <div className="space-y-3">
           <label className="block text-sm font-semibold tracking-wide text-zinc-300 uppercase">
@@ -138,12 +231,12 @@ export const Step1Meta: React.FC = () => {
             Player Count
           </label>
           <div className="flex bg-zinc-950 p-1 border border-zinc-800 rounded-none">
-            {["solo", "multiplayer", "both"].map((count) => (
+            {(["solo", "multiplayer", "both"] as const).map((count) => (
               <button
                 key={count}
                 type="button"
                 onClick={() =>
-                  updateNewbieDraft({ player_count_support: count as any })
+                  updateNewbieDraft({ player_count_support: count })
                 }
                 className={`flex-1 px-2 py-2 text-xs font-semibold uppercase tracking-wider rounded-none transition-colors ${
                   newbieDraft.player_count_support === count

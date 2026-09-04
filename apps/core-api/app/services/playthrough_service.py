@@ -26,6 +26,7 @@ from app.logging_config import log_audit_event
 from app.models.memory import MemoryTemplateCloneRequest
 from app.models.playthrough import (
     ParticipantSummary,
+    PlaythroughCharacterUpdate,
     PlaythroughCreate,
     PlaythroughResponse,
 )
@@ -169,6 +170,67 @@ class PlaythroughService:
         )
         return _to_response(
             playthrough, scenario_title, participant.participant_id, all_participants
+        )
+
+    async def update_character_fields(
+        self,
+        playthrough_id: uuid.UUID,
+        user_id: uuid.UUID,
+        data: PlaythroughCharacterUpdate,
+    ) -> PlaythroughResponse:
+        """Merge edited character setup values into an active playthrough."""
+        playthrough = await self.playthrough_repo.get_by_id(playthrough_id)
+        if not playthrough:
+            raise PlaythroughNotFoundError()
+
+        participant = await self.participant_repo.get_by_playthrough_and_user(
+            playthrough_id, user_id
+        )
+        if not participant:
+            raise PlaythroughAccessDeniedError()
+
+        setup_schema = playthrough.scenario_snapshot.get("setup_schema", [])
+        _validate_setup_values(setup_schema, data.setup_values)
+
+        merged_setup = {**playthrough.state.get("setup", {}), **data.setup_values}
+        playthrough.state = {**playthrough.state, "setup": merged_setup}
+        updated = await self.playthrough_repo.update(playthrough)
+
+        scenario = await self.scenario_repo.get_by_id(updated.scenario_id)
+        all_participants = await self.participant_repo.list_by_playthrough(
+            playthrough_id
+        )
+        return _to_response(
+            updated,
+            scenario.title if scenario else "",
+            participant.participant_id,
+            all_participants,
+        )
+
+    async def abandon_playthrough(
+        self, playthrough_id: uuid.UUID, user_id: uuid.UUID
+    ) -> PlaythroughResponse:
+        """Mark an active playthrough as abandoned by its owner."""
+        playthrough = await self.playthrough_repo.get_by_id(playthrough_id)
+        if not playthrough:
+            raise PlaythroughNotFoundError()
+        participant = await self.participant_repo.get_by_playthrough_and_user(
+            playthrough_id, user_id
+        )
+        if not participant or participant.role != "owner":
+            raise PlaythroughAccessDeniedError()
+
+        playthrough.status = "abandoned"
+        updated = await self.playthrough_repo.update(playthrough)
+        scenario = await self.scenario_repo.get_by_id(updated.scenario_id)
+        all_participants = await self.participant_repo.list_by_playthrough(
+            playthrough_id
+        )
+        return _to_response(
+            updated,
+            scenario.title if scenario else "",
+            participant.participant_id,
+            all_participants,
         )
 
     async def join_playthrough(
