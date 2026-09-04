@@ -9,6 +9,15 @@ export const Step3Narrator: React.FC = () => {
     newbieDraft.aiInstructions,
   );
 
+  // Sync external changes (e.g. from AI Assistant) into local editor
+  useEffect(() => {
+    setLocalStyle(newbieDraft.narrativeStyle);
+  }, [newbieDraft.narrativeStyle]);
+
+  useEffect(() => {
+    setLocalInstructions(newbieDraft.aiInstructions);
+  }, [newbieDraft.aiInstructions]);
+
   useEffect(() => {
     const handler = setTimeout(() => {
       if (

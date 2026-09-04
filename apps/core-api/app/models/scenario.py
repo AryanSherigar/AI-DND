@@ -4,7 +4,29 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Reserved for Maps (docs/specs/master-mode-maps.spec.md): system-provisioned
+# and system-maintained at playthrough creation/turn time, never authored by
+# a creator directly, regardless of whether the scenario has any maps yet —
+# reserving them unconditionally avoids an order-of-operations bug where a
+# creator defines the field before adding a map.
+RESERVED_STATE_SCHEMA_KEYS: frozenset[str] = frozenset(
+    {"current_location_id", "discovered_location_ids"}
+)
+
+
+def _reject_reserved_state_keys(
+    state_schema: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if state_schema is None:
+        return state_schema
+    conflicts = RESERVED_STATE_SCHEMA_KEYS & state_schema.keys()
+    if conflicts:
+        raise ValueError(
+            f"state_schema cannot define reserved key(s): {sorted(conflicts)}"
+        )
+    return state_schema
 
 
 class ScenarioCreate(BaseModel):
@@ -32,6 +54,10 @@ class ScenarioCreate(BaseModel):
     narration_font: str | None = Field(default=None, max_length=50)
     action_chips: list[str] = Field(default_factory=list)
     setup_archetypes: list[object] = Field(default_factory=list)
+
+    _validate_state_schema = field_validator("state_schema")(
+        _reject_reserved_state_keys
+    )
 
 
 class ScenarioUpdate(BaseModel):
@@ -61,6 +87,10 @@ class ScenarioUpdate(BaseModel):
     narration_font: str | None = Field(default=None, max_length=50)
     action_chips: list[str] | None = None
     setup_archetypes: list[object] | None = None
+
+    _validate_state_schema = field_validator("state_schema")(
+        _reject_reserved_state_keys
+    )
 
 
 class ScenarioResponse(BaseModel):

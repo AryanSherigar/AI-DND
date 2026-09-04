@@ -167,3 +167,45 @@ def test_condition_evaluator_stays_well_under_100ms_with_many_conditions() -> No
     duration_ms = (time.monotonic() - start) * 1000
 
     assert duration_ms < 100
+
+
+def test_list_active_condition_labels_returns_only_true_conditions() -> None:
+    inactive = {
+        "label": "Warden Is Wary",
+        "condition_expression": {
+            "field": "the_warden.awareness",
+            "op": ">=",
+            "value": 50,
+        },
+    }
+    state = {"flags": {"entered_cairn": True}, "the_warden": {"awareness": 10}}
+
+    labels = condition_evaluator.list_active_condition_labels(
+        [_CAIRN_CONDITION, inactive], state
+    )
+
+    assert labels == ["The Cairn Presses In"]
+
+
+def test_list_active_condition_labels_evaluates_every_condition_not_just_changed() -> (
+    None
+):
+    """Unlike evaluate_conditions, this checks all conditions regardless of
+    _last_changed_fields — a returning player's reload has no such scoping."""
+    state = {"flags": {"entered_cairn": True}}
+
+    labels = condition_evaluator.list_active_condition_labels([_CAIRN_CONDITION], state)
+
+    assert labels == ["The Cairn Presses In"]
+
+
+def test_list_active_condition_labels_skips_non_dict_entries() -> None:
+    labels = condition_evaluator.list_active_condition_labels(
+        ["not-a-condition", None], {"flags": {"entered_cairn": True}}
+    )
+
+    assert labels == []
+
+
+def test_list_active_condition_labels_empty_for_no_conditions() -> None:
+    assert condition_evaluator.list_active_condition_labels([], {}) == []

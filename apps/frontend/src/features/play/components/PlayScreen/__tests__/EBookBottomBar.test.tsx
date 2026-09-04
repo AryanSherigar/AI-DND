@@ -60,4 +60,47 @@ describe("EBookBottomBar", () => {
       screen.getByText(/You are currently spectating this chronicle/i),
     ).toBeInTheDocument();
   });
+
+  it("renders a waiting message and no action trigger when canAct is false", () => {
+    render(
+      <EBookBottomBar
+        isNarrating={false}
+        isSpectator={false}
+        hasTurns={false}
+        canAct={false}
+        waitingOnLabel="Player 2"
+        onTakeAction={vi.fn()}
+        onContinue={vi.fn()}
+        onRetry={vi.fn()}
+        onEditAction={vi.fn()}
+        onOpenCodex={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Waiting for Player 2/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Take Action/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders an Open Character Sheet trigger only when onOpenCharacterSheet is passed", () => {
+    const handleOpenCharacterSheet = vi.fn();
+    render(
+      <EBookBottomBar
+        isNarrating={false}
+        isSpectator={false}
+        hasTurns={false}
+        onTakeAction={vi.fn()}
+        onContinue={vi.fn()}
+        onRetry={vi.fn()}
+        onEditAction={vi.fn()}
+        onOpenCodex={vi.fn()}
+        onOpenCharacterSheet={handleOpenCharacterSheet}
+      />,
+    );
+
+    const characterButton = screen.getByTitle("Open Character Sheet");
+    fireEvent.click(characterButton);
+    expect(handleOpenCharacterSheet).toHaveBeenCalledTimes(1);
+  });
 });

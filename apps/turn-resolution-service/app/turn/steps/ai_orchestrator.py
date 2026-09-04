@@ -25,6 +25,7 @@ from app.models.memory import MemoryQueryResponse
 from app.models.tool_call import MasterModeTurnResult, ToolCallLogEntry
 from app.models.turn import LoadedState, TurnRequest
 from app.turn import tool_definitions
+from app.turn.mood import extract_mood_tag
 from app.turn.steps import state_validator, tool_handler
 
 logger = structlog.get_logger()
@@ -41,44 +42,101 @@ _DEGRADED_NARRATION_MESSAGE = (
 _CHUNK_WORD_GROUP = 6
 
 
+_MOOD_INSTRUCTION = (
+    "At the start of your response, specify the current scene tone on line 1 formatted as:\n"
+    "[MOOD: <peaceful|mystery|tension|combat|melancholy>]\n"
+    "Maintain the previous scene mood unless a significant tonal or danger shift occurs.\n"
+    "On the next line, begin the narrative response."
+)
+
+
 async def generate_narration(
     turn_request: TurnRequest,
     loaded_state: LoadedState,
     context: MemoryQueryResponse,
     active_instructions: list[str] | None = None,
     result_sink: MasterModeTurnResult | None = None,
-) -> AsyncIterator[str]:
-    """Stream narration chunks for the turn, retrying transient Gemini failures."""
+) -> AsyncIterator[tuple[str, str]]:
+    """Stream narration and mood events for the turn, retrying transient Gemini failures."""
     if loaded_state.scenario_snapshot.get("mode") == "master":
-        async for chunk in _generate_master_mode(
+        async for event_type, chunk in _generate_master_mode(
             turn_request, loaded_state, context, active_instructions or [], result_sink
         ):
-            yield chunk
+            yield event_type, chunk
         return
 
     system_instruction = _build_system_instruction(loaded_state)
     prompt = _build_prompt(turn_request, loaded_state, context)
     start = time.monotonic()
-    chunk_count = 0
     logger.info(EVENT_GEMINI_CALL_STARTED, model=settings.gemini_model_name)
     try:
-        async for chunk in _stream_with_retries(system_instruction, prompt):
-            chunk_count += 1
-            yield chunk
+        async for event_type, chunk in _stream_newbie_narration(
+            system_instruction, prompt
+        ):
+            yield event_type, chunk
     except GeminiUnavailableError:
         logger.warning(
             EVENT_NARRATION_GENERATION_DEGRADED,
             playthrough_id=str(turn_request.playthrough_id),
         )
-        yield _DEGRADED_NARRATION_MESSAGE
+        yield "narration", _DEGRADED_NARRATION_MESSAGE
         raise NarrationGenerationError() from None
     else:
         logger.info(
             EVENT_GEMINI_CALL_COMPLETED,
             model=settings.gemini_model_name,
-            chunk_count=chunk_count,
             duration_ms=(time.monotonic() - start) * 1000,
         )
+
+
+async def _stream_newbie_narration(
+    system_instruction: str, prompt: str
+) -> AsyncIterator[tuple[str, str]]:
+    buffer_text = ""
+    is_mood_decided = False
+    async for chunk in _stream_with_retries(system_instruction, prompt):
+        buffer_text, is_mood_decided, events = _process_stream_chunk(
+            chunk, buffer_text, is_mood_decided
+        )
+        for event_type, data in events:
+            yield event_type, data
+
+    if not is_mood_decided:
+        for event_type, data in _flush_undecided_buffer(buffer_text):
+            yield event_type, data
+
+
+def _process_stream_chunk(
+    chunk: str, buffer_text: str, is_mood_decided: bool
+) -> tuple[str, bool, list[tuple[str, str]]]:
+    """Process an incoming stream chunk and return any ready events."""
+    if is_mood_decided:
+        return buffer_text, True, [("narration", chunk)]
+
+    new_buffer = buffer_text + chunk
+    mood, remaining, is_decided = extract_mood_tag(new_buffer)
+    if not is_decided:
+        return new_buffer, False, []
+
+    events: list[tuple[str, str]] = []
+    if mood is not None:
+        events.append(("mood", mood.value))
+    if remaining:
+        events.append(("narration", remaining))
+    return "", True, events
+
+
+def _flush_undecided_buffer(buffer_text: str) -> list[tuple[str, str]]:
+    """Flush any remaining buffer at stream end."""
+    if not buffer_text:
+        return []
+    mood, remaining, _ = extract_mood_tag(buffer_text)
+    events: list[tuple[str, str]] = []
+    if mood is not None:
+        events.append(("mood", mood.value))
+    if remaining:
+        events.append(("narration", remaining))
+    return events
 
 
 async def _stream_with_retries(
@@ -112,12 +170,15 @@ def _build_prompt(
     snapshot = loaded_state.scenario_snapshot
     history = _recent_history(loaded_state.state)
     facts_block = _build_facts_block(context)
-    return (
+    base_prompt = (
         f"World: {snapshot.get('world_data', '')}\n\n"
         f"{facts_block}"
         f"Recent turns: {history}\n\n"
         f"Player action: {turn_request.action_text}"
     )
+    if snapshot.get("mode") == "master":
+        return base_prompt
+    return f"{base_prompt}\n\n{_MOOD_INSTRUCTION}"
 
 
 def _build_facts_block(context: MemoryQueryResponse) -> str:
@@ -145,7 +206,7 @@ async def _generate_master_mode(
     context: MemoryQueryResponse,
     active_instructions: list[str],
     result_sink: MasterModeTurnResult | None,
-) -> AsyncIterator[str]:
+) -> AsyncIterator[tuple[str, str]]:
     system_instruction = _build_master_system_instruction(
         loaded_state, active_instructions, context
     )
@@ -189,7 +250,7 @@ async def _generate_master_mode(
             EVENT_NARRATION_GENERATION_DEGRADED,
             playthrough_id=str(turn_request.playthrough_id),
         )
-        yield _DEGRADED_NARRATION_MESSAGE
+        yield "narration", _DEGRADED_NARRATION_MESSAGE
         raise NarrationGenerationError() from None
 
     if result_sink is not None:
@@ -202,7 +263,7 @@ async def _generate_master_mode(
         duration_ms=(time.monotonic() - start) * 1000,
     )
     for chunk in _chunk_text(final_text):
-        yield chunk
+        yield "narration", chunk
 
 
 async def _tool_call_with_retries(
@@ -326,7 +387,18 @@ def _build_master_system_instruction(
         for inv in snapshot.get("rule_invariants", []) or []
         if isinstance(inv, dict) and inv.get("narrator_text")
     ]
-    parts = [persona, *active_instructions, *entity_instructions, *invariant_texts]
+    connection_hint = _map_connection_hints(
+        loaded_state.state.get("current_location_id"),
+        snapshot.get("map_connections", []) or [],
+        entities,
+    )
+    parts = [
+        persona,
+        *active_instructions,
+        *entity_instructions,
+        *invariant_texts,
+        connection_hint,
+    ]
     return "\n".join(p for p in parts if p)
 
 
@@ -343,6 +415,47 @@ def _checkpoint_persona(snapshot: dict[str, object], checkpoint: str | None) -> 
             if override:
                 return str(override)
     return base
+
+
+def _map_connection_hints(
+    current_location_id: object,
+    map_connections: list[object],
+    entities: list[object],
+) -> str | None:
+    """Advisory-only flavor text naming known paths from the current
+    location; never validated or enforced (movement stays advisory-only,
+    docs/specs/master-mode-maps.spec.md)."""
+    if not isinstance(current_location_id, str) or not map_connections:
+        return None
+    names = {
+        str(e.get("entity_id")): str(e.get("canonical_name"))
+        for e in entities
+        if isinstance(e, dict) and e.get("canonical_name")
+    }
+    hints: list[str] = []
+    for connection in map_connections:
+        if not isinstance(connection, dict):
+            continue
+        other_id = _other_endpoint(connection, current_location_id)
+        if other_id is None or other_id not in names:
+            continue
+        label = connection.get("label")
+        hints.append(f"{names[other_id]} ({label})" if label else names[other_id])
+    if not hints:
+        return None
+    return "Known paths from here: " + ", ".join(hints) + "."
+
+
+def _other_endpoint(
+    connection: dict[str, object], current_location_id: str
+) -> str | None:
+    entity_id_a = str(connection.get("entity_id_a"))
+    entity_id_b = str(connection.get("entity_id_b"))
+    if entity_id_a == current_location_id:
+        return entity_id_b
+    if entity_id_b == current_location_id:
+        return entity_id_a
+    return None
 
 
 def _on_scene_entity_ids(

@@ -36,6 +36,12 @@ export const MASTER_MODE_TABS = [
       "Win and lose conditions define how a playthrough concludes. Each one has an outcome, a message shown to the player, and an optional trigger.",
   },
   {
+    id: "maps",
+    label: "Maps",
+    helpText:
+      "Draw maps and pin your Location entities onto them, then connect locations together. Connections are advisory only — they inform the narrator, they never restrict where the player can go.",
+  },
+  {
     id: "setup",
     label: "Setup & Narrator",
     helpText:

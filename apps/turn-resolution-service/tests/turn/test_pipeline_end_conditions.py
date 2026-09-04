@@ -159,7 +159,12 @@ async def test_matched_end_condition_completes_playthrough(
     response = await pipeline.run_turn(turn_input, db_session)
     events = [event async for event in response.body_iterator]
 
-    assert [e.event for e in events] == ["narration", "playthrough_ended", "done"]
+    assert [e.event for e in events] == [
+        "narration",
+        "turn_summary",
+        "playthrough_ended",
+        "done",
+    ]
 
     stmt = select(Playthrough).where(
         Playthrough.playthrough_id == playthrough.playthrough_id
@@ -227,7 +232,7 @@ async def test_no_match_leaves_playthrough_active(
     response = await pipeline.run_turn(turn_input, db_session)
     events = [event async for event in response.body_iterator]
 
-    assert [e.event for e in events] == ["narration", "done"]
+    assert [e.event for e in events] == ["narration", "turn_summary", "done"]
 
     stmt = select(Playthrough).where(
         Playthrough.playthrough_id == playthrough.playthrough_id

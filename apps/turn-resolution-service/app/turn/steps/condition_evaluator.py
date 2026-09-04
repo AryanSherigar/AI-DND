@@ -87,6 +87,25 @@ def evaluate_conditions(loaded_state: LoadedState) -> ConditionEvaluationResult:
     return ConditionEvaluationResult(state, active_instructions, mutated_paths)
 
 
+def list_active_condition_labels(
+    scenario_conditions: list[object], state: dict[str, object]
+) -> list[str]:
+    """Every scenario_condition currently true, for the play screen's status-
+    badge row. Unlike evaluate_conditions, this checks ALL conditions (not
+    just ones whose fields changed this turn) against final post-write state,
+    and never applies a state_mutation — read-only."""
+    labels: list[str] = []
+    for condition in scenario_conditions:
+        if not isinstance(condition, dict):
+            continue
+        if not evaluate(condition.get("condition_expression"), state):
+            continue
+        label = condition.get("label")
+        if label:
+            labels.append(str(label))
+    return labels
+
+
 def _should_skip(
     condition: dict[str, object], last_changed: set[str], evaluate_all: bool
 ) -> bool:

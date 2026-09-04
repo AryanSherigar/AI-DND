@@ -11,7 +11,7 @@ from app.db.connection import close_db_connection
 from app.logging_config import configure_logging
 from app.middleware.error_handler import setup_error_handlers
 from app.middleware.request_context import request_context_middleware
-from app.routers import session, turn
+from app.routers import assistant, session, turn
 
 configure_logging(settings.log_level, settings.log_format)
 
@@ -45,6 +45,7 @@ app.middleware("http")(request_context_middleware)
 setup_error_handlers(app)
 app.include_router(turn.router)
 app.include_router(session.router)
+app.include_router(assistant.router)
 
 
 @app.get("/health")

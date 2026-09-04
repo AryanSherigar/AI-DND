@@ -1,5 +1,12 @@
 import { apiClient } from "@/shared/lib/api-client";
 
+export interface ToolCallLogEntry {
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  result: Record<string, unknown>;
+  is_valid: boolean;
+}
+
 export interface TurnLogResponse {
   turn_id: string;
   playthrough_id: string;
@@ -7,6 +14,7 @@ export interface TurnLogResponse {
   participant_id: string | null;
   action_text: string;
   narration_text: string | null;
+  tool_calls: ToolCallLogEntry[];
   created_at: string;
 }
 

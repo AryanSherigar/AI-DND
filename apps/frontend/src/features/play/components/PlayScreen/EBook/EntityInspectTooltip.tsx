@@ -69,9 +69,24 @@ export function EntityInspectTooltip({
           ✕
         </button>
       </div>
-      <p className="font-serif leading-relaxed line-clamp-4">
-        {entity.summary}
-      </p>
+      {entity.summary && (
+        <p className="font-serif leading-relaxed line-clamp-4">
+          {entity.summary}
+        </p>
+      )}
+      {entity.attributes && entity.attributes.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-inherit/20 font-mono space-y-1">
+          {entity.attributes.map((attr) => (
+            <div
+              key={attr.label}
+              className="flex items-center justify-between gap-2"
+            >
+              <span className="opacity-70">{attr.label}</span>
+              <span className="font-bold">{attr.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

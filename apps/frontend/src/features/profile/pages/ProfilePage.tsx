@@ -21,14 +21,23 @@ export const ProfilePage: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const isOwner = Boolean(!id || (user && user.user_id === id));
-  const { data: profile, isLoading, isError } = useProfile(id || "me");
+  const isProfileEnabled = Boolean(id) || (!isAuthLoading && isAuthenticated);
+
+  const {
+    data: profile,
+    isLoading,
+    isError,
+  } = useProfile(id || "me", {
+    enabled: isProfileEnabled,
+    currentUserId: user?.user_id,
+  });
 
   // If visiting /profile without auth, redirect to login
   if (!id && !isAuthLoading && !isAuthenticated) {
     return <Navigate to="/login?redirect=/profile" replace />;
   }
 
-  if (isLoading || isAuthLoading) {
+  if (isAuthLoading || (isProfileEnabled && isLoading)) {
     return (
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-400 font-mono gap-3">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />

@@ -18,6 +18,7 @@ from app.repositories.end_condition_repo import EndConditionRepo
 from app.repositories.entity_repo import EntityRepo
 from app.repositories.fact_repo import FactRepo
 from app.repositories.invariant_repo import InvariantRepo
+from app.repositories.map_repo import MapRepo
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_entity_type_repo import ScenarioEntityTypeRepo
@@ -39,6 +40,7 @@ async def _make_service(db_session: AsyncSession) -> PlaythroughService:
         condition_repo=ConditionRepo(db_session),
         invariant_repo=InvariantRepo(db_session),
         end_condition_repo=EndConditionRepo(db_session),
+        map_repo=MapRepo(db_session),
     )
 
 
@@ -325,7 +327,12 @@ async def test_create_playthrough_master_mode_snapshot_includes_entities_and_rul
     warden = await entity_service.create_entity(
         scenario.scenario_id,
         user.user_id,
-        EntityCreate(entity_type="character", canonical_name="The Warden"),
+        EntityCreate(
+            entity_type="character",
+            canonical_name="The Warden",
+            aliases=["the guardian"],
+            description="A tireless sentinel bound to the cairn.",
+        ),
     )
     condition_service = ConditionService(
         ConditionRepo(db_session), EntityRepo(db_session), ScenarioRepo(db_session)
@@ -396,6 +403,11 @@ async def test_create_playthrough_master_mode_snapshot_includes_entities_and_rul
     assert snapshot["mode"] == "master"
     assert len(snapshot["entities"]) == 1
     assert snapshot["entities"][0]["entity_id"] == str(warden.entity_id)
+    assert snapshot["entities"][0]["entity_type"] == "character"
+    assert snapshot["entities"][0]["aliases"] == ["the guardian"]
+    assert snapshot["entities"][0]["description"] == (
+        "A tireless sentinel bound to the cairn."
+    )
     assert len(snapshot["scenario_conditions"]) == 1
     assert snapshot["scenario_conditions"][0]["label"] == "Warden Is Wary"
     assert len(snapshot["rule_invariants"]) == 1

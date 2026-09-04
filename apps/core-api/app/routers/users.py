@@ -24,7 +24,7 @@ router = APIRouter(prefix="/v1/users", tags=["Users"])
 
 
 def get_user_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> UserService:
     """Dependency injector for UserService."""
     return UserService(

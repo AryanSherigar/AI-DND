@@ -9,7 +9,10 @@ before the AI narrates — see docs/specs/master-mode-turn-pipeline.spec.md),
 carries the AI's validated tool-call mutations + tool-call log through to
 state_writer, and runs end_condition_evaluator immediately after
 state_writer, before memory_writer (see
-docs/specs/master-mode-end-conditions.spec.md).
+docs/specs/master-mode-end-conditions.spec.md). For scenarios with ≥1 map,
+also runs map_state_sync right before state_writer, folding any
+current_location_id change's discovery update into the same persisted write
+(see docs/specs/master-mode-maps.spec.md).
 """
 
 import uuid
@@ -33,11 +36,13 @@ from app.turn.steps import (
     condition_evaluator,
     context_retrieval,
     end_condition_evaluator,
+    map_state_sync,
     memory_writer,
     request_receiver,
     response_streamer,
     state_loader,
     state_writer,
+    turn_summary_builder,
 )
 from app.turn.steps.end_condition_evaluator import MatchedOutcome
 from app.turn.turn_order import expected_participant
@@ -80,6 +85,18 @@ async def run_turn(
     return await response_streamer.build_sse_response(events)
 
 
+def _format_ai_event(
+    event_type: str, data: str, chunks: list[str]
+) -> ServerSentEvent | None:
+    """Format AI stream event and accumulate narration chunks."""
+    if event_type == "mood":
+        return response_streamer.mood_event(data)
+    if event_type == "narration":
+        chunks.append(data)
+        return response_streamer.narration_event(data)
+    return None
+
+
 async def _run_turn_events(
     turn_request: TurnRequest,
     loaded_state: LoadedState,
@@ -106,14 +123,15 @@ async def _run_turn_events(
 
     chunks: list[str] = []
     try:
-        async for chunk in ai_orchestrator.generate_narration(
+        async for event_type, data in ai_orchestrator.generate_narration(
             turn_request, loaded_state, context, active_instructions, result_sink
         ):
-            chunks.append(chunk)
             await spectator_manager.publish(
-                turn_request.playthrough_id, "narration", chunk
+                turn_request.playthrough_id, event_type, data
             )
-            yield response_streamer.narration_event(chunk)
+            sse_event = _format_ai_event(event_type, data, chunks)
+            if sse_event:
+                yield sse_event
     except NarrationGenerationError:
         logger.warning(
             EVENT_SSE_STREAM_ERROR, playthrough_id=playthrough_id, outcome="error"
@@ -126,6 +144,10 @@ async def _run_turn_events(
         mutated_paths |= set(result_sink.mutated_paths)
         working_state = result_sink.final_state
         tool_calls = [tc.model_dump() for tc in result_sink.tool_calls]
+        if loaded_state.scenario_snapshot.get("maps"):
+            mutated_paths |= map_state_sync.sync_discovered_locations(
+                loaded_state.state, working_state
+            )
 
     try:
         updated_state = await state_writer.write_turn(
@@ -163,6 +185,9 @@ async def _run_turn_events(
         participant_repo,
     )
 
+    if is_master_mode:
+        yield _build_turn_summary_event(loaded_state, updated_state, tool_calls or [])
+
     if matched_outcome:
         yield response_streamer.playthrough_ended_event(
             matched_outcome.outcome_tag,
@@ -171,6 +196,28 @@ async def _run_turn_events(
         )
     logger.info(EVENT_SSE_STREAM_CLOSED, playthrough_id=playthrough_id, outcome="done")
     yield response_streamer.done_event()
+
+
+def _build_turn_summary_event(
+    loaded_state: LoadedState,
+    updated_state: dict[str, object],
+    tool_calls: list[dict[str, object]],
+) -> ServerSentEvent:
+    """Compose the turn_summary event from this turn's tool calls plus the
+    full set of currently-active conditions (not just ones that changed this
+    turn) against the final, post-write state."""
+    conditions = loaded_state.scenario_snapshot.get("scenario_conditions", []) or []
+    active_conditions = condition_evaluator.list_active_condition_labels(
+        conditions, updated_state
+    )
+    payload = turn_summary_builder.build_turn_summary(
+        tool_calls,
+        loaded_state.state,
+        updated_state,
+        loaded_state.scenario_snapshot,
+        active_conditions,
+    )
+    return response_streamer.turn_summary_event(payload)
 
 
 async def _finalize_ending(

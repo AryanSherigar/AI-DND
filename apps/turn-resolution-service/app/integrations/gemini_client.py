@@ -130,12 +130,42 @@ async def stream_narration(
         raise
 
 
+async def stream_chat(
+    system_instruction: str,
+    contents: list[types.Content],
+    timeout_seconds: int,
+    max_output_tokens: int = 1500,
+) -> AsyncIterator[str]:
+    """Stream chat response chunks for multi-turn studio assistant."""
+    config = _build_generation_config(
+        system_instruction, max_output_tokens=max_output_tokens
+    )
+    logger.info(EVENT_GEMINI_STREAM_OPENED, model=settings.gemini_model_name)
+    try:
+        async for chunk in _stream_within_timeout(contents, config, timeout_seconds):
+            if chunk.text:
+                yield chunk.text
+    except asyncio.TimeoutError as exc:
+        logger.warning(EVENT_GEMINI_STREAM_ERROR, error_type="TimeoutError")
+        raise GeminiUnavailableError() from exc
+    except genai_errors.ServerError as exc:
+        logger.warning(EVENT_GEMINI_STREAM_ERROR, error_type="ServerError")
+        raise GeminiUnavailableError() from exc
+    except genai_errors.ClientError as exc:
+        if exc.code == _RATE_LIMIT_STATUS_CODE:
+            logger.warning(EVENT_GEMINI_STREAM_ERROR, error_type="RateLimitError")
+            raise GeminiUnavailableError() from exc
+        raise
+
+
 async def _stream_within_timeout(
-    prompt: str, config: types.GenerateContentConfig, timeout_seconds: int
+    contents: str | list[types.Content],
+    config: types.GenerateContentConfig,
+    timeout_seconds: int,
 ) -> AsyncIterator[types.GenerateContentResponse]:
     """Yield chunks as they arrive, bounding each chunk's wait (never buffers the stream)."""
     stream = await _get_client().aio.models.generate_content_stream(
-        model=settings.gemini_model_name, contents=prompt, config=config
+        model=settings.gemini_model_name, contents=contents, config=config
     )
     stream_iterator = stream.__aiter__()
     while True:
@@ -148,11 +178,13 @@ async def _stream_within_timeout(
         yield chunk
 
 
-def _build_generation_config(system_instruction: str) -> types.GenerateContentConfig:
+def _build_generation_config(
+    system_instruction: str, max_output_tokens: int | None = None
+) -> types.GenerateContentConfig:
     return types.GenerateContentConfig(
         system_instruction=system_instruction,
         temperature=settings.gemini_temperature,
-        max_output_tokens=settings.gemini_max_output_tokens,
+        max_output_tokens=max_output_tokens or settings.gemini_max_output_tokens,
         top_p=settings.gemini_top_p,
         safety_settings=_SAFETY_SETTINGS,
     )

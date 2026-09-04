@@ -23,6 +23,11 @@ from app.models.tool_call import ProposedMutation, ValidationResult
 from app.turn import state_paths
 from app.turn.expression_evaluator import evaluate
 
+# System-maintained by map_state_sync.py (docs/specs/master-mode-maps.spec.md)
+# — never a valid direct tool-call target, matching the derived-field
+# read-only precedent already established below.
+RESERVED_SYSTEM_PATHS = frozenset({"discovered_location_ids"})
+
 
 def validate_mutation(
     mutation: ProposedMutation,
@@ -35,6 +40,11 @@ def validate_mutation(
     if not mutation.path:
         return ValidationResult(
             is_valid=False, error_message="Missing mutation target path"
+        )
+    if mutation.path in RESERVED_SYSTEM_PATHS:
+        return ValidationResult(
+            is_valid=False,
+            error_message=f"'{mutation.path}' is system-managed and cannot be set directly",
         )
 
     state_schema, entities = _snapshot_schemas(scenario_snapshot)

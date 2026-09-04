@@ -19,7 +19,7 @@ router = APIRouter(prefix="/v1/playthroughs", tags=["Sharing"])
 
 
 def get_share_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> ShareService:
     """Dependency injector for ShareService."""
     return ShareService(

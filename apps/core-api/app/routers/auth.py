@@ -15,7 +15,9 @@ logger = structlog.get_logger()
 EVENT_AUTH_TOKEN_REFRESH_DENIED = "auth_token_refresh_denied"
 
 
-def get_auth_service(session: AsyncSession = Depends(get_db_session)) -> AuthService:
+def get_auth_service(
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+) -> AuthService:
     return AuthService(UserRepo(session))
 
 
@@ -54,7 +56,7 @@ async def refresh_token(
     response: Response,
     refresh_token: str | None = Cookie(default=None),
     auth_service: AuthService = Depends(get_auth_service),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     if not refresh_token:
         raise InvalidTokenError("Refresh token missing")

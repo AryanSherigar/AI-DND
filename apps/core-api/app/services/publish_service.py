@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.models.entity import Entity
 from app.db.models.fact import Fact
 from app.db.models.scenario import Scenario
+from app.exceptions.map_exceptions import MapPublishValidationError
 from app.exceptions.scenario_exceptions import (
     ScenarioAccessDeniedError,
     ScenarioAlreadyPublishingError,
@@ -32,6 +33,7 @@ from app.models.memory import (
 )
 from app.repositories.entity_repo import EntityRepo
 from app.repositories.fact_repo import FactRepo
+from app.repositories.map_repo import MapRepo
 from app.repositories.scenario_repo import ScenarioRepo
 
 logger = structlog.get_logger()
@@ -96,6 +98,7 @@ class PublishService:
 
             try:
                 _check_content_tag(scenario)
+                await _check_map_start_pin(scenario, MapRepo(session))
                 ingest_request = await _build_ingest_request(
                     scenario, EntityRepo(session), FactRepo(session)
                 )
@@ -131,6 +134,22 @@ def _check_content_tag(scenario: Scenario) -> None:
             f"content_tag must be one of {sorted(ALLOWED_CONTENT_TAGS)}, "
             f"got {scenario.content_tag!r}"
         )
+
+
+async def _check_map_start_pin(scenario: Scenario, map_repo: MapRepo) -> None:
+    """A scenario with ≥1 map must have exactly one start-location pin.
+
+    The DB's partial unique index already guarantees at most one; this adds
+    the "at least one" business check the DB can't express, blocking publish
+    with a clear error rather than shipping a scenario TRS can't seed a
+    starting current_location_id for.
+    """
+    map_count = await map_repo.count_maps_by_scenario(scenario.scenario_id)
+    if map_count == 0:
+        return
+    start_pin = await map_repo.get_start_pin_by_scenario(scenario.scenario_id)
+    if start_pin is None:
+        raise MapPublishValidationError()
 
 
 async def _build_ingest_request(

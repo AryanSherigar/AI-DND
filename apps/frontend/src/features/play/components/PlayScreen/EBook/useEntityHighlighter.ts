@@ -1,9 +1,35 @@
 import { useMemo } from "react";
-import { StoryCard, EntityHighlightItem } from "../../../types/play.types";
+import {
+  StoryCard,
+  EntityHighlightItem,
+  MasterEntity,
+} from "../../../types/play.types";
+
+function buildMasterEntityHighlights(
+  masterEntities: MasterEntity[],
+): EntityHighlightItem[] {
+  return masterEntities.flatMap((entity) => {
+    const attributes = Object.entries(entity.attributes_schema).map(
+      ([key, schema]) => ({
+        label: schema.label ?? key,
+        value: String(entity.attributes[key] ?? "—"),
+      }),
+    );
+    const names = [entity.canonical_name, ...entity.aliases];
+    return names.map((name) => ({
+      id: entity.entity_id,
+      name,
+      category: entity.entity_type,
+      summary: entity.description ?? "",
+      attributes,
+    }));
+  });
+}
 
 export function useEntityHighlighter(
   storyCards: StoryCard[] = [],
   keyFacts: string[] = [],
+  masterEntities: MasterEntity[] = [],
 ): EntityHighlightItem[] {
   return useMemo(() => {
     const cardEntities: EntityHighlightItem[] = storyCards.map((card) => ({
@@ -28,6 +54,8 @@ export function useEntityHighlighter(
         };
       });
 
-    return [...cardEntities, ...factEntities];
-  }, [storyCards, keyFacts]);
+    const masterEntityHighlights = buildMasterEntityHighlights(masterEntities);
+
+    return [...cardEntities, ...factEntities, ...masterEntityHighlights];
+  }, [storyCards, keyFacts, masterEntities]);
 }

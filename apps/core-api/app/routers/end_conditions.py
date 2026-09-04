@@ -27,7 +27,7 @@ router = APIRouter(
 
 
 def get_end_condition_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> EndConditionService:
     """Dependency injector for EndConditionService."""
     return EndConditionService(

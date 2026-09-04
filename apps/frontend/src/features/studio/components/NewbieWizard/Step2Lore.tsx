@@ -33,7 +33,28 @@ export const Step2Lore: React.FC = () => {
     return () => clearTimeout(handler);
   }, [localDraft, newbieDraft, updateNewbieDraft, setSaveState]);
 
-  const handleChange = (field: keyof typeof localDraft, value: any) => {
+  // Sync external changes (e.g. from AI Assistant) into localDraft
+  useEffect(() => {
+    setLocalDraft({
+      useSingleLorePrompt: newbieDraft.useSingleLorePrompt,
+      worldLore: newbieDraft.worldLore,
+      openingPrompt: newbieDraft.openingPrompt,
+      mainConflict: newbieDraft.mainConflict,
+      includeConflict: newbieDraft.includeConflict,
+      storyCards: newbieDraft.storyCards,
+      singleLorePrompt: newbieDraft.singleLorePrompt,
+    });
+  }, [
+    newbieDraft.useSingleLorePrompt,
+    newbieDraft.worldLore,
+    newbieDraft.openingPrompt,
+    newbieDraft.mainConflict,
+    newbieDraft.includeConflict,
+    newbieDraft.storyCards,
+    newbieDraft.singleLorePrompt,
+  ]);
+
+  const handleChange = (field: keyof typeof localDraft, value: unknown) => {
     setLocalDraft((prev) => ({ ...prev, [field]: value }));
   };
 

@@ -24,7 +24,7 @@ router = APIRouter(prefix="/v1/scenarios/{scenario_id}/invariants", tags=["Invar
 
 
 def get_invariant_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> InvariantService:
     """Dependency injector for InvariantService."""
     return InvariantService(

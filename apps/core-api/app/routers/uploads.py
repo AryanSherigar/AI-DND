@@ -76,3 +76,19 @@ async def upload_banner(
     content = await _read_capped(file, MAX_COVER_IMAGE_BYTES)
     url = await service.upload_banner(content, file.content_type or "")
     return ImageUploadResponse(url=url)
+
+
+@router.post(
+    "/scenario-map-image",
+    response_model=ImageUploadResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def upload_scenario_map_image(
+    user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[UploadService, Depends(get_upload_service)],
+    file: Annotated[UploadFile, File()],
+) -> ImageUploadResponse:
+    """Upload a scenario map image and return its public URL."""
+    content = await _read_capped(file, MAX_COVER_IMAGE_BYTES)
+    url = await service.upload_map_image(content, file.content_type or "")
+    return ImageUploadResponse(url=url)

@@ -1,5 +1,6 @@
 """Integration test running the full turn pipeline against a real test Postgres."""
 
+import json
 import uuid
 from unittest.mock import AsyncMock
 
@@ -15,7 +16,7 @@ from app.db.models.turn_log import TurnLog
 from app.db.models.user import User
 from app.exceptions.turn_exceptions import StateWriteError
 from app.models.turn import TurnRequestInput
-from app.session import notification_manager
+from app.session import notification_manager, spectator_manager
 from app.turn import pipeline
 from app.turn.steps import ai_orchestrator
 
@@ -361,7 +362,34 @@ async def test_run_turn_master_mode_end_to_end(
 
     # Final narration text is chunked into pseudo-streamed pieces (see
     # ai_orchestrator._chunk_text) — 9 words at 6-per-chunk is 2 chunks.
-    assert [e.event for e in events] == ["narration", "narration", "done"]
+    # turn_summary is emitted after narration finishes, before done, so the
+    # frontend can defer showing it until that turn's narration is done
+    # streaming (see response_streamer.turn_summary_event's docstring).
+    assert [e.event for e in events] == [
+        "narration",
+        "narration",
+        "turn_summary",
+        "done",
+    ]
+
+    summary = json.loads(next(e.data for e in events if e.event == "turn_summary"))
+    assert summary["active_conditions"] == ["The Cairn Presses In"]
+    assert summary["stat_changes"] == [
+        {
+            "path": "player.health",
+            "label": "Health",
+            "before": 100,
+            "after": 85,
+            "delta": -15.0,
+        }
+    ]
+    assert summary["inventory_changes"] == []
+    assert len(summary["dice_rolls"]) == 1
+    dice_roll = summary["dice_rolls"][0]
+    assert dice_roll["sides"] == 20
+    assert dice_roll["modifier"] == 0
+    assert dice_roll["total"] == dice_roll["roll"]
+    assert 1 <= dice_roll["roll"] <= 20
 
     turn_log_stmt = select(TurnLog).where(
         TurnLog.playthrough_id == playthrough.playthrough_id
@@ -480,3 +508,39 @@ async def test_run_turn_master_mode_rejects_invariant_violating_mutation(
     )
     turn_log = (await db_session.execute(turn_log_stmt)).scalars().first()
     assert turn_log.tool_calls[0]["is_valid"] is False
+
+
+async def test_run_turn_streams_mood_event_and_relays_to_spectator(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    async def fake_stream(system_instruction: str, prompt: str, timeout_seconds: int):
+        yield "[MOOD: combat]\n"
+        yield "An ambush strikes from the dark!"
+
+    monkeypatch.setattr(ai_orchestrator.gemini_client, "stream_narration", fake_stream)
+
+    playthrough, participant = await _seed_playthrough(db_session)
+    spectator_queue = spectator_manager.subscribe(playthrough.playthrough_id)
+
+    try:
+        turn_input = TurnRequestInput(
+            playthrough_id=playthrough.playthrough_id,
+            participant_id=participant.participant_id,
+            action_text="I enter the shadows.",
+        )
+        response = await pipeline.run_turn(turn_input, db_session)
+        events = [event async for event in response.body_iterator]
+
+        event_types = [event.event for event in events]
+        assert event_types == ["mood", "narration", "done"]
+        assert events[0].data == "combat"
+        assert events[1].data == "An ambush strikes from the dark!"
+
+        spectator_events = []
+        while not spectator_queue.empty():
+            spectator_events.append(spectator_queue.get_nowait())
+
+        assert ("mood", "combat") in spectator_events
+        assert ("narration", "An ambush strikes from the dark!") in spectator_events
+    finally:
+        spectator_manager.unsubscribe(playthrough.playthrough_id, spectator_queue)

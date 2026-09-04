@@ -16,6 +16,7 @@ from app.repositories.condition_repo import ConditionRepo
 from app.repositories.end_condition_repo import EndConditionRepo
 from app.repositories.entity_repo import EntityRepo
 from app.repositories.invariant_repo import InvariantRepo
+from app.repositories.map_repo import MapRepo
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_repo import ScenarioRepo
@@ -59,6 +60,7 @@ async def _seed_playthrough_with_owner(db_session: AsyncSession):
         condition_repo=ConditionRepo(db_session),
         invariant_repo=InvariantRepo(db_session),
         end_condition_repo=EndConditionRepo(db_session),
+        map_repo=MapRepo(db_session),
     )
     response = await playthrough_service.create_playthrough(
         user_id=user.user_id,

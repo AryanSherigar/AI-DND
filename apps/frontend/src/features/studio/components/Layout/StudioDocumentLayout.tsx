@@ -94,7 +94,7 @@ export const StudioDocumentLayout: React.FC = () => {
         </div>
       </main>
 
-      <StudioChatDrawer />
+      <StudioChatDrawer activeSection={activeSection} />
     </div>
   );
 };

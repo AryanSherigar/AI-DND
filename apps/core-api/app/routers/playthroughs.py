@@ -20,6 +20,7 @@ from app.repositories.condition_repo import ConditionRepo
 from app.repositories.end_condition_repo import EndConditionRepo
 from app.repositories.entity_repo import EntityRepo
 from app.repositories.invariant_repo import InvariantRepo
+from app.repositories.map_repo import MapRepo
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_repo import ScenarioRepo
@@ -31,7 +32,7 @@ router = APIRouter(prefix="/v1/playthroughs", tags=["Playthroughs"])
 
 
 def get_playthrough_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> PlaythroughService:
     """Dependency injector for PlaythroughService."""
     return PlaythroughService(
@@ -44,6 +45,7 @@ def get_playthrough_service(
         condition_repo=ConditionRepo(session),
         invariant_repo=InvariantRepo(session),
         end_condition_repo=EndConditionRepo(session),
+        map_repo=MapRepo(session),
     )
 
 

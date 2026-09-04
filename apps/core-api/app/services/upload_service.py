@@ -43,3 +43,7 @@ class UploadService:
     async def upload_banner(self, content: bytes, content_type: str) -> str:
         """Validate and upload a user profile banner image, returning its public URL."""
         return await self._upload_with_prefix(content, content_type, "banners")
+
+    async def upload_map_image(self, content: bytes, content_type: str) -> str:
+        """Validate and upload a scenario map image, returning its public URL."""
+        return await self._upload_with_prefix(content, content_type, "scenario-maps")

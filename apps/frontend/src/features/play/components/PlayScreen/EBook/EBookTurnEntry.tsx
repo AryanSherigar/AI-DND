@@ -1,6 +1,8 @@
 import { ReactNode } from "react";
 import { usePlayStore } from "../../../stores/play.store";
 import { EntityHighlightItem } from "../../../types/play.types";
+import { ChapterSummaryStrip } from "./ChapterSummaryStrip";
+import { DiceRollCard } from "./DiceRollCard";
 import { EBookTurnEntryProps } from "./ebook.types";
 
 interface ParagraphProps {
@@ -131,6 +133,15 @@ export function EBookTurnEntry({
           />
         ))}
       </article>
+
+      {turn.chapter_delta && (
+        <>
+          {turn.chapter_delta.dice_rolls.map((roll, idx) => (
+            <DiceRollCard key={idx} roll={roll} />
+          ))}
+          <ChapterSummaryStrip delta={turn.chapter_delta} />
+        </>
+      )}
     </section>
   );
 }

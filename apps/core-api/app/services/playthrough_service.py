@@ -1,6 +1,8 @@
 """Playthrough domain service: creation, snapshotting, and access-gated reads."""
 
 import uuid
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 
 import structlog
 
@@ -35,15 +37,35 @@ from app.repositories.condition_repo import ConditionRepo
 from app.repositories.end_condition_repo import EndConditionRepo
 from app.repositories.entity_repo import EntityRepo
 from app.repositories.invariant_repo import InvariantRepo
+from app.repositories.map_repo import MapRepo
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.share_repo import ShareRepo
 from app.repositories.turn_log_repo import TurnLogRepo
+from app.services.condition_state import list_active_condition_labels
 
 logger = structlog.get_logger()
 
 EVENT_PLAYTHROUGH_STARTED = "playthrough_started"
+
+# Mirrors app.models.scenario.RESERVED_STATE_SCHEMA_KEYS's two entries — kept
+# as literal keys here (not a cross-package import) since this dict shape is
+# TRS-facing snapshot content, not a Core-API request schema.
+_CURRENT_LOCATION_FIELD = "current_location_id"
+_DISCOVERED_LOCATIONS_FIELD = "discovered_location_ids"
+_LOCATION_ENTITY_TYPE = "location"
+
+
+@dataclass
+class _MapSnapshotData:
+    """Frozen map content for one playthrough's scenario_snapshot, plus the
+    designated start pin's entity_id used to seed initial state."""
+
+    maps: list[dict[str, object]] = dataclass_field(default_factory=list)
+    pins: list[dict[str, object]] = dataclass_field(default_factory=list)
+    connections: list[dict[str, object]] = dataclass_field(default_factory=list)
+    start_entity_id: str | None = None
 
 
 class PlaythroughService:
@@ -60,6 +82,7 @@ class PlaythroughService:
         condition_repo: ConditionRepo,
         invariant_repo: InvariantRepo,
         end_condition_repo: EndConditionRepo,
+        map_repo: MapRepo,
     ) -> None:
         self.playthrough_repo = playthrough_repo
         self.participant_repo = participant_repo
@@ -70,6 +93,7 @@ class PlaythroughService:
         self.condition_repo = condition_repo
         self.invariant_repo = invariant_repo
         self.end_condition_repo = end_condition_repo
+        self.map_repo = map_repo
 
     async def create_playtest(
         self, scenario_id: uuid.UUID, user_id: uuid.UUID
@@ -109,6 +133,12 @@ class PlaythroughService:
 
         _validate_setup_values(scenario.setup_schema, data.setup_values)
 
+        map_data = (
+            await self._load_map_data(scenario.scenario_id)
+            if scenario.mode == "master"
+            else None
+        )
+
         # Generated here, not left to the ORM column default: SQLAlchemy's
         # `default=uuid.uuid4` on Playthrough.playthrough_id only evaluates at
         # flush/INSERT time, not at object construction — so relying on it
@@ -120,9 +150,12 @@ class PlaythroughService:
             playthrough_id=playthrough_id,
             scenario_id=scenario.scenario_id,
             created_by=user_id,
-            state=_build_initial_state(data.setup_values),
+            state=_build_initial_state(
+                data.setup_values,
+                map_data.start_entity_id if map_data else None,
+            ),
             scenario_version=scenario.current_version,
-            scenario_snapshot=await self._build_snapshot(scenario),
+            scenario_snapshot=await self._build_snapshot(scenario, map_data),
             is_playtest=is_playtest,
         )
         participant = Participant(
@@ -338,7 +371,9 @@ class PlaythroughService:
         except Exception as exc:
             raise PlaythroughMemoryCloneError(str(exc)) from exc
 
-    async def _build_snapshot(self, scenario: Scenario) -> dict[str, object]:
+    async def _build_snapshot(
+        self, scenario: Scenario, map_data: _MapSnapshotData | None = None
+    ) -> dict[str, object]:
         """Freeze the scenario content TRS and the frontend read for this
         playthrough (ADR-8).
 
@@ -357,6 +392,14 @@ class PlaythroughService:
         master-mode-end-conditions.spec.md) — TRS never reads Scenario or its
         sub-resource tables directly during a turn
         (master-mode-turn-pipeline.spec.md).
+
+        If the scenario has ≥1 map, also pins maps/map_pins/map_connections
+        and injects the two reserved, system-provisioned state_schema fields
+        (current_location_id, discovered_location_ids) — a creator never
+        authors these directly (app.models.scenario rejects the keys
+        unconditionally); TRS's existing entity_ref/list field handling in
+        models/game_state.py needs no changes to validate them
+        (docs/specs/master-mode-maps.spec.md).
         """
         snapshot: dict[str, object] = {
             "mode": scenario.mode,
@@ -377,6 +420,22 @@ class PlaythroughService:
             snapshot["end_conditions"] = await self._snapshot_end_conditions(
                 scenario.scenario_id
             )
+            if map_data and map_data.maps:
+                snapshot["maps"] = map_data.maps
+                snapshot["map_pins"] = map_data.pins
+                snapshot["map_connections"] = map_data.connections
+                snapshot["state_schema"] = {
+                    **scenario.state_schema,
+                    _CURRENT_LOCATION_FIELD: {
+                        "type": "entity_ref",
+                        "entity_type": _LOCATION_ENTITY_TYPE,
+                    },
+                    _DISCOVERED_LOCATIONS_FIELD: {
+                        "type": "list",
+                        "item_type": "entity_ref",
+                        "entity_type": _LOCATION_ENTITY_TYPE,
+                    },
+                }
         return snapshot
 
     async def _snapshot_entities(
@@ -386,12 +445,61 @@ class PlaythroughService:
         return [
             {
                 "entity_id": str(e.entity_id),
+                "entity_type": e.entity_type,
+                "canonical_name": e.canonical_name,
+                "aliases": e.aliases,
+                "description": e.description,
                 "attributes_schema": e.attributes_schema,
                 "obtainable": e.obtainable,
                 "narrator_instruction": e.narrator_instruction,
             }
             for e in entities
         ]
+
+    async def _load_map_data(self, scenario_id: uuid.UUID) -> _MapSnapshotData:
+        """Freeze every map/pin/connection for this scenario at playthrough
+        creation (ADR-8) and locate the designated start pin's entity_id."""
+        maps = await self.map_repo.list_maps_by_scenario(scenario_id)
+        if not maps:
+            return _MapSnapshotData()
+
+        pins: list[dict[str, object]] = []
+        start_entity_id: str | None = None
+        for scenario_map in maps:
+            for pin in await self.map_repo.list_pins_by_map(scenario_map.map_id):
+                pins.append(
+                    {
+                        "map_id": str(pin.map_id),
+                        "entity_id": str(pin.entity_id),
+                        "x": pin.x,
+                        "y": pin.y,
+                        "is_start_location": pin.is_start_location,
+                    }
+                )
+                if pin.is_start_location:
+                    start_entity_id = str(pin.entity_id)
+
+        connections = await self.map_repo.list_connections_by_scenario(scenario_id)
+        return _MapSnapshotData(
+            maps=[
+                {
+                    "map_id": str(m.map_id),
+                    "name": m.name,
+                    "image_url": m.image_url,
+                }
+                for m in maps
+            ],
+            pins=pins,
+            connections=[
+                {
+                    "entity_id_a": str(c.entity_id_a),
+                    "entity_id_b": str(c.entity_id_b),
+                    "label": c.label,
+                }
+                for c in connections
+            ],
+            start_entity_id=start_entity_id,
+        )
 
     async def _snapshot_conditions(
         self, scenario_id: uuid.UUID
@@ -508,12 +616,20 @@ def _validate_multi_select_field(
             )
 
 
-def _build_initial_state(setup_values: dict[str, object]) -> dict[str, object]:
-    """Seed Playthrough.state. Newbie-mode only: opening prompt + setup values."""
-    return {
+def _build_initial_state(
+    setup_values: dict[str, object], start_location_entity_id: str | None
+) -> dict[str, object]:
+    """Seed Playthrough.state: opening prompt + setup values for every mode,
+    plus the reserved current_location_id/discovered_location_ids fields
+    when the scenario has a designated start pin (master mode with maps)."""
+    state: dict[str, object] = {
         "setup": dict(setup_values),
         "narrative": {"opening_prompt": None, "turns_so_far": []},
     }
+    if start_location_entity_id:
+        state[_CURRENT_LOCATION_FIELD] = start_location_entity_id
+        state[_DISCOVERED_LOCATIONS_FIELD] = [start_location_entity_id]
+    return state
 
 
 def _to_response(
@@ -539,4 +655,8 @@ def _to_response(
         updated_at=playthrough.updated_at,
         participant_id=participant_id,
         participants=[ParticipantSummary.model_validate(p) for p in participants],
+        active_conditions=list_active_condition_labels(
+            playthrough.scenario_snapshot.get("scenario_conditions", []),
+            playthrough.state,
+        ),
     )

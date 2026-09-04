@@ -27,7 +27,7 @@ router = APIRouter(prefix="/v1/scenarios/{scenario_id}/entities", tags=["Entitie
 
 
 def get_entity_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> EntityService:
     """Dependency injector for EntityService."""
     return EntityService(

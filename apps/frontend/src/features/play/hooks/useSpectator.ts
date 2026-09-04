@@ -1,10 +1,13 @@
 import { useCallback, useState } from "react";
 import { useSSE } from "@/shared/hooks/useSSE";
 
+import { ScenarioMood } from "../types/audio.types";
+import { ambientSoundtrack } from "@/shared/lib/audio/ambient-soundtrack";
+
 const TRS_BASE_URL = import.meta.env.VITE_TRS_URL || "http://localhost:8001";
 
 export interface SpectatorEvent {
-  eventName: "narration" | "done" | "degraded";
+  eventName: "narration" | "done" | "degraded" | "mood";
   data: string;
 }
 
@@ -17,7 +20,9 @@ export function useSpectator(
   const [isLive, setIsLive] = useState(false);
 
   const handleEvent = useCallback((eventName: string, data: string) => {
-    if (eventName === "narration") {
+    if (eventName === "mood") {
+      ambientSoundtrack.transitionTo(data as ScenarioMood);
+    } else if (eventName === "narration") {
       setIsLive(true);
       setStreamingText((prev) => prev + data);
     } else if (eventName === "done") {

@@ -24,7 +24,7 @@ def _bind_user_context(user: User) -> None:
 async def get_current_user(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> User:
     if settings.environment in ("development", "testing"):
         dev_user_id = request.headers.get("x-dev-user-id")
@@ -78,7 +78,7 @@ async def get_optional_current_user(
     credentials: Annotated[
         HTTPAuthorizationCredentials | None, Depends(optional_security)
     ],
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> User | None:
     if settings.environment in ("development", "testing"):
         dev_user_id = request.headers.get("x-dev-user-id")

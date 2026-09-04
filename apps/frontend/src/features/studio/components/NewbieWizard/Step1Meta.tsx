@@ -17,10 +17,26 @@ export const Step1Meta: React.FC = () => {
   const coverFileInputRef = useRef<HTMLInputElement>(null);
   const uploadCoverImage = useUploadCoverImage();
 
-  // Sync state to studio store on change
+  // Sync external changes (e.g. from AI Assistant) into local inputs
   useEffect(() => {
-    updateNewbieDraft({ title: localTitle, logline: localLogline });
-  }, [localTitle, localLogline, updateNewbieDraft]);
+    setLocalTitle(newbieDraft.title);
+  }, [newbieDraft.title]);
+
+  useEffect(() => {
+    setLocalLogline(newbieDraft.logline);
+  }, [newbieDraft.logline]);
+
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextTitle = e.target.value;
+    setLocalTitle(nextTitle);
+    updateNewbieDraft({ title: nextTitle });
+  };
+
+  const handleLoglineChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const nextLogline = e.target.value;
+    setLocalLogline(nextLogline);
+    updateNewbieDraft({ logline: nextLogline });
+  };
 
   const toggleGenre = (genre: string) => {
     const current = newbieDraft.genre_tags || [];
@@ -90,7 +106,7 @@ export const Step1Meta: React.FC = () => {
         <input
           type="text"
           value={localTitle}
-          onChange={(e) => setLocalTitle(e.target.value)}
+          onChange={handleTitleChange}
           placeholder="e.g., The Whispering Caverns"
           className="w-full bg-zinc-950 border border-zinc-700 rounded-none px-4 py-3 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-300 transition-colors font-sans text-sm"
         />
@@ -103,7 +119,7 @@ export const Step1Meta: React.FC = () => {
         </label>
         <textarea
           value={localLogline}
-          onChange={(e) => setLocalLogline(e.target.value)}
+          onChange={handleLoglineChange}
           rows={2}
           placeholder="A short hook describing the central adventure, threat, or atmosphere..."
           className="w-full bg-zinc-950 border border-zinc-700 rounded-none px-4 py-3 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-300 transition-colors font-sans text-sm resize-none"

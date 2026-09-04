@@ -24,7 +24,7 @@ router = APIRouter(prefix="/v1/scenarios/{scenario_id}/conditions", tags=["Condi
 
 
 def get_condition_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> ConditionService:
     """Dependency injector for ConditionService."""
     return ConditionService(

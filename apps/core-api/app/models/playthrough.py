@@ -56,3 +56,6 @@ class PlaythroughResponse(BaseModel):
     # (POST /v1/turn requires it) and absent from the RFC's original schema.
     participant_id: uuid.UUID
     participants: list[ParticipantSummary] = Field(default_factory=list)
+    # Master-mode-only; [] for newbie or a master playthrough with no
+    # scenario_conditions currently true.
+    active_conditions: list[str] = Field(default_factory=list)

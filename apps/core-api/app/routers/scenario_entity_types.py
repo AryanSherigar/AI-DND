@@ -26,7 +26,7 @@ router = APIRouter(
 
 
 def get_scenario_entity_type_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> ScenarioEntityTypeService:
     """Dependency injector for ScenarioEntityTypeService."""
     return ScenarioEntityTypeService(

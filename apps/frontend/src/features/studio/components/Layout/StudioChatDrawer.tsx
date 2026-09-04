@@ -1,7 +1,13 @@
 import React, { useState } from "react";
 import { AIChatSidebar } from "../AIChatSidebar/AIChatSidebar";
 
-export const StudioChatDrawer: React.FC = () => {
+export interface StudioChatDrawerProps {
+  activeSection?: string;
+}
+
+export const StudioChatDrawer: React.FC<StudioChatDrawerProps> = ({
+  activeSection = "meta",
+}) => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   return (
@@ -56,7 +62,7 @@ export const StudioChatDrawer: React.FC = () => {
           </button>
         </div>
         <div className="flex-1 overflow-hidden">
-          <AIChatSidebar />
+          <AIChatSidebar activeSection={activeSection} />
         </div>
       </div>
     </>

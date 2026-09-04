@@ -1,10 +1,13 @@
 import { create } from "zustand";
 import {
   ActionMode,
+  ChapterDelta,
   EBookTheme,
   PlaythroughData,
   TurnLogItem,
 } from "../types/play.types";
+import { TurnSummaryEventPayload } from "../types/turnSummary.types";
+import { mapTurnSummaryEvent } from "../utils/chapterDelta";
 import { createPostSSEConnection } from "@/shared/lib/sse-client";
 import {
   generateRequestId,
@@ -12,6 +15,8 @@ import {
 } from "@/shared/lib/request-id";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { queryClient } from "@/shared/lib/query-client";
+import { ScenarioMood } from "../types/audio.types";
+import { ambientSoundtrack } from "@/shared/lib/audio/ambient-soundtrack";
 
 const TRS_BASE_URL = import.meta.env.VITE_TRS_URL || "http://localhost:8001";
 
@@ -26,11 +31,12 @@ interface PlayStoreState {
   is_narrating: boolean;
   streaming_text: string;
   last_submitted_action: string;
-  is_share_modal_open: boolean;
-  is_warning_modal_open: boolean;
-  is_end_modal_open: boolean;
   degraded_message: string | null;
   cancel_stream_fn: (() => void) | null;
+  // Master mode: set when a `turn_summary` SSE event arrives, held until the
+  // in-flight turn commits so the chapter summary strip only ever renders
+  // from a turn already in playthrough.turns (never mid-stream).
+  pending_chapter_delta: ChapterDelta | null;
 
   // Actions
   setPlaythrough: (data: PlaythroughData) => void;
@@ -46,18 +52,18 @@ interface PlayStoreState {
   toggleActionDrawer: () => void;
   openChronicleModal: () => void;
   closeChronicleModal: () => void;
-  openShareModal: () => void;
-  closeShareModal: () => void;
-  openWarningModal: () => void;
-  closeWarningModal: () => void;
-  openEndModal: () => void;
-  closeEndModal: () => void;
   submitTurn: (actionText: string) => void;
   continueTurn: () => void;
   stopGeneration: () => void;
   retryLastTurn: () => void;
   editLastAction: () => string;
   clearDegradedMessage: () => void;
+  active_mood: ScenarioMood;
+  audio_volume: number;
+  is_audio_muted: boolean;
+  setAudioVolume: (volume: number) => void;
+  toggleAudioMute: () => void;
+  setMood: (mood: ScenarioMood) => void;
 
   // Internal — not part of the public store surface; other files should not
   // call these directly. Exposed on the interface only because Zustand
@@ -77,13 +83,36 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   is_narrating: false,
   streaming_text: "",
   last_submitted_action: "",
-  is_share_modal_open: false,
-  is_warning_modal_open: false,
-  is_end_modal_open: false,
   degraded_message: null,
   cancel_stream_fn: null,
+  pending_chapter_delta: null,
+  active_mood: "peaceful",
+  audio_volume: ambientSoundtrack.getVolume(),
+  is_audio_muted: ambientSoundtrack.getIsMuted(),
 
-  setPlaythrough: (data: PlaythroughData) => set({ playthrough: data }),
+  setPlaythrough: (data: PlaythroughData) => {
+    const prevPlaythrough = get().playthrough;
+    const isNewPlaythrough =
+      !prevPlaythrough ||
+      prevPlaythrough.playthrough_id !== data.playthrough_id;
+    set({ playthrough: data });
+
+    if (isNewPlaythrough) {
+      const initialMood = data.initial_mood || "peaceful";
+      ambientSoundtrack.transitionTo(initialMood, true);
+    }
+  },
+  setAudioVolume: (vol: number) => {
+    ambientSoundtrack.setVolume(vol);
+    set({ audio_volume: ambientSoundtrack.getVolume() });
+  },
+  toggleAudioMute: () => {
+    const isMuted = ambientSoundtrack.toggleMute();
+    set({ is_audio_muted: isMuted });
+  },
+  setMood: (mood: ScenarioMood) => {
+    ambientSoundtrack.transitionTo(mood, true);
+  },
   setActiveMode: (mode: ActionMode) => set({ active_mode: mode }),
   setEBookTheme: (theme: EBookTheme) => set({ ebook_theme: theme }),
   toggleEBookTheme: () =>
@@ -105,12 +134,6 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     set((s) => ({ is_action_drawer_open: !s.is_action_drawer_open })),
   openChronicleModal: () => set({ is_chronicle_modal_open: true }),
   closeChronicleModal: () => set({ is_chronicle_modal_open: false }),
-  openShareModal: () => set({ is_share_modal_open: true }),
-  closeShareModal: () => set({ is_share_modal_open: false }),
-  openWarningModal: () => set({ is_warning_modal_open: true }),
-  closeWarningModal: () => set({ is_warning_modal_open: false }),
-  openEndModal: () => set({ is_end_modal_open: true }),
-  closeEndModal: () => set({ is_end_modal_open: false }),
   clearDegradedMessage: () => set({ degraded_message: null }),
 
   continueTurn: () => {
@@ -148,8 +171,20 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       token,
       {
         onEvent: (eventName: string, data: string) => {
-          if (eventName === "narration") {
+          if (eventName === "mood") {
+            const mood = data as ScenarioMood;
+            ambientSoundtrack.transitionTo(mood);
+          } else if (eventName === "narration") {
             set((s) => ({ streaming_text: s.streaming_text + data }));
+          } else if (eventName === "turn_summary") {
+            const payload = JSON.parse(data) as TurnSummaryEventPayload;
+            set((s) => ({
+              pending_chapter_delta: mapTurnSummaryEvent(payload),
+              playthrough: s.playthrough && {
+                ...s.playthrough,
+                active_conditions: payload.active_conditions,
+              },
+            }));
           } else if (eventName === "done") {
             reachedTerminalEvent = true;
             get()._commitStreamedTurn(actionText);
@@ -191,6 +226,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       is_narrating: false,
       streaming_text: "",
       cancel_stream_fn: null,
+      pending_chapter_delta: null,
     });
   },
 
@@ -226,7 +262,8 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   // Internal helpers (not part of the public store surface — no consumer
   // outside this file should call these directly).
   _commitStreamedTurn: (actionText: string) => {
-    const { playthrough, streaming_text, active_mode } = get();
+    const { playthrough, streaming_text, active_mode, pending_chapter_delta } =
+      get();
     if (!playthrough) return;
 
     const newTurn: TurnLogItem = {
@@ -236,6 +273,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       action_text: actionText,
       narration_text: streaming_text,
       created_at: new Date().toISOString(),
+      chapter_delta: pending_chapter_delta ?? undefined,
     };
 
     set({
@@ -246,6 +284,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       is_narrating: false,
       streaming_text: "",
       cancel_stream_fn: null,
+      pending_chapter_delta: null,
     });
 
     void queryClient.invalidateQueries({
@@ -258,7 +297,13 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       is_narrating: false,
       streaming_text: "",
       cancel_stream_fn: null,
+      pending_chapter_delta: null,
       degraded_message: message,
     });
   },
 }));
+
+// Keep store active_mood always in sync with ambientSoundtrack
+ambientSoundtrack.onMoodChange((mood) => {
+  usePlayStore.setState({ active_mood: mood });
+});

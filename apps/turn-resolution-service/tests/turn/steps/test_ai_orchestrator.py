@@ -70,7 +70,7 @@ async def test_generate_narration_yields_all_chunks(monkeypatch) -> None:
 
     chunks = [
         chunk
-        async for chunk in ai_orchestrator.generate_narration(
+        async for _event_type, chunk in ai_orchestrator.generate_narration(
             _turn_request(), _loaded_state(), _abstained_context()
         )
     ]
@@ -94,7 +94,7 @@ async def test_generate_narration_retries_then_succeeds(monkeypatch) -> None:
 
     chunks = [
         chunk
-        async for chunk in ai_orchestrator.generate_narration(
+        async for _event_type, chunk in ai_orchestrator.generate_narration(
             _turn_request(), _loaded_state(), _abstained_context()
         )
     ]
@@ -116,7 +116,7 @@ async def test_generate_narration_raises_after_retries_exhausted(monkeypatch) ->
 
     chunks = []
     with pytest.raises(NarrationGenerationError):
-        async for chunk in ai_orchestrator.generate_narration(
+        async for _event_type, chunk in ai_orchestrator.generate_narration(
             _turn_request(), _loaded_state(), _abstained_context()
         ):
             chunks.append(chunk)
@@ -135,7 +135,7 @@ async def test_generate_narration_prompt_includes_retrieved_facts(monkeypatch) -
 
     [
         chunk
-        async for chunk in ai_orchestrator.generate_narration(
+        async for _event_type, chunk in ai_orchestrator.generate_narration(
             _turn_request(), _loaded_state(), _context_with_facts()
         )
     ]
@@ -157,7 +157,7 @@ async def test_generate_narration_prompt_omits_facts_block_on_abstention(
 
     [
         chunk
-        async for chunk in ai_orchestrator.generate_narration(
+        async for _event_type, chunk in ai_orchestrator.generate_narration(
             _turn_request(), _loaded_state(), _abstained_context()
         )
     ]
@@ -243,7 +243,7 @@ async def test_generate_narration_master_mode_tool_loop(monkeypatch) -> None:
     )
     chunks = [
         chunk
-        async for chunk in ai_orchestrator.generate_narration(
+        async for _event_type, chunk in ai_orchestrator.generate_narration(
             _turn_request(),
             _master_loaded_state(),
             _abstained_context(),
@@ -265,18 +265,9 @@ async def test_generate_narration_master_mode_rejects_invalid_mutation(
 ) -> None:
     responses = [
         _FakeResponse(
-            [
-                types.FunctionCall(
-                    name="set_field",
-                    args={
-                        "path": "flags.investigated_lore",
-                        "value": "not-a-boolean-ish-value",
-                    },
-                )
-            ],
-            "",
+            [types.FunctionCall(name="unknown_tool", args={"foo": "bar"})], ""
         ),
-        _FakeResponse([], "Nothing happens."),
+        _FakeResponse([], "Recovery."),
     ]
 
     async def fake_generate_with_tools(
@@ -296,7 +287,7 @@ async def test_generate_narration_master_mode_rejects_invalid_mutation(
     )
     [
         chunk
-        async for chunk in ai_orchestrator.generate_narration(
+        async for _event_type, chunk in ai_orchestrator.generate_narration(
             _turn_request(),
             _master_loaded_state(),
             _abstained_context(),
@@ -332,7 +323,7 @@ async def test_generate_narration_master_mode_cap_hit(monkeypatch) -> None:
     result_sink = MasterModeTurnResult(final_state={"narrative": {"turns_so_far": []}})
     chunks = [
         chunk
-        async for chunk in ai_orchestrator.generate_narration(
+        async for _event_type, chunk in ai_orchestrator.generate_narration(
             _turn_request(),
             _master_loaded_state(),
             _abstained_context(),
@@ -364,7 +355,7 @@ async def test_generate_narration_master_mode_includes_active_instructions_and_p
     result_sink = MasterModeTurnResult(final_state={"narrative": {"turns_so_far": []}})
     [
         chunk
-        async for chunk in ai_orchestrator.generate_narration(
+        async for _event_type, chunk in ai_orchestrator.generate_narration(
             _turn_request(),
             _master_loaded_state(),
             _abstained_context(),
@@ -373,5 +364,25 @@ async def test_generate_narration_master_mode_includes_active_instructions_and_p
         )
     ]
 
-    assert "Dry humor." in captured["system_instruction"]
     assert "Kestrel Vane now travels with the player." in captured["system_instruction"]
+    assert "Dry humor." in captured["system_instruction"]
+
+
+async def test_generate_narration_emits_mood_and_clean_narration(monkeypatch) -> None:
+    async def fake_stream(system_instruction: str, prompt: str, timeout_seconds: int):
+        yield "[MOOD: tension]\n"
+        yield "You hear distant footsteps echoing."
+
+    monkeypatch.setattr(ai_orchestrator.gemini_client, "stream_narration", fake_stream)
+
+    events = [
+        (event_type, chunk)
+        async for event_type, chunk in ai_orchestrator.generate_narration(
+            _turn_request(), _loaded_state(), _abstained_context()
+        )
+    ]
+
+    assert events == [
+        ("mood", "tension"),
+        ("narration", "You hear distant footsteps echoing."),
+    ]

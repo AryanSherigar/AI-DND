@@ -27,9 +27,19 @@ AsyncSessionFactory = async_sessionmaker(
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Provide an async database session for FastAPI dependency injection.
 
+    Always inject with `scope="function"`: FastAPI's default scope for a
+    yield-dependency is "request", which defers this function's post-yield
+    code (the commit below) until *after* the response has already been sent
+    to the client — a real, reproducible race where a client can GET a list
+    immediately after a 201 POST and not see the row it just created, because
+    the transaction hasn't committed yet. `scope="function"` runs the commit
+    before the response is sent, closing that window.
+
     Usage in a router:
         @router.get("/example")
-        async def example(db: AsyncSession = Depends(get_db_session)) -> ...:
+        async def example(
+            db: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
+        ) -> ...:
             ...
     """
     async with AsyncSessionFactory() as session:

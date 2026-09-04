@@ -10,6 +10,9 @@ export function EBookBottomBar({
   onRetry,
   onEditAction,
   onOpenCodex,
+  onOpenCharacterSheet,
+  canAct = true,
+  waitingOnLabel,
 }: EBookBottomBarProps) {
   const theme = usePlayStore((s) => s.ebook_theme);
   const isSepia = theme === "antique-sepia";
@@ -29,6 +32,18 @@ export function EBookBottomBar({
           className={`p-3 rounded-full border text-center font-mono text-xs backdrop-blur-md ${barStyle}`}
         >
           You are currently spectating this chronicle (Read-Only)
+        </div>
+      </footer>
+    );
+  }
+
+  if (!canAct) {
+    return (
+      <footer className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 px-4 w-full max-w-lg opacity-60 hover:opacity-100 transition-opacity duration-300">
+        <div
+          className={`p-3 rounded-full border text-center font-mono text-xs backdrop-blur-md ${barStyle}`}
+        >
+          Waiting for {waitingOnLabel ?? "another player"}...
         </div>
       </footer>
     );
@@ -93,6 +108,17 @@ export function EBookBottomBar({
           >
             📖
           </button>
+
+          {onOpenCharacterSheet && (
+            <button
+              type="button"
+              onClick={onOpenCharacterSheet}
+              className="p-2 px-2.5 rounded-xl border border-inherit/20 hover:bg-zinc-800/50 text-xs font-mono transition-colors opacity-75 hover:opacity-100 cursor-pointer"
+              title="Open Character Sheet"
+            >
+              🧭
+            </button>
+          )}
         </div>
       </nav>
     </footer>

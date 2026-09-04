@@ -9,10 +9,17 @@ from collections.abc import AsyncIterator
 
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 
+from app.models.turn_summary import TurnSummaryPayload
+
 
 def narration_event(chunk: str) -> ServerSentEvent:
     """Format one narration chunk as an SSE event."""
     return ServerSentEvent(event="narration", data=chunk)
+
+
+def mood_event(mood: str) -> ServerSentEvent:
+    """Format a mood transition event as an SSE event."""
+    return ServerSentEvent(event="mood", data=mood)
 
 
 def playthrough_ended_event(
@@ -30,6 +37,14 @@ def playthrough_ended_event(
             }
         ),
     )
+
+
+def turn_summary_event(payload: TurnSummaryPayload) -> ServerSentEvent:
+    """Format the master-mode end-of-turn state-delta event as an SSE event,
+    emitted after state_writer/end_condition_evaluator, before the terminal
+    done event — the frontend defers showing it until that turn's narration
+    finishes streaming, regardless of when it arrives."""
+    return ServerSentEvent(event="turn_summary", data=payload.model_dump_json())
 
 
 def done_event() -> ServerSentEvent:

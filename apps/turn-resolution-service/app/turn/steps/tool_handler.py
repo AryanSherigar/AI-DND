@@ -15,7 +15,7 @@ from google.genai import types
 
 from app.models.tool_call import ProposedMutation
 
-_DEFAULT_DICE_SIDES = 20
+DEFAULT_DICE_SIDES = 20
 
 
 def prepare_mutation(call: types.FunctionCall) -> ProposedMutation:
@@ -45,7 +45,7 @@ def prepare_mutation(call: types.FunctionCall) -> ProposedMutation:
         return ProposedMutation(
             tool_name=name,
             op="roll",
-            sides=_to_int(args.get("sides"), default=_DEFAULT_DICE_SIDES),
+            sides=_to_int(args.get("sides"), default=DEFAULT_DICE_SIDES),
             modifier=_to_int(args.get("modifier"), default=0),
         )
     return ProposedMutation(tool_name=name, op="unknown")

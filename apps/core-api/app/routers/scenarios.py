@@ -32,7 +32,7 @@ router = APIRouter(prefix="/v1/scenarios", tags=["Scenarios"])
 
 
 def get_scenario_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> ScenarioService:
     """Dependency injector for ScenarioService."""
     repo = ScenarioRepo(session)
@@ -40,7 +40,7 @@ def get_scenario_service(
 
 
 def get_publish_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> PublishService:
     """Dependency injector for PublishService."""
     repo = ScenarioRepo(session)

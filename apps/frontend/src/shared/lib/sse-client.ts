@@ -84,7 +84,8 @@ function createFetchSSEConnection(
 // logged-in session, dev builds fall back to a fixed dev user id rather than
 // going unauthenticated. Kept in sync with that file intentionally — SSE
 // requests need the same fallback REST requests already get.
-const DEV_USER_ID = "00000000-0000-0000-0000-000000000001";
+const DEV_USER_ID =
+  import.meta.env.VITE_DEV_USER_ID || "464f4a91-86b5-47ce-b19a-19f37615230f";
 
 function buildAuthHeaders(authToken: string | null): Record<string, string> {
   if (authToken) return { Authorization: `Bearer ${authToken}` };

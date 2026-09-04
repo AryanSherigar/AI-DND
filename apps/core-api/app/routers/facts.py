@@ -19,7 +19,7 @@ router = APIRouter(prefix="/v1/scenarios/{scenario_id}/facts", tags=["Facts"])
 
 
 def get_fact_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
 ) -> FactService:
     """Dependency injector for FactService."""
     return FactService(FactRepo(session), EntityRepo(session), ScenarioRepo(session))

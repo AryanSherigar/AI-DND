@@ -28,6 +28,8 @@ export interface PlaythroughResponse {
   // The requesting user's own participant_id — required by POST /v1/turn.
   participant_id: string;
   participants: ParticipantSummary[];
+  // Master-mode-only; [] for newbie or no scenario_conditions currently true.
+  active_conditions: string[];
 }
 
 export async function createPlaythrough(

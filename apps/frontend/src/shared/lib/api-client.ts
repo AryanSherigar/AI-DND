@@ -50,7 +50,9 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers["Authorization"] = `Bearer ${token}`;
     } else if (import.meta.env.DEV) {
-      config.headers["X-Dev-User-Id"] = "00000000-0000-0000-0000-000000000001";
+      const devUserId =
+        import.meta.env.VITE_DEV_USER_ID || "464f4a91-86b5-47ce-b19a-19f37615230f";
+      config.headers["X-Dev-User-Id"] = devUserId;
     }
     if (!config.headers[REQUEST_ID_HEADER]) {
       config.headers[REQUEST_ID_HEADER] = generateRequestId();

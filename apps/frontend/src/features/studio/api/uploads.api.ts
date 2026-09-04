@@ -16,3 +16,16 @@ export const uploadCoverImage = async (
   );
   return response.data;
 };
+
+export const uploadMapImage = async (
+  file: File,
+): Promise<ImageUploadResponse> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await apiClient.post<ImageUploadResponse>(
+    "/v1/uploads/scenario-map-image",
+    formData,
+    { headers: { "Content-Type": undefined } },
+  );
+  return response.data;
+};

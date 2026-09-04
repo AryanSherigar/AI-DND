@@ -26,6 +26,7 @@ export function EBookCanvas() {
   const knownEntities = useEntityHighlighter(
     playthrough?.story_cards,
     playthrough?.key_facts,
+    playthrough?.entities,
   );
 
   const scrollToBottom = () => {

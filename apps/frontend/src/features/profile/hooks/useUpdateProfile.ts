@@ -14,6 +14,7 @@ export const useUpdateProfile = () => {
         ["user-profile", updatedProfile.user_id],
         updatedProfile,
       );
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
 
       // Keep auth store synced with new display name
       const currentAuthUser = useAuthStore.getState().user;
