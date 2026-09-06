@@ -17,7 +17,7 @@ const serializeParams = (params: Record<string, unknown>): string => {
 };
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000",
+  baseURL: import.meta.env.VITE_CORE_API_URL || "http://localhost:8000",
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
