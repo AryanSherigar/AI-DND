@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     play_count_increment_turn_threshold: int = 10
     state_write_max_retries: int = 2
     memory_batch_turn_interval: int = 5
+    # Memory layer (apps/memory-layer) -- unconsumed by memory_client.py
+    # until it stops being a mock (see its own module docstring, "Phase 4"),
+    # but declared here now so the real client has settings to read.
+    memory_service_url: str = "http://localhost:8002"
+    memory_service_api_key: str = ""
     tool_call_max_round_trips: int = 5
     log_level: str = "INFO"
     log_format: str = "json"

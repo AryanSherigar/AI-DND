@@ -11,6 +11,12 @@ services:
     volumes:
       - ./apps/turn-resolution-service:/app
 
+  memory-layer:
+    command: ["uvicorn", "api.server:app", "--reload", "--host", "0.0.0.0", "--port", "8002"]
+    volumes:
+      - ./apps/memory-layer/src:/app/src
+      - ./apps/memory-layer/db:/app/db
+
   frontend:
     build: !reset []
     image: node:20-alpine

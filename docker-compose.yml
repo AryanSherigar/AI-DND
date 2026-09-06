@@ -61,10 +61,88 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:3000","http://localhost:80"]}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MEMORY_SERVICE_URL: ${MEMORY_SERVICE_URL:-http://memory-layer:8002}
+      MEMORY_SERVICE_API_KEY: ${MEMORY_SERVICE_API_KEY:-dev-memory-layer-key-change-in-production}
     ports:
       - "${TRS_PORT:-8001}:8001"
     depends_on:
       postgres:
+        condition: service_healthy
+    networks:
+      - aidnd-net
+
+  postgres-memory:
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
+    container_name: aidnd-postgres-memory
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: context_memory
+      POSTGRES_PASSWORD: context_memory
+      POSTGRES_DB: context_memory
+    volumes:
+      - postgres_memory_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U context_memory -d context_memory"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aidnd-net
+
+  hydradb:
+    build:
+      context: ./apps/memory-layer/hydradb
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: aidnd-hydradb
+    restart: unless-stopped
+    entrypoint: ["sh", "-c", "mkdir -p /tmp/graph /var/cache/slatedb && echo '${HYDRADB_API_KEY:-context-memory-local-smoke-token-32b}' > /tmp/graph/auth-token && exec graph-node"]
+    environment:
+      CLOUD_PROVIDER: local
+      LOCAL_PATH: /tmp/graph
+      GRAPH_NAMESPACE: default
+      GRAPH_ID: ${HYDRADB_GRAPH_ID:-default}
+      GRAPH_CELL_ID: cell-0
+      GRAPH_CELLS: cell-0
+      GRAPH_NODE_ID: node-0
+      GRAPH_BOLT_NODE_ADDRESSES: node-0=127.0.0.1:7687
+      GRAPH_ADVERTISED_BOLT_ADDR: 127.0.0.1:7687
+      GRAPH_DATA_CACHE_DIR: /var/cache/slatedb
+      GRAPH_AUTH_TOKEN_FILE: /tmp/graph/auth-token
+      GRAPH_ALLOW_PLAINTEXT: "true"
+      RUST_MIN_STACK: "33554432"
+    volumes:
+      - hydradb_store:/tmp/graph
+      - hydradb_cache:/var/cache/slatedb
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9090' || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks:
+      - aidnd-net
+
+  memory-layer:
+    build:
+      context: ./apps/memory-layer
+      dockerfile: Dockerfile
+    container_name: aidnd-memory-layer
+    restart: unless-stopped
+    environment:
+      CONTEXT_MEMORY_DATABASE_URL: ${MEMORY_LAYER_DATABASE_URL:-postgresql://context_memory:context_memory@postgres-memory:5432/context_memory}
+      CONTEXT_MEMORY_HYDRADB_URL: http://hydradb:8080
+      CONTEXT_MEMORY_HYDRADB_TOKEN: ${HYDRADB_API_KEY:-context-memory-local-smoke-token-32b}
+      CONTEXT_MEMORY_HYDRADB_DATABASE: ${HYDRADB_GRAPH_ID:-default}
+      CONTEXT_MEMORY_API_KEY: ${MEMORY_LAYER_API_KEY:-dev-memory-layer-key-change-in-production}
+      CONTEXT_MEMORY_ALLOWED_ORIGINS: ${CORS_ORIGINS:-}
+      GOOGLE_CLOUD_API_KEY: ${GOOGLE_CLOUD_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${MEMORY_LAYER_PORT:-8002}:8002"
+    depends_on:
+      postgres-memory:
+        condition: service_healthy
+      hydradb:
         condition: service_healthy
     networks:
       - aidnd-net
@@ -89,3 +167,6 @@ networks:
 
 volumes:
   postgres_data:
+  postgres_memory_data:
+  hydradb_store:
+  hydradb_cache:

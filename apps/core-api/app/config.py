@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
     gcs_bucket_name: str = ""
+    # Memory layer (apps/memory-layer) -- unconsumed by memory_client.py
+    # until it stops being a mock (see its own module docstring, "Phase 4"),
+    # but declared here now so the real client has settings to read.
+    memory_service_url: str = "http://localhost:8002"
+    memory_service_api_key: str = ""
 
 
 settings = Settings()
