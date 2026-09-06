@@ -90,7 +90,7 @@ const KebabHandle: React.FC<KebabHandleProps> = ({
 );
 
 export interface AppShellProps {
-  /** Navigation rows (SidebarRow / SidebarButton / SidebarDivider). */
+  /** Navigation rows (SidebarRow / SidebarButton / SidebarSection). */
   nav: React.ReactNode;
   children: React.ReactNode;
   /** Optional right-hand island (e.g. an assistant panel). */

@@ -9,7 +9,7 @@ import {
   IconBookmark,
 } from "@tabler/icons-react";
 import { SidebarRow } from "./SidebarRow";
-import { SidebarDivider } from "./SidebarDivider";
+import { SidebarSection } from "./SidebarSection";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { GENRES } from "@/shared/constants/genres";
 import { GENRE_COLORS } from "@/features/play/types/scenario";
@@ -44,7 +44,7 @@ const DiscoverSections: React.FC = () => {
 
   return (
     <>
-      <SidebarDivider />
+      <SidebarSection label="You" />
       <SidebarRow
         to={buildYouHref(params, "played")}
         icon={<IconHistory size={18} />}
@@ -64,7 +64,7 @@ const DiscoverSections: React.FC = () => {
         isActive={params.get("mine") === "true"}
       />
 
-      <SidebarDivider />
+      <SidebarSection label="Genres" />
       {GENRES.map((genre) => (
         <SidebarRow
           key={genre}
@@ -91,6 +91,7 @@ export const AppNav: React.FC = () => {
   const { user } = useAuth();
   const isRoute = (path: string): boolean => location.pathname === path;
   const isDiscover = location.pathname.startsWith("/discover");
+  const showBrowseSections = isDiscover || isRoute("/");
 
   return (
     <>
@@ -119,7 +120,7 @@ export const AppNav: React.FC = () => {
         isActive={location.pathname.startsWith("/profile")}
       />
 
-      {isDiscover && <DiscoverSections />}
+      {showBrowseSections && <DiscoverSections />}
     </>
   );
 };

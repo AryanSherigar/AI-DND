@@ -27,10 +27,16 @@ export const SidebarRow: React.FC<SidebarRowProps> = ({
       onClick={onClick}
       title={collapsed ? label : undefined}
       className={cn(
-        "group/row flex items-center gap-3 rounded-md px-1 py-2 font-sans text-sm transition-colors",
-        isActive ? "text-content" : "text-content-muted hover:text-content",
+        "group/row relative flex items-center gap-3 rounded-lg py-2 font-sans text-sm transition-colors",
+        collapsed ? "justify-center px-0" : "px-2.5",
+        isActive
+          ? "bg-surface-overlay text-content"
+          : "text-content-muted hover:bg-surface-raised/70 hover:text-content",
       )}
     >
+      {isActive && !collapsed && (
+        <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent" />
+      )}
       <span className="flex h-5 w-5 shrink-0 items-center justify-center">
         {icon}
       </span>
@@ -39,7 +45,7 @@ export const SidebarRow: React.FC<SidebarRowProps> = ({
           opacity: collapsed ? 0 : 1,
           width: collapsed ? 0 : "auto",
         }}
-        className="overflow-hidden whitespace-nowrap transition-transform duration-150 group-hover/row:translate-x-0.5"
+        className="overflow-hidden whitespace-nowrap"
       >
         {label}
       </motion.span>
