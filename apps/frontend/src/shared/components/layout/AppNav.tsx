@@ -1,5 +1,5 @@
 import React from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import {
   IconHome,
   IconCompass,
@@ -11,11 +11,86 @@ import {
 import { SidebarRow } from "./SidebarRow";
 import { SidebarDivider } from "./SidebarDivider";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { GENRES } from "@/shared/constants/genres";
+import { GENRE_COLORS } from "@/features/play/types/scenario";
+
+const YOU_FILTER_KEYS = ["mine", "saved", "played"] as const;
+
+const buildDiscoverHref = (
+  params: URLSearchParams,
+  updates: Record<string, string | null>,
+): string => {
+  const next = new URLSearchParams(params);
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === null) next.delete(key);
+    else next.set(key, value);
+  }
+  return `/discover?${next.toString()}`;
+};
+
+const buildYouHref = (
+  params: URLSearchParams,
+  key: (typeof YOU_FILTER_KEYS)[number],
+): string => {
+  const updates: Record<string, string | null> = { [key]: "true" };
+  for (const other of YOU_FILTER_KEYS) {
+    if (other !== key) updates[other] = null;
+  }
+  return buildDiscoverHref(params, updates);
+};
+
+const DiscoverSections: React.FC = () => {
+  const [params] = useSearchParams();
+
+  return (
+    <>
+      <SidebarDivider />
+      <SidebarRow
+        to={buildYouHref(params, "played")}
+        icon={<IconHistory size={18} />}
+        label="Played"
+        isActive={params.get("played") === "true"}
+      />
+      <SidebarRow
+        to={buildYouHref(params, "saved")}
+        icon={<IconBookmark size={18} />}
+        label="Saved"
+        isActive={params.get("saved") === "true"}
+      />
+      <SidebarRow
+        to={buildYouHref(params, "mine")}
+        icon={<IconPencilPlus size={18} />}
+        label="Created"
+        isActive={params.get("mine") === "true"}
+      />
+
+      <SidebarDivider />
+      {GENRES.map((genre) => (
+        <SidebarRow
+          key={genre}
+          to={buildDiscoverHref(params, { genre })}
+          isActive={params.getAll("genre").includes(genre)}
+          icon={
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{
+                backgroundColor:
+                  GENRE_COLORS[genre as keyof typeof GENRE_COLORS] || "#6B7280",
+              }}
+            />
+          }
+          label={genre}
+        />
+      ))}
+    </>
+  );
+};
 
 export const AppNav: React.FC = () => {
   const location = useLocation();
   const { user } = useAuth();
   const isRoute = (path: string): boolean => location.pathname === path;
+  const isDiscover = location.pathname.startsWith("/discover");
 
   return (
     <>
@@ -29,7 +104,7 @@ export const AppNav: React.FC = () => {
         to="/discover"
         icon={<IconCompass size={18} />}
         label="Discover"
-        isActive={location.pathname.startsWith("/discover")}
+        isActive={isDiscover}
       />
       <SidebarRow
         to="/studio"
@@ -44,23 +119,7 @@ export const AppNav: React.FC = () => {
         isActive={location.pathname.startsWith("/profile")}
       />
 
-      {user && (
-        <>
-          <SidebarDivider />
-          <SidebarRow
-            to="/discover?played=true"
-            icon={<IconHistory size={18} />}
-            label="Played"
-            isActive={location.search.includes("played=true")}
-          />
-          <SidebarRow
-            to="/discover?saved=true"
-            icon={<IconBookmark size={18} />}
-            label="Saved"
-            isActive={location.search.includes("saved=true")}
-          />
-        </>
-      )}
+      {isDiscover && <DiscoverSections />}
     </>
   );
 };
