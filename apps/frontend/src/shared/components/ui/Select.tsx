@@ -20,13 +20,13 @@ function renderGroup(group: SelectOptionGroup) {
     <optgroup
       key={group.label}
       label={group.label}
-      className="bg-zinc-900 text-zinc-400 font-semibold"
+      className="bg-surface-raised font-semibold text-content-muted"
     >
       {group.options.map((option) => (
         <option
           key={option.value}
           value={option.value}
-          className="bg-zinc-900 text-zinc-100 font-normal"
+          className="bg-surface-raised font-normal text-content"
         >
           {option.label}
         </option>
@@ -51,7 +51,7 @@ export const Select: React.FC<SelectProps> = ({
 }) => {
   return (
     <select
-      className={`w-full rounded-none border border-zinc-800 bg-zinc-900 px-3 py-2 font-sans text-sm text-zinc-300 focus:outline-none focus:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      className={`w-full rounded-md border border-border-subtle bg-surface-inset px-3 py-2 font-sans text-sm text-content transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
       {...rest}
     >
       {groups ? groups.map(renderGroup) : options?.map(renderOption)}

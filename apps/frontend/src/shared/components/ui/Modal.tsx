@@ -38,24 +38,33 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
       onClick={handleBackdropClick}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-lg rounded-none border border-zinc-800 bg-zinc-950 font-sans text-zinc-300 shadow-xl"
+        className="w-full max-w-lg rounded-xl border border-border-subtle bg-surface-overlay font-sans text-content-muted shadow-elevated"
       >
         {title && (
-          <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-            <h2 className="text-sm font-semibold text-zinc-100">{title}</h2>
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+            <h2 className="text-sm font-semibold text-content">{title}</h2>
             <button
               onClick={onClose}
               aria-label="Close"
-              className="text-zinc-500 hover:text-zinc-100"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-content-faint transition hover:bg-surface-raised hover:text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              ✕
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
             </button>
           </div>
         )}
