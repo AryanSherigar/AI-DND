@@ -44,9 +44,9 @@ export const StateMutationFields: React.FC<StateMutationFieldsProps> = ({
   };
 
   return (
-    <div className="space-y-2 border border-zinc-800 p-3">
+    <div className="rounded-md space-y-2 border border-border-subtle p-3">
       {isOptional && (
-        <label className="flex items-center gap-2 text-sm text-zinc-300">
+        <label className="flex items-center gap-2 text-sm text-content-muted">
           <input
             type="checkbox"
             checked={hasStateMutation}

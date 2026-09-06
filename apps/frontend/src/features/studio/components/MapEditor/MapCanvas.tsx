@@ -110,15 +110,15 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({ scenarioId, mapId }) => {
 
   return (
     <div className="space-y-2">
-      {createError && <p className="text-xs text-red-400">{createError}</p>}
-      <p className="text-xs text-zinc-500">
+      {createError && <p className="text-xs text-danger">{createError}</p>}
+      <p className="text-xs text-content-faint">
         Click anywhere on the map to place a Location entity's pin. Drag a pin
         to reposition it.
       </p>
       <div
         ref={canvasRef}
         onClick={handleCanvasClick}
-        className="relative w-full select-none border border-zinc-800"
+        className="rounded-md relative w-full select-none border border-border-subtle"
         style={{ aspectRatio: "16 / 9" }}
       >
         <img
@@ -133,10 +133,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({ scenarioId, mapId }) => {
             onPointerMove={handlePinPointerMove(pin)}
             onPointerUp={handlePinPointerUp(pin)}
             title={entityName(pin.entity_id)}
-            className={`absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 whitespace-nowrap border px-2 py-1 text-xs ${
+            className={`rounded-md absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 whitespace-nowrap border px-2 py-1 text-xs ${
               pin.is_start_location
                 ? "border-emerald-500 bg-emerald-950 text-emerald-300"
-                : "border-zinc-400 bg-zinc-950 text-zinc-100"
+                : "border-content-muted bg-surface-inset text-content"
             }`}
             style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%` }}
           >
@@ -145,7 +145,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({ scenarioId, mapId }) => {
         ))}
         {pendingPin && (
           <div
-            className="absolute z-10 -translate-x-1/2 -translate-y-1/2 space-y-2 border border-zinc-400 bg-zinc-950 p-2"
+            className="rounded-md absolute z-10 -translate-x-1/2 -translate-y-1/2 space-y-2 border border-content-muted bg-surface-inset p-2"
             style={{
               left: `${pendingPin.x * 100}%`,
               top: `${pendingPin.y * 100}%`,
@@ -186,23 +186,23 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({ scenarioId, mapId }) => {
         {pins.map((pin) => (
           <div
             key={pin.pin_id}
-            className="flex items-center justify-between border border-zinc-800 px-3 py-1.5 text-xs"
+            className="rounded-md flex items-center justify-between border border-border-subtle px-3 py-1.5 text-xs"
           >
-            <span className="text-zinc-300">{entityName(pin.entity_id)}</span>
+            <span className="text-content-muted">{entityName(pin.entity_id)}</span>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => handleToggleStart(pin)}
                 className={
                   pin.is_start_location
                     ? "text-emerald-400"
-                    : "text-zinc-500 hover:text-zinc-300"
+                    : "text-content-faint hover:text-content-muted"
                 }
               >
                 {pin.is_start_location ? "★ Starting location" : "Set as start"}
               </button>
               <button
                 onClick={() => deletePin(pin.pin_id)}
-                className="text-zinc-500 hover:text-red-400"
+                className="text-content-faint hover:text-danger"
               >
                 Remove
               </button>

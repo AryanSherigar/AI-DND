@@ -199,11 +199,11 @@ export const EntityForm: React.FC<EntityFormProps> = ({
           setFormState({ ...formState, description: e.target.value })
         }
         placeholder="Description"
-        className="w-full border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300"
+        className="rounded-md w-full border border-border-subtle bg-surface px-3 py-2 text-sm text-content-muted"
         rows={3}
       />
       {isItemType && !isNewCustomType && (
-        <label className="flex items-center gap-2 text-sm text-zinc-300">
+        <label className="flex items-center gap-2 text-sm text-content-muted">
           <input
             type="checkbox"
             checked={formState.obtainable}
@@ -220,7 +220,7 @@ export const EntityForm: React.FC<EntityFormProps> = ({
           setFormState({ ...formState, narratorInstruction: e.target.value })
         }
         placeholder="Narrator instruction"
-        className="w-full border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300"
+        className="rounded-md w-full border border-border-subtle bg-surface px-3 py-2 text-sm text-content-muted"
         rows={2}
       />
       {!isNewCustomType && (
@@ -231,7 +231,7 @@ export const EntityForm: React.FC<EntityFormProps> = ({
           }
         />
       )}
-      {submitError && <p className="text-xs text-red-400">{submitError}</p>}
+      {submitError && <p className="text-xs text-danger">{submitError}</p>}
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel

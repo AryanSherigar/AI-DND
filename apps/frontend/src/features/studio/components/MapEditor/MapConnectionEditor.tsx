@@ -40,8 +40,8 @@ export const MapConnectionEditor: React.FC<MapConnectionEditorProps> = ({
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-sm font-semibold text-zinc-100">Connections</h2>
-        <p className="mt-1 text-xs text-zinc-500">
+        <h2 className="text-sm font-semibold text-content">Connections</h2>
+        <p className="mt-1 text-xs text-content-faint">
           Connections may cross maps and are advisory only — they hint the
           narrator with known paths but never restrict where the player can go.
         </p>
@@ -77,23 +77,23 @@ export const MapConnectionEditor: React.FC<MapConnectionEditorProps> = ({
           </Button>
         </div>
       )}
-      {createError && <p className="text-xs text-red-400">{createError}</p>}
+      {createError && <p className="text-xs text-danger">{createError}</p>}
       <div className="space-y-1">
         {connections.map((connection) => (
           <div
             key={connection.connection_id}
-            className="flex items-center justify-between border border-zinc-800 px-3 py-1.5 text-xs"
+            className="rounded-md flex items-center justify-between border border-border-subtle px-3 py-1.5 text-xs"
           >
-            <span className="text-zinc-300">
+            <span className="text-content-muted">
               {entityName(connection.entity_id_a)} ↔{" "}
               {entityName(connection.entity_id_b)}
               {connection.label && (
-                <span className="ml-2 text-zinc-600">({connection.label})</span>
+                <span className="ml-2 text-content-faint">({connection.label})</span>
               )}
             </span>
             <button
               onClick={() => deleteConnection(connection.connection_id)}
-              className="text-zinc-500 hover:text-red-400"
+              className="text-content-faint hover:text-danger"
             >
               Remove
             </button>

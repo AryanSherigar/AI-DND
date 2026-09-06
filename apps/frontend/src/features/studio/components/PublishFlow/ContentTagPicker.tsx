@@ -18,10 +18,10 @@ export const ContentTagPicker: React.FC<ContentTagPickerProps> = ({
 }) => {
   return (
     <div className="space-y-3">
-      <label className="block text-sm font-semibold tracking-wide text-zinc-300 uppercase">
+      <label className="block text-sm font-semibold tracking-wide text-content-muted uppercase">
         Content Tag *
       </label>
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-content-faint">
         Declare the content level for this scenario. Checked at publish time.
       </p>
       <div className="flex flex-wrap gap-2">
@@ -33,10 +33,10 @@ export const ContentTagPicker: React.FC<ContentTagPickerProps> = ({
               type="button"
               disabled={disabled}
               onClick={() => onChange(tag)}
-              className={`px-3 py-1 text-xs font-mono border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`rounded-md px-3 py-1 text-xs font-mono border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 isSelected
-                  ? "bg-zinc-100 text-zinc-950 border-zinc-100 font-semibold"
-                  : "bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-zinc-200"
+                  ? "bg-content text-surface border-content font-semibold"
+                  : "bg-surface-inset text-content-muted border-border-subtle hover:border-border-strong hover:text-content"
               }`}
             >
               {CONTENT_TAG_LABELS[tag]}

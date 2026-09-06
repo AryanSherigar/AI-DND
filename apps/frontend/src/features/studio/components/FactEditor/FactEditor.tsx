@@ -84,7 +84,7 @@ export const FactEditor: React.FC<FactEditorProps> = ({ scenarioId }) => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-zinc-100">Facts</h1>
+        <h1 className="text-lg font-semibold text-content">Facts</h1>
         <Button onClick={handleOpenCreate}>New Fact</Button>
       </div>
       <div className="flex items-center gap-2">
@@ -106,7 +106,7 @@ export const FactEditor: React.FC<FactEditorProps> = ({ scenarioId }) => {
           </Button>
         )}
       </div>
-      {isLoading && <p className="text-sm text-zinc-500">Loading facts…</p>}
+      {isLoading && <p className="text-sm text-content-faint">Loading facts…</p>}
       {!isLoading && facts.length === 0 && (
         <EmptyState
           title="No facts yet"

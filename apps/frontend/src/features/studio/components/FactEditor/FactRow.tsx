@@ -35,7 +35,7 @@ export const FactRow: React.FC<FactRowProps> = ({
 
   const summary = (
     <span className="flex items-center gap-2">
-      <span className="text-sm text-zinc-200">
+      <span className="text-sm text-content">
         {subjectEntity?.canonical_name ?? fact.subject_entity_id} →{" "}
         {fact.predicate} → {objectLabel}
       </span>
@@ -67,7 +67,7 @@ export const FactRow: React.FC<FactRowProps> = ({
   return (
     <div>
       <ExpandablePanel summary={summary} actions={actions}>
-        <div className="space-y-1 text-xs text-zinc-500">
+        <div className="space-y-1 text-xs text-content-faint">
           <p>Valid from: {fact.valid_from ?? "always"}</p>
           <p>
             Active when:{" "}
@@ -81,12 +81,12 @@ export const FactRow: React.FC<FactRowProps> = ({
         </div>
       </ExpandablePanel>
       {isSubjectMissing && (
-        <p className="mt-1 text-xs text-red-400">
+        <p className="mt-1 text-xs text-danger">
           Subject: this entity no longer exists.
         </p>
       )}
       {isObjectMissing && (
-        <p className="mt-1 text-xs text-red-400">
+        <p className="mt-1 text-xs text-danger">
           Object: this entity no longer exists.
         </p>
       )}

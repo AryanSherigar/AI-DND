@@ -50,14 +50,14 @@ export const NarratorPersonaEditor: React.FC<NarratorPersonaEditorProps> = ({
 
   if (isLoading) {
     return (
-      <p className="text-sm text-zinc-500">Loading narrator checkpoints...</p>
+      <p className="text-sm text-content-faint">Loading narrator checkpoints...</p>
     );
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-zinc-100">
+        <h2 className="text-base font-semibold text-content">
           Narrator Persona Overrides
         </h2>
         <div className="flex items-center gap-2">
@@ -80,7 +80,7 @@ export const NarratorPersonaEditor: React.FC<NarratorPersonaEditorProps> = ({
           </Button>
         </div>
       </div>
-      {updateError && <p className="text-xs text-red-400">{updateError}</p>}
+      {updateError && <p className="text-xs text-danger">{updateError}</p>}
       <div className="space-y-3">
         {overrides.map((override) => (
           <CheckpointOverrideRow

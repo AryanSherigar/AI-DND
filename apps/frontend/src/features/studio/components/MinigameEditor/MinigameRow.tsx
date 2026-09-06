@@ -34,12 +34,12 @@ export const MinigameRow: React.FC<MinigameRowProps> = ({
       ref={setNodeRef}
       style={style}
       data-testid={`minigame-row-${minigame.minigame_id}`}
-      className="flex items-center gap-3 border border-zinc-800 bg-zinc-950 px-3 py-2"
+      className="rounded-md flex items-center gap-3 border border-border-subtle bg-surface-inset px-3 py-2"
     >
       <button
         type="button"
         aria-label="Drag to reorder"
-        className="cursor-grab text-zinc-600 hover:text-zinc-300"
+        className="cursor-grab text-content-faint hover:text-content-muted"
         {...attributes}
         {...listeners}
       >
@@ -48,10 +48,10 @@ export const MinigameRow: React.FC<MinigameRowProps> = ({
       <Badge>{TYPE_LABEL[minigame.minigame_type]}</Badge>
       <Badge variant="default">priority {minigame.priority}</Badge>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-100">
+        <p className="truncate text-sm font-medium text-content">
           {minigame.label}
         </p>
-        <p className="truncate text-xs text-zinc-500">
+        <p className="truncate text-xs text-content-faint">
           {minigame.outcome_mode} outcome
         </p>
       </div>

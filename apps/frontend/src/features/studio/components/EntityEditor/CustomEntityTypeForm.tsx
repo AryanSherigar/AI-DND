@@ -26,8 +26,8 @@ export const CustomEntityTypeForm: React.FC<CustomEntityTypeFormProps> = ({
   };
 
   return (
-    <div className="space-y-3 border border-zinc-800 bg-zinc-950 p-3">
-      <p className="text-xs font-medium text-zinc-400">New custom type</p>
+    <div className="rounded-md space-y-3 border border-border-subtle bg-surface-inset p-3">
+      <p className="text-xs font-medium text-content-muted">New custom type</p>
       <Input
         aria-label="Custom type name"
         value={displayLabel}
@@ -35,7 +35,7 @@ export const CustomEntityTypeForm: React.FC<CustomEntityTypeFormProps> = ({
         placeholder="Type name (e.g. Vehicle)"
         required
       />
-      {typeKey && <p className="text-xs text-zinc-600">Stored as: {typeKey}</p>}
+      {typeKey && <p className="text-xs text-content-faint">Stored as: {typeKey}</p>}
       <AttributesSchemaEditor
         value={attributesSchema}
         onChange={onAttributesSchemaChange}

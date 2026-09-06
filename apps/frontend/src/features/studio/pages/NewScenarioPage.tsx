@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { Link } from "react-router-dom";
 import { useStudioStore } from "../stores/studio.store";
 import { StudioDocumentLayout } from "../components/Layout/StudioDocumentLayout";
 import { MasterModeCreateFlow } from "../components/MasterModeCreateFlow/MasterModeCreateFlow";
@@ -12,50 +13,71 @@ export const NewScenarioPage: React.FC = () => {
   }, [resetDraft]);
 
   return (
-    <div className="h-screen overflow-hidden bg-zinc-950 text-zinc-100 flex flex-col font-sans">
-      {/* Top Navigation / Mode Toggle */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950 flex-shrink-0 z-50">
-        <div className="flex items-center gap-6">
-          <h1 className="text-sm font-semibold text-zinc-100 tracking-widest uppercase font-mono">
-            AI-DND Studio
-          </h1>
-          <div className="flex bg-zinc-900 p-1 border border-zinc-800">
+    <div className="flex h-screen flex-col overflow-hidden bg-surface-sunken font-sans text-content">
+      {/* Editor top bar — nav + mode toggle + save status */}
+      <header className="z-50 flex flex-shrink-0 items-center justify-between gap-4 bg-surface-sunken px-5 py-2">
+        <div className="flex items-center gap-5">
+          <Link
+            to="/"
+            className="font-mono text-sm font-semibold lowercase tracking-[0.25em] text-content transition-colors hover:text-accent"
+          >
+            wevr
+          </Link>
+          <nav className="hidden items-center gap-1 lg:flex">
+            <Link
+              to="/"
+              className="rounded-md px-2.5 py-1.5 font-sans text-sm text-content-muted transition-colors hover:text-content"
+            >
+              Home
+            </Link>
+            <Link
+              to="/discover"
+              className="rounded-md px-2.5 py-1.5 font-sans text-sm text-content-muted transition-colors hover:text-content"
+            >
+              Discover
+            </Link>
+            <Link
+              to="/studio"
+              className="rounded-md px-2.5 py-1.5 font-sans text-sm text-content transition-colors hover:text-content"
+            >
+              Studio
+            </Link>
+          </nav>
+          <div className="flex gap-1 rounded-md border border-border-subtle bg-surface-raised p-1">
             <button
               onClick={() => setMode("newbie")}
-              className={`px-4 py-1.5 text-xs uppercase tracking-wider transition-all rounded-none ${
+              className={`rounded-sm px-4 py-1.5 text-xs uppercase tracking-wider transition-colors ${
                 mode === "newbie"
-                  ? "bg-zinc-100 text-zinc-950 font-semibold"
-                  : "text-zinc-500 hover:text-zinc-300"
+                  ? "bg-content font-semibold text-surface"
+                  : "text-content-faint hover:text-content-muted"
               }`}
             >
-              Newbie Mode
+              Newbie
             </button>
             <button
               onClick={() => setMode("master")}
-              className={`px-4 py-1.5 text-xs uppercase tracking-wider transition-all rounded-none ${
+              className={`rounded-sm px-4 py-1.5 text-xs uppercase tracking-wider transition-colors ${
                 mode === "master"
-                  ? "bg-zinc-100 text-zinc-950 font-semibold"
-                  : "text-zinc-500 hover:text-zinc-300"
+                  ? "bg-content font-semibold text-surface"
+                  : "text-content-faint hover:text-content-muted"
               }`}
             >
-              Master Mode
+              Master
             </button>
           </div>
         </div>
 
         {/* Status indicator */}
-        <div className="flex items-center gap-2 text-xs uppercase tracking-wider">
+        <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider">
           {isSaving ? (
-            <span className="flex items-center gap-2 text-zinc-400 font-mono">
-              <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-zinc-400"></span>
-              Saving...
+            <span className="flex items-center gap-2 text-content-muted">
+              <span className="h-3 w-3 animate-spin rounded-full border-b-2 border-content-muted" />
+              Saving…
             </span>
           ) : lastSaved ? (
-            <span className="flex items-center gap-1 text-emerald-400 font-mono">
-              Saved
-            </span>
+            <span className="text-success">Saved</span>
           ) : (
-            <span className="text-zinc-500 font-mono">Unsaved Draft</span>
+            <span className="text-content-faint">Unsaved draft</span>
           )}
         </div>
       </header>

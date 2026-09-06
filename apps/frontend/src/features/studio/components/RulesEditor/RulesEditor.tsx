@@ -17,13 +17,13 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ scenarioId }) => {
   };
 
   if (isLoading || rulesText === undefined) {
-    return <p className="text-sm text-zinc-500">Loading house rules...</p>;
+    return <p className="text-sm text-content-faint">Loading house rules...</p>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-zinc-100">House Rules</h2>
+        <h2 className="text-base font-semibold text-content">House Rules</h2>
         <Button
           type="button"
           variant="primary"
@@ -34,7 +34,7 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ scenarioId }) => {
           {isUpdating ? "Saving..." : "Save"}
         </Button>
       </div>
-      {updateError && <p className="text-xs text-red-400">{updateError}</p>}
+      {updateError && <p className="text-xs text-danger">{updateError}</p>}
       <DistractionFreeEditor
         value={rulesText}
         onChange={setRulesText}

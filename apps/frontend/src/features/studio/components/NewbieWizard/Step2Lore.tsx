@@ -60,18 +60,18 @@ export const Step2Lore: React.FC = () => {
 
   return (
     <div className="space-y-8">
-      <div className="space-y-2 border-b border-zinc-800 pb-4 flex justify-between items-start">
+      <div className="space-y-2 border-b border-border-subtle pb-4 flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-semibold text-zinc-100 tracking-tight">
+          <h2 className="text-2xl font-semibold text-content tracking-tight">
             World Lore
           </h2>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-content-muted">
             Describe the world, characters, and history.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-zinc-950 border border-zinc-800 p-2">
-          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+        <div className="rounded-md flex items-center gap-3 bg-surface-inset border border-border-subtle p-2">
+          <span className="text-xs font-semibold text-content-muted uppercase tracking-wider">
             Single Prompt Mode
           </span>
           <button
@@ -81,10 +81,10 @@ export const Step2Lore: React.FC = () => {
                 !localDraft.useSingleLorePrompt,
               )
             }
-            className={`w-10 h-5 relative transition-colors border border-zinc-700 ${localDraft.useSingleLorePrompt ? "bg-zinc-200" : "bg-zinc-900"}`}
+            className={`relative h-5 w-10 rounded-full border border-border-subtle transition-colors ${localDraft.useSingleLorePrompt ? "bg-accent" : "bg-surface"}`}
           >
             <div
-              className={`absolute top-0.5 left-0.5 w-3.5 h-3.5 bg-zinc-500 transition-transform ${localDraft.useSingleLorePrompt ? "translate-x-5 bg-zinc-800" : "translate-x-0"}`}
+              className={`absolute left-0.5 top-0.5 h-3.5 w-3.5 rounded-full transition-transform ${localDraft.useSingleLorePrompt ? "translate-x-5 bg-accent-contrast" : "translate-x-0 bg-content-faint"}`}
             ></div>
           </button>
         </div>
@@ -92,7 +92,7 @@ export const Step2Lore: React.FC = () => {
 
       {localDraft.useSingleLorePrompt ? (
         <div className="space-y-3">
-          <label className="block text-sm font-semibold tracking-wide text-zinc-300 uppercase">
+          <label className="block text-sm font-semibold tracking-wide text-content-muted uppercase">
             Everything
           </label>
           <DistractionFreeEditor
@@ -105,7 +105,7 @@ export const Step2Lore: React.FC = () => {
       ) : (
         <div className="space-y-8">
           <div className="space-y-3">
-            <label className="block text-sm font-semibold tracking-wide text-zinc-300 uppercase">
+            <label className="block text-sm font-semibold tracking-wide text-content-muted uppercase">
               The World Lore
             </label>
             <DistractionFreeEditor
@@ -117,10 +117,10 @@ export const Step2Lore: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            <label className="block text-sm font-semibold tracking-wide text-zinc-300 uppercase">
+            <label className="block text-sm font-semibold tracking-wide text-content-muted uppercase">
               Opening Prompt
             </label>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-content-faint">
               How does the story begin for the player?
             </p>
             <DistractionFreeEditor
@@ -133,14 +133,14 @@ export const Step2Lore: React.FC = () => {
 
           <div className="space-y-3">
             <div className="flex justify-between items-center">
-              <label className="block text-sm font-semibold tracking-wide text-zinc-300 uppercase">
+              <label className="block text-sm font-semibold tracking-wide text-content-muted uppercase">
                 Main Conflict / Goal
               </label>
               <button
                 onClick={() =>
                   handleChange("includeConflict", !localDraft.includeConflict)
                 }
-                className={`text-xs font-semibold px-3 py-1 transition-colors uppercase tracking-wider border ${localDraft.includeConflict ? "bg-zinc-800 text-zinc-200 border-zinc-700" : "bg-zinc-950 text-zinc-500 border-zinc-800 hover:text-zinc-300"}`}
+                className={`rounded-md text-xs font-semibold px-3 py-1 transition-colors uppercase tracking-wider border ${localDraft.includeConflict ? "bg-surface-overlay text-content border-border-subtle" : "bg-surface-inset text-content-faint border-border-subtle hover:text-content-muted"}`}
               >
                 {localDraft.includeConflict ? "Enabled" : "Disabled"}
               </button>
@@ -158,10 +158,10 @@ export const Step2Lore: React.FC = () => {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <div>
-                <label className="block text-sm font-semibold tracking-wide text-zinc-300 uppercase">
+                <label className="block text-sm font-semibold tracking-wide text-content-muted uppercase">
                   Story Cards
                 </label>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-content-faint">
                   Create separate cards for different characters, factions, or
                   locations.
                 </p>
@@ -178,7 +178,7 @@ export const Step2Lore: React.FC = () => {
                     },
                   ])
                 }
-                className="px-3 py-1.5 bg-zinc-900 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 border border-zinc-700 text-xs font-semibold uppercase tracking-wider transition-colors"
+                className="rounded-md px-3 py-1.5 bg-surface text-content-muted hover:text-content hover:bg-surface-overlay border border-border-subtle text-xs font-semibold uppercase tracking-wider transition-colors"
               >
                 + Add Card
               </button>
@@ -188,7 +188,7 @@ export const Step2Lore: React.FC = () => {
               {localDraft.storyCards.map((card, idx) => (
                 <div
                   key={card.id}
-                  className="bg-zinc-950 border border-zinc-800 p-4 space-y-3 relative group"
+                  className="rounded-md bg-surface-inset border border-border-subtle p-4 space-y-3 relative group"
                 >
                   <button
                     onClick={() =>
@@ -197,7 +197,7 @@ export const Step2Lore: React.FC = () => {
                         localDraft.storyCards.filter((c) => c.id !== card.id),
                       )
                     }
-                    className="absolute top-4 right-4 text-zinc-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                    className="absolute top-4 right-4 text-content-faint hover:text-danger transition-colors opacity-0 group-hover:opacity-100"
                   >
                     <svg
                       className="w-4 h-4"
@@ -221,35 +221,35 @@ export const Step2Lore: React.FC = () => {
                         newCards[idx].type = e.target.value;
                         handleChange("storyCards", newCards);
                       }}
-                      className="bg-transparent border-b border-zinc-800 text-sm font-semibold text-zinc-400 focus:outline-none focus:border-zinc-400 pb-1"
+                      className="bg-transparent border-b border-border-subtle text-sm font-semibold text-content-muted focus:outline-none focus-visible:border-accent/50 pb-1"
                     >
                       <option
                         value="Character"
-                        className="bg-zinc-950 text-zinc-300"
+                        className="bg-surface-inset text-content-muted"
                       >
                         Character
                       </option>
                       <option
                         value="Faction"
-                        className="bg-zinc-950 text-zinc-300"
+                        className="bg-surface-inset text-content-muted"
                       >
                         Faction
                       </option>
                       <option
                         value="Location"
-                        className="bg-zinc-950 text-zinc-300"
+                        className="bg-surface-inset text-content-muted"
                       >
                         Location
                       </option>
                       <option
                         value="Item"
-                        className="bg-zinc-950 text-zinc-300"
+                        className="bg-surface-inset text-content-muted"
                       >
                         Item
                       </option>
                       <option
                         value="Other"
-                        className="bg-zinc-950 text-zinc-300"
+                        className="bg-surface-inset text-content-muted"
                       >
                         Other
                       </option>
@@ -262,7 +262,7 @@ export const Step2Lore: React.FC = () => {
                         newCards[idx].name = e.target.value;
                         handleChange("storyCards", newCards);
                       }}
-                      className="flex-1 bg-transparent border-b border-zinc-800 text-sm font-semibold text-zinc-100 focus:outline-none focus:border-zinc-400 pb-1"
+                      className="flex-1 bg-transparent border-b border-border-subtle text-sm font-semibold text-content focus:outline-none focus-visible:border-accent/50 pb-1"
                       placeholder="Name (e.g., Elara, Crimson Guild)"
                     />
                   </div>
@@ -274,7 +274,7 @@ export const Step2Lore: React.FC = () => {
                       handleChange("storyCards", newCards);
                     }}
                     placeholder="Describe this character, faction, or location..."
-                    className="h-32 bg-zinc-950/50"
+                    className="h-32 bg-surface-inset/50"
                   />
                 </div>
               ))}

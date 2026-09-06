@@ -82,10 +82,10 @@ export const EndConditionForm: React.FC<EndConditionFormProps> = ({
           setFormState({ ...formState, outcomeText: e.target.value })
         }
         placeholder="Outcome text"
-        className="w-full rounded-none border border-zinc-800 bg-zinc-900 px-3 py-2 font-sans text-sm text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-400"
+        className="w-full rounded-md border border-border-subtle bg-surface px-3 py-2 font-sans text-sm text-content-muted placeholder:text-content-faint focus:outline-none focus-visible:border-accent/50"
         rows={3}
       />
-      <label className="flex items-center gap-2 text-sm text-zinc-300">
+      <label className="flex items-center gap-2 text-sm text-content-muted">
         <input
           type="checkbox"
           checked={formState.isSecret}
@@ -102,7 +102,7 @@ export const EndConditionForm: React.FC<EndConditionFormProps> = ({
         }
         availableFields={availableFields}
       />
-      {submitError && <p className="text-xs text-red-400">{submitError}</p>}
+      {submitError && <p className="text-xs text-danger">{submitError}</p>}
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel

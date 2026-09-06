@@ -41,13 +41,13 @@ export const StateFieldMapEditor: React.FC<StateFieldMapEditorProps> = ({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-zinc-300">{depthLabel}</span>
+        <span className="text-sm font-medium text-content-muted">{depthLabel}</span>
         <Button type="button" size="sm" variant="secondary" onClick={handleAdd}>
           Add Field
         </Button>
       </div>
       {entries.length === 0 && (
-        <p className="text-xs text-zinc-600">No fields defined.</p>
+        <p className="text-xs text-content-faint">No fields defined.</p>
       )}
       {entries.map(([key, schema]) => (
         <StateFieldRow

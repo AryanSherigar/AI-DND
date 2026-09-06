@@ -55,12 +55,12 @@ export const StepPlayerSetup: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+      <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div>
-          <h2 className="text-2xl font-semibold text-zinc-100 tracking-tight">
+          <h2 className="text-2xl font-semibold text-content tracking-tight">
             Player Setup
           </h2>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-content-muted">
             Configure custom choices and inputs players must select before Turn
             1.
           </p>
@@ -69,14 +69,14 @@ export const StepPlayerSetup: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsPreviewOpen(!isPreviewOpen)}
-            className="px-4 py-2 text-xs font-semibold uppercase tracking-wider border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition-colors rounded-none"
+            className="px-4 py-2 text-xs font-semibold uppercase tracking-wider border border-border-subtle bg-surface hover:bg-surface-overlay text-content-muted transition-colors rounded-md"
           >
             {isPreviewOpen ? "Edit Setup Fields" : "Live Player Preview"}
           </button>
           <button
             type="button"
             onClick={handleAddField}
-            className="px-4 py-2 text-xs font-semibold uppercase tracking-wider bg-zinc-100 text-zinc-950 hover:bg-zinc-300 transition-colors rounded-none"
+            className="px-4 py-2 text-xs font-semibold uppercase tracking-wider bg-content text-surface hover:bg-white transition-colors rounded-md"
           >
             + Add Input Field
           </button>
@@ -89,14 +89,14 @@ export const StepPlayerSetup: React.FC = () => {
       ) : (
         <div className="space-y-6">
           {inputs.length === 0 ? (
-            <div className="p-8 border border-dashed border-zinc-800 text-center space-y-3">
-              <p className="text-sm text-zinc-500">
+            <div className="rounded-md p-8 border border-dashed border-border-subtle text-center space-y-3">
+              <p className="text-sm text-content-faint">
                 No custom setup options created yet.
               </p>
               <button
                 type="button"
                 onClick={handleAddField}
-                className="px-4 py-2 text-xs uppercase tracking-wider bg-zinc-900 border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors rounded-none"
+                className="px-4 py-2 text-xs uppercase tracking-wider bg-surface border border-border-subtle text-content-muted hover:bg-surface-overlay transition-colors rounded-md"
               >
                 Create First Input
               </button>
@@ -166,14 +166,14 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
   };
 
   return (
-    <div className="border border-zinc-800 bg-zinc-950 p-6 space-y-6 rounded-none relative">
+    <div className="border border-border-subtle bg-surface-inset p-6 space-y-6 rounded-md relative">
       {/* Top Card Controls */}
-      <div className="flex items-center justify-between border-b border-zinc-900 pb-4">
+      <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-xs text-zinc-500 uppercase px-2 py-1 bg-zinc-900 border border-zinc-800">
+          <span className="rounded-md font-mono text-xs text-content-faint uppercase px-2 py-1 bg-surface border border-border-subtle">
             #{index + 1}
           </span>
-          <h3 className="text-sm font-semibold text-zinc-200 tracking-wide">
+          <h3 className="text-sm font-semibold text-content tracking-wide">
             {field.label || "Untitled Field"}
           </h3>
         </div>
@@ -182,7 +182,7 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
             type="button"
             disabled={index === 0}
             onClick={() => onMove("up")}
-            className="p-1.5 text-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:hover:text-zinc-500"
+            className="p-1.5 text-content-faint hover:text-content disabled:opacity-30 disabled:hover:text-content-faint"
             title="Move Up"
           >
             ↑
@@ -191,7 +191,7 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
             type="button"
             disabled={index === totalCount - 1}
             onClick={() => onMove("down")}
-            className="p-1.5 text-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:hover:text-zinc-500"
+            className="p-1.5 text-content-faint hover:text-content disabled:opacity-30 disabled:hover:text-content-faint"
             title="Move Down"
           >
             ↓
@@ -199,7 +199,7 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
           <button
             type="button"
             onClick={onDelete}
-            className="px-2.5 py-1 text-xs text-red-400 hover:bg-red-950/40 border border-red-900/50 rounded-none transition-colors"
+            className="px-2.5 py-1 text-xs text-danger hover:bg-danger/10/40 border border-danger/40/50 rounded-md transition-colors"
           >
             Delete
           </button>
@@ -209,7 +209,7 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
       {/* Field Settings Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+          <label className="block text-xs font-semibold text-content-muted uppercase tracking-wider">
             Field Label
           </label>
           <input
@@ -217,12 +217,12 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
             value={field.label}
             onChange={(e) => onUpdate({ label: e.target.value })}
             placeholder="e.g., Character Class"
-            className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+            className="rounded-md w-full bg-surface border border-border-subtle px-3 py-2 text-sm text-content placeholder:text-content-faint focus:outline-none focus:border-border-strong"
           />
         </div>
 
         <div className="space-y-2">
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+          <label className="block text-xs font-semibold text-content-muted uppercase tracking-wider">
             Input Type
           </label>
           <select
@@ -230,7 +230,7 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
             onChange={(e) =>
               onUpdate({ type: e.target.value as SetupInputType })
             }
-            className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-500"
+            className="rounded-md w-full bg-surface border border-border-subtle px-3 py-2 text-sm text-content focus:outline-none focus:border-border-strong"
           >
             <option value="single_select">
               Single Select (Dropdown/Radio)
@@ -245,7 +245,7 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+          <label className="block text-xs font-semibold text-content-muted uppercase tracking-wider">
             Helper Description
           </label>
           <input
@@ -253,7 +253,7 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
             value={field.description || ""}
             onChange={(e) => onUpdate({ description: e.target.value })}
             placeholder="Explain what this choice affects..."
-            className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+            className="rounded-md w-full bg-surface border border-border-subtle px-3 py-2 text-sm text-content placeholder:text-content-faint focus:outline-none focus:border-border-strong"
           />
         </div>
 
@@ -263,9 +263,9 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
               type="checkbox"
               checked={field.required}
               onChange={(e) => onUpdate({ required: e.target.checked })}
-              className="accent-zinc-100 h-4 w-4"
+              className="accent-amber-400 h-4 w-4"
             />
-            <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-content-muted uppercase tracking-wider">
               Required Choice for Players
             </span>
           </label>
@@ -274,15 +274,15 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
 
       {/* Conditional UI: Options list for single_select & multi_select */}
       {(field.type === "single_select" || field.type === "multi_select") && (
-        <div className="space-y-4 border-t border-zinc-900 pt-4">
+        <div className="space-y-4 border-t border-border-subtle pt-4">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+            <h4 className="text-xs font-semibold text-content-muted uppercase tracking-wider">
               Choices / Options
             </h4>
             <button
               type="button"
               onClick={handleAddOption}
-              className="text-xs text-zinc-300 hover:text-zinc-100 uppercase tracking-wider underline underline-offset-4"
+              className="text-xs text-content-muted hover:text-content uppercase tracking-wider underline underline-offset-4"
             >
               + Add Choice
             </button>
@@ -301,12 +301,12 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
                     })
                   }
                   placeholder="Choice Label"
-                  className="flex-1 bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-zinc-500"
+                  className="rounded-md flex-1 bg-surface border border-border-subtle px-3 py-1.5 text-xs text-content focus:outline-none focus:border-border-strong"
                 />
                 <button
                   type="button"
                   onClick={() => handleDeleteOption(opt.id)}
-                  className="text-zinc-500 hover:text-red-400 p-1"
+                  className="text-content-faint hover:text-danger p-1"
                 >
                   ✕
                 </button>
@@ -320,8 +320,8 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
       {(field.type === "text" ||
         field.type === "textarea" ||
         field.type === "number") && (
-        <div className="space-y-2 border-t border-zinc-900 pt-4">
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+        <div className="space-y-2 border-t border-border-subtle pt-4">
+          <label className="block text-xs font-semibold text-content-muted uppercase tracking-wider">
             Placeholder Text
           </label>
           <input
@@ -329,7 +329,7 @@ const FieldEditorCard: React.FC<FieldEditorCardProps> = ({
             value={field.placeholder || ""}
             onChange={(e) => onUpdate({ placeholder: e.target.value })}
             placeholder="e.g. Enter character name..."
-            className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+            className="rounded-md w-full bg-surface border border-border-subtle px-3 py-2 text-sm text-content placeholder:text-content-faint focus:outline-none focus:border-border-strong"
           />
         </div>
       )}
@@ -343,37 +343,37 @@ interface PlayerSetupPreviewProps {
 
 const PlayerSetupPreview: React.FC<PlayerSetupPreviewProps> = ({ inputs }) => {
   return (
-    <div className="border border-zinc-800 bg-zinc-950 p-8 space-y-6 max-w-2xl mx-auto shadow-2xl">
-      <div className="border-b border-zinc-800 pb-4">
-        <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500">
+    <div className="rounded-md border border-border-subtle bg-surface-inset p-8 space-y-6 max-w-2xl mx-auto shadow-2xl">
+      <div className="border-b border-border-subtle pb-4">
+        <span className="text-[10px] font-mono uppercase tracking-widest text-content-faint">
           Player View Simulation
         </span>
-        <h3 className="text-xl font-serif text-zinc-100 mt-1">
+        <h3 className="text-xl font-serif text-content mt-1">
           Configure Your Playthrough
         </h3>
-        <p className="text-xs text-zinc-400">
+        <p className="text-xs text-content-muted">
           Select your initial options before beginning your adventure.
         </p>
       </div>
 
       {inputs.length === 0 ? (
-        <p className="text-xs text-zinc-500 italic">
+        <p className="text-xs text-content-faint italic">
           No setup options configured.
         </p>
       ) : (
         <div className="space-y-6">
           {inputs.map((field) => (
             <div key={field.id} className="space-y-2">
-              <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+              <label className="block text-xs font-semibold text-content-muted uppercase tracking-wider">
                 {field.label}{" "}
-                {field.required && <span className="text-red-400">*</span>}
+                {field.required && <span className="text-danger">*</span>}
               </label>
               {field.description && (
-                <p className="text-xs text-zinc-500">{field.description}</p>
+                <p className="text-xs text-content-faint">{field.description}</p>
               )}
 
               {field.type === "single_select" && (
-                <select className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none">
+                <select className="rounded-md w-full bg-surface border border-border-subtle px-3 py-2 text-sm text-content focus:outline-none">
                   {field.options.map((opt) => (
                     <option key={opt.id} value={opt.value}>
                       {opt.label}
@@ -383,13 +383,13 @@ const PlayerSetupPreview: React.FC<PlayerSetupPreviewProps> = ({ inputs }) => {
               )}
 
               {field.type === "multi_select" && (
-                <div className="space-y-2 bg-zinc-900 border border-zinc-800 p-3">
+                <div className="rounded-md space-y-2 bg-surface border border-border-subtle p-3">
                   {field.options.map((opt) => (
                     <label
                       key={opt.id}
-                      className="flex items-center gap-3 text-xs text-zinc-300 cursor-pointer"
+                      className="flex items-center gap-3 text-xs text-content-muted cursor-pointer"
                     >
-                      <input type="checkbox" className="accent-zinc-100" />
+                      <input type="checkbox" className="accent-amber-400" />
                       {opt.label}
                     </label>
                   ))}
@@ -400,7 +400,7 @@ const PlayerSetupPreview: React.FC<PlayerSetupPreviewProps> = ({ inputs }) => {
                 <input
                   type="text"
                   placeholder={field.placeholder}
-                  className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
+                  className="rounded-md w-full bg-surface border border-border-subtle px-3 py-2 text-sm text-content placeholder:text-content-faint focus:outline-none"
                 />
               )}
 
@@ -408,7 +408,7 @@ const PlayerSetupPreview: React.FC<PlayerSetupPreviewProps> = ({ inputs }) => {
                 <textarea
                   rows={3}
                   placeholder={field.placeholder}
-                  className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
+                  className="rounded-md w-full bg-surface border border-border-subtle px-3 py-2 text-sm text-content placeholder:text-content-faint focus:outline-none"
                 />
               )}
 
@@ -416,7 +416,7 @@ const PlayerSetupPreview: React.FC<PlayerSetupPreviewProps> = ({ inputs }) => {
                 <input
                   type="number"
                   placeholder={field.placeholder}
-                  className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
+                  className="rounded-md w-full bg-surface border border-border-subtle px-3 py-2 text-sm text-content placeholder:text-content-faint focus:outline-none"
                 />
               )}
             </div>
@@ -424,11 +424,11 @@ const PlayerSetupPreview: React.FC<PlayerSetupPreviewProps> = ({ inputs }) => {
         </div>
       )}
 
-      <div className="pt-4 border-t border-zinc-900 flex justify-end">
+      <div className="pt-4 border-t border-border-subtle flex justify-end">
         <button
           type="button"
           disabled
-          className="px-6 py-2 bg-zinc-100 text-zinc-950 font-semibold text-xs uppercase tracking-wider opacity-60 cursor-not-allowed"
+          className="px-6 py-2 bg-content text-surface font-semibold text-xs uppercase tracking-wider opacity-60 cursor-not-allowed"
         >
           Begin Adventure (Preview)
         </button>

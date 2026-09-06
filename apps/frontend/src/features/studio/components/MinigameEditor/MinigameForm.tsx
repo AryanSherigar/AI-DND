@@ -153,7 +153,7 @@ export const MinigameForm: React.FC<MinigameFormProps> = ({
       />
 
       <div>
-        <p className="mb-1 text-sm text-zinc-300">Trigger condition</p>
+        <p className="mb-1 text-sm text-content-muted">Trigger condition</p>
         <ExpressionBuilder
           value={formState.triggerConditionExpression}
           onChange={(expr) =>
@@ -164,7 +164,7 @@ export const MinigameForm: React.FC<MinigameFormProps> = ({
       </div>
 
       <div>
-        <p className="mb-1 text-sm text-zinc-300">Minigame type</p>
+        <p className="mb-1 text-sm text-content-muted">Minigame type</p>
         <Select
           aria-label="Minigame type"
           options={[...MINIGAME_TYPE_OPTIONS]}
@@ -202,7 +202,7 @@ export const MinigameForm: React.FC<MinigameFormProps> = ({
       )}
 
       <div>
-        <p className="mb-1 text-sm text-zinc-300">Outcome mode</p>
+        <p className="mb-1 text-sm text-content-muted">Outcome mode</p>
         <Select
           aria-label="Outcome mode"
           options={[...OUTCOME_MODE_OPTIONS]}
@@ -219,7 +219,7 @@ export const MinigameForm: React.FC<MinigameFormProps> = ({
       {formState.outcomeMode === "binary" && (
         <div className="space-y-3">
           <div>
-            <p className="mb-1 text-sm text-zinc-300">On Win</p>
+            <p className="mb-1 text-sm text-content-muted">On Win</p>
             <StateMutationFields
               value={formState.winMutation}
               onChange={(mutation) =>
@@ -232,7 +232,7 @@ export const MinigameForm: React.FC<MinigameFormProps> = ({
             />
           </div>
           <div>
-            <p className="mb-1 text-sm text-zinc-300">On Lose</p>
+            <p className="mb-1 text-sm text-content-muted">On Lose</p>
             <StateMutationFields
               value={formState.loseMutation}
               onChange={(mutation) =>
@@ -249,7 +249,7 @@ export const MinigameForm: React.FC<MinigameFormProps> = ({
 
       {formState.outcomeMode === "tiered" && (
         <div className="space-y-2">
-          <p className="text-sm text-zinc-300">Score ranges</p>
+          <p className="text-sm text-content-muted">Score ranges</p>
           {formState.tieredOutcomes.map((range, index) => (
             <TieredOutcomeRow
               key={index}
@@ -270,7 +270,7 @@ export const MinigameForm: React.FC<MinigameFormProps> = ({
       )}
 
       <div>
-        <p className="mb-1 text-sm text-zinc-300">
+        <p className="mb-1 text-sm text-content-muted">
           On Connection Failure / Timeout
         </p>
         <StateMutationFields
@@ -296,16 +296,16 @@ export const MinigameForm: React.FC<MinigameFormProps> = ({
             })
           }
           placeholder="Narrator instruction template"
-          className="w-full rounded-none border border-zinc-800 bg-zinc-900 px-3 py-2 font-sans text-sm text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-400"
+          className="w-full rounded-md border border-border-subtle bg-surface px-3 py-2 font-sans text-sm text-content-muted placeholder:text-content-faint focus:outline-none focus-visible:border-accent/50"
           rows={3}
         />
-        <p className="mt-1 text-xs text-zinc-600">
+        <p className="mt-1 text-xs text-content-faint">
           Use {"{outcome_tag}"} and {"{score}"} to substitute the resolved
           outcome into the narrator instruction.
         </p>
       </div>
 
-      {submitError && <p className="text-xs text-red-400">{submitError}</p>}
+      {submitError && <p className="text-xs text-danger">{submitError}</p>}
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel

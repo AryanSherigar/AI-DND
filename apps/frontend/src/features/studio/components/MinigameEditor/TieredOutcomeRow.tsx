@@ -25,7 +25,7 @@ export const TieredOutcomeRow: React.FC<TieredOutcomeRowProps> = ({
   };
 
   return (
-    <div className="space-y-2 border border-zinc-800 bg-zinc-900 p-3">
+    <div className="rounded-md space-y-2 border border-border-subtle bg-surface p-3">
       <div className="flex items-center gap-2">
         <Input
           type="number"
@@ -34,7 +34,7 @@ export const TieredOutcomeRow: React.FC<TieredOutcomeRowProps> = ({
           onChange={handleMinScoreChange}
           placeholder="Min score"
         />
-        <span className="text-zinc-600">–</span>
+        <span className="text-content-faint">–</span>
         <Input
           type="number"
           aria-label="Maximum score"

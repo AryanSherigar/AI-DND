@@ -44,13 +44,13 @@ export const ActionChipsEditor: React.FC<ActionChipsEditorProps> = ({
   };
 
   if (isLoading) {
-    return <p className="text-sm text-zinc-500">Loading action chips...</p>;
+    return <p className="text-sm text-content-faint">Loading action chips...</p>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-zinc-100">
+        <h2 className="text-base font-semibold text-content">
           Suggested Action Chips
         </h2>
         <Button
@@ -63,7 +63,7 @@ export const ActionChipsEditor: React.FC<ActionChipsEditorProps> = ({
           {isUpdating ? "Saving..." : "Save"}
         </Button>
       </div>
-      {updateError && <p className="text-xs text-red-400">{updateError}</p>}
+      {updateError && <p className="text-xs text-danger">{updateError}</p>}
       <div className="flex flex-wrap gap-2">
         {chips.map((chip, index) => (
           <Badge key={`${chip}-${index}`} className="gap-2">
@@ -72,7 +72,7 @@ export const ActionChipsEditor: React.FC<ActionChipsEditorProps> = ({
               type="button"
               aria-label={`Remove ${chip}`}
               onClick={() => handleRemove(index)}
-              className="text-zinc-500 hover:text-zinc-200"
+              className="text-content-faint hover:text-content"
             >
               x
             </button>

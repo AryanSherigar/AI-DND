@@ -122,29 +122,29 @@ export const Step4Review: React.FC = () => {
 
   return (
     <div className="space-y-8 pb-32">
-      <div className="space-y-2 border-b border-zinc-800 pb-4">
-        <h2 className="text-2xl font-semibold text-zinc-100 tracking-tight">
+      <div className="space-y-2 border-b border-border-subtle pb-4">
+        <h2 className="text-2xl font-semibold text-content tracking-tight">
           Review & Publish
         </h2>
-        <p className="text-sm text-zinc-400">
+        <p className="text-sm text-content-muted">
           Review your scenario details, player options, entities, and facts
           before saving or publishing.
         </p>
       </div>
 
       {errorMsg && (
-        <div className="p-4 bg-red-950/50 border border-red-800 text-red-200 text-sm font-mono">
+        <div className="rounded-md p-4 bg-danger/10 border border-danger/40 text-danger text-sm font-mono">
           {errorMsg}
         </div>
       )}
 
       {/* Configured Player Options Summary */}
       <div className="space-y-4">
-        <h3 className="text-sm font-semibold tracking-wide text-zinc-300 uppercase border-b border-zinc-800 pb-2">
+        <h3 className="text-sm font-semibold tracking-wide text-content-muted uppercase border-b border-border-subtle pb-2">
           Player Setup Options ({newbieDraft.setupInputs?.length || 0})
         </h3>
         {!newbieDraft.setupInputs || newbieDraft.setupInputs.length === 0 ? (
-          <p className="text-xs text-zinc-500 italic">
+          <p className="text-xs text-content-faint italic">
             No custom setup fields configured.
           </p>
         ) : (
@@ -152,18 +152,18 @@ export const Step4Review: React.FC = () => {
             {newbieDraft.setupInputs.map((inputItem) => (
               <div
                 key={inputItem.id}
-                className="bg-zinc-950 border border-zinc-800 p-4 space-y-2"
+                className="rounded-md bg-surface-inset border border-border-subtle p-4 space-y-2"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-zinc-100">
+                  <span className="text-sm font-semibold text-content">
                     {inputItem.label || "Untitled"}
                   </span>
-                  <span className="text-[10px] font-mono uppercase bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-zinc-400">
+                  <span className="rounded-md text-[10px] font-mono uppercase bg-surface border border-border-subtle px-2 py-0.5 text-content-muted">
                     {inputItem.type}
                   </span>
                 </div>
                 {inputItem.description && (
-                  <p className="text-xs text-zinc-400">
+                  <p className="text-xs text-content-muted">
                     {inputItem.description}
                   </p>
                 )}
@@ -172,7 +172,7 @@ export const Step4Review: React.FC = () => {
                     {inputItem.options.map((opt) => (
                       <span
                         key={opt.id}
-                        className="text-[11px] bg-zinc-900 border border-zinc-800 text-zinc-300 px-2 py-0.5"
+                        className="rounded-md text-[11px] bg-surface border border-border-subtle text-content-muted px-2 py-0.5"
                       >
                         {opt.label}
                       </span>
@@ -187,14 +187,14 @@ export const Step4Review: React.FC = () => {
 
       {/* Extracted Entities */}
       <div className="space-y-6">
-        <h3 className="text-sm font-semibold tracking-wide text-zinc-300 uppercase border-b border-zinc-800 pb-2">
+        <h3 className="text-sm font-semibold tracking-wide text-content-muted uppercase border-b border-border-subtle pb-2">
           Extracted Entities
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {entities.map((e) => (
             <div
               key={e.id}
-              className="bg-zinc-950 border border-zinc-800 p-4 space-y-3"
+              className="rounded-md bg-surface-inset border border-border-subtle p-4 space-y-3"
             >
               <div className="flex gap-2">
                 <input
@@ -207,7 +207,7 @@ export const Step4Review: React.FC = () => {
                       ),
                     )
                   }
-                  className="flex-1 bg-transparent border-b border-zinc-800 rounded-none px-2 py-1 text-sm font-semibold text-zinc-100 focus:outline-none focus:border-zinc-400"
+                  className="flex-1 bg-transparent border-b border-border-subtle rounded-md px-2 py-1 text-sm font-semibold text-content focus:outline-none focus-visible:border-accent/50"
                 />
                 <input
                   type="text"
@@ -219,7 +219,7 @@ export const Step4Review: React.FC = () => {
                       ),
                     )
                   }
-                  className="w-24 bg-transparent border-b border-zinc-800 rounded-none px-2 py-1 text-xs font-semibold uppercase tracking-wider text-zinc-400 focus:outline-none focus:border-zinc-400 text-center"
+                  className="w-24 bg-transparent border-b border-border-subtle rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wider text-content-muted focus:outline-none focus-visible:border-accent/50 text-center"
                 />
               </div>
               <textarea
@@ -231,7 +231,7 @@ export const Step4Review: React.FC = () => {
                     ),
                   )
                 }
-                className="w-full h-16 bg-zinc-900 border border-zinc-800 rounded-none px-3 py-2 text-sm font-sans text-zinc-300 focus:outline-none focus:border-zinc-400 resize-none"
+                className="w-full h-16 bg-surface border border-border-subtle rounded-md px-3 py-2 text-sm font-sans text-content-muted focus:outline-none focus-visible:border-accent/50 resize-none"
               />
             </div>
           ))}
@@ -240,12 +240,12 @@ export const Step4Review: React.FC = () => {
 
       {/* Extracted Facts */}
       <div className="space-y-6">
-        <h3 className="text-sm font-semibold tracking-wide text-zinc-300 uppercase border-b border-zinc-800 pb-2">
+        <h3 className="text-sm font-semibold tracking-wide text-content-muted uppercase border-b border-border-subtle pb-2">
           Extracted Facts
         </h3>
         <div className="space-y-3">
           {facts.map((f) => (
-            <div key={f.id} className="bg-zinc-950 border border-zinc-800 p-3">
+            <div key={f.id} className="rounded-md bg-surface-inset border border-border-subtle p-3">
               <input
                 type="text"
                 value={f.text}
@@ -256,7 +256,7 @@ export const Step4Review: React.FC = () => {
                     ),
                   )
                 }
-                className="w-full bg-transparent rounded-none px-3 py-1 text-sm font-sans text-zinc-300 focus:outline-none focus:border-b focus:border-zinc-400"
+                className="w-full bg-transparent rounded-md px-3 py-1 text-sm font-sans text-content-muted focus:outline-none focus:border-b focus-visible:border-accent/50"
               />
             </div>
           ))}
@@ -269,7 +269,7 @@ export const Step4Review: React.FC = () => {
           type="button"
           onClick={handleSaveDraft}
           disabled={isSubmitting}
-          className="px-6 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-semibold border border-zinc-700 rounded-none transition-colors flex items-center gap-2 uppercase tracking-wider text-sm"
+          className="px-6 py-3 bg-surface hover:bg-surface-overlay text-content-muted font-semibold border border-border-subtle rounded-md transition-colors flex items-center gap-2 uppercase tracking-wider text-sm"
         >
           Save Draft
         </button>
@@ -278,11 +278,11 @@ export const Step4Review: React.FC = () => {
             type="button"
             onClick={handleStartPublish}
             disabled={isSubmitting}
-            className="px-8 py-3 bg-zinc-100 hover:bg-white text-zinc-950 font-semibold rounded-none transition-colors flex items-center gap-2 uppercase tracking-wider text-sm"
+            className="px-8 py-3 bg-content hover:bg-white text-surface font-semibold rounded-md transition-colors flex items-center gap-2 uppercase tracking-wider text-sm"
           >
             {isSubmitting ? (
               <>
-                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-zinc-950"></span>
+                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-surface"></span>
                 Saving...
               </>
             ) : (

@@ -29,22 +29,22 @@ export const MasterModeStudioLayout: React.FC<MasterModeStudioLayoutProps> = ({
   const activeTabConfig = MASTER_MODE_TABS.find((tab) => tab.id === activeTab);
 
   return (
-    <div className="flex flex-1 overflow-hidden bg-zinc-950 font-sans text-zinc-300">
-      <nav className="w-56 border-r border-zinc-800 flex-shrink-0 p-4 space-y-1">
+    <div className="flex flex-1 overflow-hidden bg-surface-inset font-sans text-content-muted">
+      <nav className="w-56 border-r border-border-subtle flex-shrink-0 p-4 space-y-1">
         {MASTER_MODE_TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={handleTabClick(tab.id)}
             className={`w-full text-left px-3 py-2 text-sm ${
               activeTab === tab.id
-                ? "bg-zinc-900 text-zinc-100 font-medium"
-                : "text-zinc-500 hover:text-zinc-300"
+                ? "bg-surface text-content font-medium"
+                : "text-content-faint hover:text-content-muted"
             }`}
           >
             {tab.label}
           </button>
         ))}
-        <div className="pt-4 space-y-2 border-t border-zinc-800 mt-4">
+        <div className="pt-4 space-y-2 border-t border-border-subtle mt-4">
           <PlaytestButton scenarioId={scenarioId} />
           <DuplicateScenarioButton scenarioId={scenarioId} />
         </div>

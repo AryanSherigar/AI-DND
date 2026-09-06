@@ -22,36 +22,36 @@ export const StudioPage: React.FC = () => {
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-zinc-950 text-zinc-100 flex flex-col font-sans">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950 flex-shrink-0 z-50">
-        <h1 className="text-sm font-semibold text-zinc-100 tracking-widest uppercase font-mono">
-          AI-DND Studio
+    <div className="flex min-h-0 flex-1 flex-col font-sans text-content">
+      <header className="flex flex-shrink-0 items-center justify-between border-b border-border-subtle px-6 pb-4 pt-16">
+        <h1 className="font-mono text-sm font-semibold uppercase tracking-widest text-content">
+          Studio
         </h1>
         <Button variant="primary" onClick={handleNewScenario}>
-          + New Scenario
+          New scenario
         </Button>
       </header>
 
-      <main className="flex-1 overflow-y-auto min-h-0 px-6 py-8">
+      <main className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-8">
         {isLoading && (
-          <div className="flex h-full items-center justify-center text-zinc-500 font-mono text-sm uppercase tracking-wider">
+          <div className="flex h-full items-center justify-center font-mono text-sm uppercase tracking-wider text-content-faint">
             Loading scenarios…
           </div>
         )}
 
         {!isLoading && error && (
-          <div className="flex h-full items-center justify-center text-red-400 font-mono text-sm uppercase tracking-wider">
+          <div className="flex h-full items-center justify-center font-mono text-sm uppercase tracking-wider text-danger">
             Failed to load your scenarios.
           </div>
         )}
 
         {!isLoading && !error && scenarios.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-            <p className="text-zinc-500 font-mono text-sm uppercase tracking-wider">
-              You haven&apos;t created any scenarios yet.
+            <p className="font-mono text-sm uppercase tracking-wider text-content-faint">
+              No scenarios yet.
             </p>
             <Button variant="primary" onClick={handleNewScenario}>
-              + New Scenario
+              New scenario
             </Button>
           </div>
         )}
@@ -75,7 +75,7 @@ export const StudioPage: React.FC = () => {
         onClose={() => setPendingDeleteId(null)}
         title="Delete Scenario"
       >
-        <p className="text-sm text-zinc-400">
+        <p className="font-sans text-sm text-content-muted">
           This will permanently delete the scenario draft, or archive it if
           published. This action cannot be undone.
         </p>

@@ -13,17 +13,17 @@ export const ConditionRow: React.FC<ConditionRowProps> = ({
   const handleDeleteClick = (): void => onDelete(condition.condition_id);
 
   return (
-    <div className="flex items-center justify-between border border-zinc-800 bg-zinc-900 px-3 py-2">
+    <div className="rounded-md flex items-center justify-between border border-border-subtle bg-surface px-3 py-2">
       <button
         type="button"
         onClick={handleEditClick}
         className="flex flex-1 flex-col items-start gap-1 text-left"
       >
         <div className="flex items-center gap-2">
-          <span className="text-sm text-zinc-200">{condition.label}</span>
+          <span className="text-sm text-content">{condition.label}</span>
           {hasStateMutation && <Badge variant="warning">Effect C</Badge>}
         </div>
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-content-faint">
           {condition.narrator_instruction}
         </span>
       </button>

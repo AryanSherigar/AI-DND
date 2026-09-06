@@ -58,10 +58,10 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ scenarioId }) => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-zinc-100">Entities</h1>
+        <h1 className="text-lg font-semibold text-content">Entities</h1>
         <Button onClick={handleOpenCreate}>New Entity</Button>
       </div>
-      {isLoading && <p className="text-sm text-zinc-500">Loading entities…</p>}
+      {isLoading && <p className="text-sm text-content-faint">Loading entities…</p>}
       {!isLoading && entities.length === 0 && (
         <EmptyState
           title="No entities yet"

@@ -111,7 +111,7 @@ export const StateFieldRow: React.FC<StateFieldRowProps> = ({
   };
 
   return (
-    <div className="space-y-2 border border-zinc-800 p-2">
+    <div className="rounded-md space-y-2 border border-border-subtle p-2">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
         <Input
           aria-label="Field key"
@@ -179,7 +179,7 @@ export const StateFieldRow: React.FC<StateFieldRowProps> = ({
         {schema.type === "derived" && (
           <p
             aria-label="Field formula"
-            className="flex items-center px-3 py-2 text-sm text-zinc-500"
+            className="flex items-center px-3 py-2 text-sm text-content-faint"
           >
             {schema.formula || "(no formula set)"}
           </p>

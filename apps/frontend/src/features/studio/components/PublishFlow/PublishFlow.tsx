@@ -76,7 +76,7 @@ export const PublishFlow: React.FC<PublishFlowProps> = ({
   };
 
   return (
-    <div className="space-y-6 border-t border-zinc-800 pt-8">
+    <div className="space-y-6 border-t border-border-subtle pt-8">
       <ContentTagPicker
         value={contentTag}
         onChange={setContentTag}
@@ -84,13 +84,13 @@ export const PublishFlow: React.FC<PublishFlowProps> = ({
       />
 
       {errorMessage && (
-        <div className="p-4 bg-red-950/50 border border-red-800 text-red-200 text-sm font-mono">
+        <div className="rounded-md p-4 bg-danger/10 border border-danger/40 text-danger text-sm font-mono">
           {errorMessage}
         </div>
       )}
 
       {status === "published" && !errorMessage && (
-        <div className="p-4 bg-emerald-950/50 border border-emerald-800 text-emerald-200 text-sm font-mono">
+        <div className="rounded-md p-4 bg-emerald-950/50 border border-emerald-800 text-emerald-200 text-sm font-mono">
           Scenario published — it is now live in discovery.
         </div>
       )}
@@ -99,10 +99,10 @@ export const PublishFlow: React.FC<PublishFlowProps> = ({
         type="button"
         onClick={handlePublish}
         disabled={isBusy}
-        className="px-8 py-3 bg-zinc-100 hover:bg-white text-zinc-950 font-semibold rounded-none transition-colors flex items-center gap-2 uppercase tracking-wider text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        className="px-8 py-3 bg-content hover:bg-white text-surface font-semibold rounded-md transition-colors flex items-center gap-2 uppercase tracking-wider text-sm disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isBusy && (
-          <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-zinc-950" />
+          <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-surface" />
         )}
         {buttonLabel()}
       </button>
