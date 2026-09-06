@@ -17,7 +17,7 @@ export const StudioChatDrawer: React.FC<StudioChatDrawerProps> = ({
       {!isDrawerOpen && (
         <button
           onClick={() => setIsDrawerOpen(true)}
-          className="fixed right-0 top-1/2 -translate-y-1/2 bg-zinc-900 border border-r-0 border-zinc-800 p-2 text-zinc-500 hover:text-zinc-100 transition-colors z-40 shadow-xl"
+          className="rounded-md fixed right-0 top-1/2 -translate-y-1/2 bg-surface border border-r-0 border-border-subtle p-2 text-content-faint hover:text-content transition-colors z-40 shadow-xl"
         >
           <svg
             className="w-5 h-5"
@@ -36,17 +36,17 @@ export const StudioChatDrawer: React.FC<StudioChatDrawerProps> = ({
       )}
 
       <div
-        className={`fixed right-0 top-[69px] h-[calc(100vh-69px)] w-80 bg-zinc-950 border-l border-zinc-800 transform transition-transform duration-300 z-50 flex flex-col ${
+        className={`fixed right-0 top-[69px] h-[calc(100vh-69px)] w-80 bg-surface-inset border-l border-border-subtle transform transition-transform duration-300 z-50 flex flex-col ${
           isDrawerOpen ? "translate-x-0 shadow-2xl" : "translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between p-4 border-b border-zinc-800">
-          <h3 className="text-xs font-semibold text-zinc-100 uppercase tracking-widest">
-            Assistant
+        <div className="flex items-center justify-between p-4 border-b border-border-subtle">
+          <h3 className="text-xs font-semibold text-content uppercase tracking-widest">
+AERO
           </h3>
           <button
             onClick={() => setIsDrawerOpen(false)}
-            className="text-zinc-500 hover:text-zinc-100"
+            className="text-content-faint hover:text-content"
           >
             <svg
               className="w-5 h-5"

@@ -91,7 +91,7 @@ export const QuickPromptChips: React.FC<QuickPromptChipsProps> = ({
           type="button"
           disabled={disabled}
           onClick={() => onSelectPrompt(prompt)}
-          className="shrink-0 text-[11px] font-mono px-2 py-1 bg-zinc-900/90 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 hover:border-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded-md shrink-0 text-[11px] font-mono px-2 py-1 bg-surface hover:bg-surface-overlay text-content-muted hover:text-content border border-border-subtle hover:border-border-subtle transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           + {prompt}
         </button>

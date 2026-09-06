@@ -79,7 +79,6 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     messages,
     isStreaming,
     sendMessage,
-    clearChat,
     stopGeneration,
     reportApplyError,
     blockValidationByMessage,
@@ -326,7 +325,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
           <button
             type="button"
             onClick={() => handleApplyAll(actionEntries)}
-            className="mt-1 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-amber-950/60 text-amber-300 hover:bg-amber-900/60 border border-amber-800/60 transition-colors"
+            className="rounded-md mt-1 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-accent/10 text-accent hover:bg-accent/20 border border-accent/40 transition-colors"
           >
             Apply All ({actionEntries.length})
           </button>
@@ -336,22 +335,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950 font-sans text-zinc-300 relative">
-      {/* Header Bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-950">
-        <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-widest">
-          {mode === "master" ? "Systems Co-Designer" : "AI Co-Author"}
-        </span>
-        <button
-          type="button"
-          onClick={clearChat}
-          className="text-xs font-mono text-zinc-500 hover:text-zinc-200 uppercase tracking-wider transition-colors"
-          title="Clear chat history"
-        >
-          Clear
-        </button>
-      </div>
-
+    <div className="flex flex-col h-full bg-surface-inset font-sans text-content-muted relative">
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg) => (
@@ -360,10 +344,10 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
             className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
           >
             <div
-              className={`px-3 py-2 rounded-none max-w-[95%] font-sans text-sm leading-relaxed border ${
+              className={`px-3 py-2 rounded-md max-w-[95%] font-sans text-sm leading-relaxed border ${
                 msg.role === "user"
-                  ? "bg-zinc-900 text-zinc-200 border-zinc-800"
-                  : "bg-zinc-950 text-zinc-100 border-zinc-800 shadow-sm"
+                  ? "bg-surface text-content border-border-subtle"
+                  : "bg-surface-inset text-content border-border-subtle shadow-sm"
               }`}
             >
               {msg.role === "assistant" ? (
@@ -373,7 +357,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                     parseMessageSegments(msg.content),
                   )}
                   {msg.content === "" && isStreaming && (
-                    <span className="inline-block animate-pulse text-zinc-500 font-mono text-xs">
+                    <span className="inline-block animate-pulse text-content-faint font-mono text-xs">
                       Thinking...
                     </span>
                   )}
@@ -389,7 +373,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
 
       {/* Toast Banner */}
       {toast && (
-        <div className="mx-3 mb-2 p-2 bg-amber-950/90 border border-amber-800/80 text-amber-200 text-xs flex items-center justify-between shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-150">
+        <div className="rounded-md mx-3 mb-2 p-2 bg-accent/10 border border-accent/40 text-accent text-xs flex items-center justify-between shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-150">
           <span className="font-mono">{toast.message}</span>
           {toast.onUndo && (
             <button
@@ -398,7 +382,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                 toast.onUndo?.();
                 setToast(null);
               }}
-              className="text-amber-100 font-bold underline ml-2 uppercase text-[10px]"
+              className="text-accent font-bold underline ml-2 uppercase text-[10px]"
             >
               Undo
             </button>
@@ -415,7 +399,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
       />
 
       {/* Input Form */}
-      <div className="p-3 border-t border-zinc-800 bg-zinc-950">
+      <div className="p-3 border-t border-border-subtle bg-surface-inset">
         <div className="flex gap-2">
           <input
             type="text"
@@ -423,13 +407,13 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
             placeholder="Ask anything about your scenario..."
-            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-none px-3 py-2 text-sm font-sans text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+            className="flex-1 bg-surface border border-border-subtle rounded-md px-3 py-2 text-sm font-sans text-content placeholder:text-content-faint focus:outline-none focus:border-border-strong"
           />
           {isStreaming ? (
             <button
               type="button"
               onClick={stopGeneration}
-              className="px-3 py-2 bg-red-950 text-red-200 hover:bg-red-900 border border-red-800 text-xs font-mono uppercase tracking-wider transition-colors"
+              className="rounded-md px-3 py-2 bg-danger/10 text-danger hover:bg-danger/20 border border-danger/40 text-xs font-mono uppercase tracking-wider transition-colors"
             >
               Stop
             </button>
@@ -438,7 +422,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
               type="button"
               onClick={handleSend}
               disabled={!input.trim()}
-              className="p-2 bg-zinc-100 text-zinc-950 hover:bg-white rounded-none transition-colors border border-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="p-2 bg-content text-surface hover:bg-white rounded-md transition-colors border border-content disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <svg
                 className="w-4 h-4"

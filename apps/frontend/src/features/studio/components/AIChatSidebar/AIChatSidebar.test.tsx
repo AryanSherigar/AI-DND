@@ -80,10 +80,9 @@ describe("AIChatSidebar", () => {
     useStudioStore.getState().resetDraft();
   });
 
-  it("renders header, default welcome message, and dynamic prompt chips", () => {
+  it("renders default welcome message and dynamic prompt chips", () => {
     renderChatSidebar({ activeSection: "meta" });
 
-    expect(screen.getByText("AI Co-Author")).toBeInTheDocument();
     expect(screen.getByText(/Greetings, creator/i)).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
@@ -113,32 +112,6 @@ describe("AIChatSidebar", () => {
     expect(
       screen.getByRole("button", { name: /\+ Brainstorm 3 unique factions/i }),
     ).toBeInTheDocument();
-  });
-
-  it("clears chat history when Clear button is clicked", async () => {
-    const user = userEvent.setup();
-    const initialMessages = [
-      {
-        id: "msg-1",
-        role: "user",
-        content: "Custom history message",
-        timestamp: Date.now(),
-      },
-    ];
-    localStorage.setItem(
-      "aidnd_studio_assistant_chat",
-      JSON.stringify(initialMessages),
-    );
-
-    renderChatSidebar({ activeSection: "meta" });
-    expect(screen.getByText("Custom history message")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /clear/i }));
-
-    expect(
-      screen.queryByText("Custom history message"),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText(/Greetings, creator/i)).toBeInTheDocument();
   });
 
   it("applies an action card to draft when empty", async () => {
