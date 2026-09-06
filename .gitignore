@@ -87,3 +87,6 @@ tmp/
 *.sql
 *.sqlite3
 *.db
+
+# ...except memory-layer's actual migration source, not a local dump.
+!apps/memory-layer/db/migrations/*.sql
