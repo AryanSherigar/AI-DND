@@ -2,12 +2,14 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { SpectatorView } from "../components/SpectatorView/SpectatorView";
 import { usePlaythroughTurns } from "../hooks/useTurns";
 import { useSpectator } from "../hooks/useSpectator";
+import { usePlaythrough } from "../hooks/usePlaythrough";
 
 export function SpectatorPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const shareToken = searchParams.get("token");
 
+  const { data: playthrough } = usePlaythrough(id);
   const { data, isLoading, isError } = usePlaythroughTurns(
     id,
     shareToken ? { share_token: shareToken } : {},
@@ -44,10 +46,13 @@ export function SpectatorPage() {
 
   return (
     <SpectatorView
-      scenarioTitle="Live Playthrough"
+      scenarioTitle={playthrough?.scenario_title ?? "Live Playthrough"}
       turns={data.items}
       streamingText={streamingText}
       isLive={isLive}
+      narrationFont={
+        playthrough?.scenario_snapshot?.narration_font as string | undefined
+      }
     />
   );
 }

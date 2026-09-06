@@ -1,8 +1,11 @@
 """Pydantic request/response and internal step-boundary shapes for turn resolution."""
 
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel
+
+from app.models.minigame_event import MinigameResultInput
 
 
 class TurnRequestInput(BaseModel):
@@ -11,6 +14,8 @@ class TurnRequestInput(BaseModel):
     playthrough_id: uuid.UUID
     participant_id: uuid.UUID
     action_text: str
+    action_kind: Literal["narrative", "minigame_result"] = "narrative"
+    minigame_result: MinigameResultInput | None = None
 
 
 class TurnRequest(TurnRequestInput):

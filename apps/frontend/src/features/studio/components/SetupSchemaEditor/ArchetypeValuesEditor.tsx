@@ -1,7 +1,10 @@
 import React, { useState } from "react";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
-import { formatArchetypeValue, parseArchetypeValue } from "./parseArchetypeValue";
+import {
+  formatArchetypeValue,
+  parseArchetypeValue,
+} from "./parseArchetypeValue";
 
 interface ArchetypeValuesEditorProps {
   values: Record<string, unknown>;

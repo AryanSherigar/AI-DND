@@ -36,6 +36,12 @@ export const MASTER_MODE_TABS = [
       "Win and lose conditions define how a playthrough concludes. Each one has an outcome, a message shown to the player, and an optional trigger.",
   },
   {
+    id: "minigames",
+    label: "Minigames",
+    helpText:
+      "Minigames trigger a full-screen interstitial challenge — a curated dodge arena or your own Replit-hosted game — whose outcome mutates state and feeds back into the narration. Solo playthroughs only.",
+  },
+  {
     id: "maps",
     label: "Maps",
     helpText:

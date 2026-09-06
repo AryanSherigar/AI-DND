@@ -42,9 +42,7 @@ describe("OpeningSceneEditor", () => {
     const user = userEvent.setup();
     renderEditor();
 
-    const textarea = await screen.findByPlaceholderText(
-      /describe the scene/i,
-    );
+    const textarea = await screen.findByPlaceholderText(/describe the scene/i);
     await user.type(textarea, "You wake in a cold, stone cairn.");
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 

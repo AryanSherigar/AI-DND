@@ -6,7 +6,13 @@ describe("DiceRollCard", () => {
   it("renders the roll expression and total", () => {
     render(
       <DiceRollCard
-        roll={{ expression: "d20+3", sides: 20, modifier: 3, roll: 10, total: 13 }}
+        roll={{
+          expression: "d20+3",
+          sides: 20,
+          modifier: 3,
+          roll: 10,
+          total: 13,
+        }}
       />,
     );
 

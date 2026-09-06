@@ -30,7 +30,10 @@ export const usePublish = (scenarioId: string | null) => {
     isTriggering: publishMutation.isPending,
     isPolling: status === "publishing",
     triggerError: publishMutation.error
-      ? extractErrorMessage(publishMutation.error, "Failed to publish scenario.")
+      ? extractErrorMessage(
+          publishMutation.error,
+          "Failed to publish scenario.",
+        )
       : null,
     publishError: scenario?.publish_error ?? null,
     publish: publishMutation.mutate,

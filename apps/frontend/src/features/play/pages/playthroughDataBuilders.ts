@@ -16,6 +16,7 @@ import {
 } from "../types/play.types";
 import { ScenarioMood } from "../types/audio.types";
 import { buildChapterDeltaFromToolCalls } from "../utils/chapterDelta";
+import { MinigameEventPayload } from "@/shared/types/minigame.types";
 
 // Matches the shape features/studio/components/NewbieWizard/Step4Review.tsx
 // writes into Scenario.world_data at creation time — see createDraft() there.
@@ -62,6 +63,7 @@ interface CommonPlaythroughFields {
   scenario_title: string;
   mode: "newbie" | "master";
   initial_mood?: ScenarioMood;
+  narration_font?: string | null;
   creator_name: string;
   character_name: string;
   custom_fields: CharacterSetupField[];
@@ -136,12 +138,16 @@ function buildCommonFields(
     serverPlaythrough.participants,
     serverPlaythrough.turn_count,
   );
+  const narrationFont =
+    (serverPlaythrough.scenario_snapshot?.narration_font as string | null) ??
+    null;
   return {
     playthrough_id: serverPlaythrough.playthrough_id,
     scenario_id: serverPlaythrough.scenario_id,
     scenario_title: serverPlaythrough.scenario_title,
     mode,
     initial_mood: initialMood,
+    narration_font: narrationFont,
     creator_name: "Scenario Creator",
     character_name: (setupMap.character_name as string) || "Adventurer",
     custom_fields: buildCustomFields(setupMap, setupSchema),
@@ -204,6 +210,7 @@ export function buildNewbiePlaythroughData(
     objectives: [],
     player_stats: [],
     player_inventory: [],
+    pending_minigame: null,
   };
 }
 
@@ -247,6 +254,18 @@ function buildPlayerInventory(
   return inventoryIds
     .map((id) => entityById.get(id))
     .filter((e): e is MasterEntity => e !== undefined);
+}
+
+// The pending-minigame marker is TRS-infrastructure-only, stamped into
+// working_state["_pending_minigame"] by minigame_trigger_evaluator and
+// cleared by minigame_result_resolver — never authored/edited by a creator,
+// so it's read straight off the raw state blob rather than a snapshot field.
+function buildPendingMinigame(
+  state: Record<string, unknown>,
+): MinigameEventPayload | null {
+  const raw = state._pending_minigame;
+  if (!raw || typeof raw !== "object") return null;
+  return raw as MinigameEventPayload;
 }
 
 function buildObjectives(snapshot: Record<string, unknown>): Objective[] {
@@ -311,5 +330,6 @@ export function buildMasterPlaythroughData(
     objectives: buildObjectives(snapshot),
     player_stats: buildPlayerStats(playerFields, playerState),
     player_inventory: buildPlayerInventory(playerFields, playerState, entities),
+    pending_minigame: buildPendingMinigame(state),
   };
 }

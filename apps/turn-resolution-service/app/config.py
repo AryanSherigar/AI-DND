@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     memory_service_url: str = "http://localhost:8002"
     memory_service_api_key: str = ""
     tool_call_max_round_trips: int = 5
+    minigame_iframe_handshake_timeout_seconds: int = 20
     log_level: str = "INFO"
     log_format: str = "json"
 

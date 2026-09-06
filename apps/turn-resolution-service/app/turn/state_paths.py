@@ -68,3 +68,27 @@ def _set_nested(node: dict[str, object], keys: list[str], value: object) -> None
     child = dict(node.get(key, {}))
     _set_nested(child, remaining, value)
     node[key] = child
+
+
+def apply_mutation(
+    state: dict[str, object], path: str, op: str, value: object
+) -> dict[str, object]:
+    """Apply a set/increment/decrement StateMutation op at path.
+
+    Shared by condition_evaluator.py's Effect C and
+    minigame_result_resolver.py's win/lose/tiered/timeout outcome mutations —
+    the only two callers that apply an already-computed StateMutation
+    directly to state (validate_mutation.py's tool-call path computes its own
+    new value from a ProposedMutation and does not go through here).
+    """
+    if op == "set":
+        new_value = value
+    elif op in ("increment", "decrement"):
+        current = get_field_value(state, path) or 0
+        delta = float(value or 0)
+        new_value = (
+            float(current) + delta if op == "increment" else float(current) - delta
+        )
+    else:
+        return state
+    return set_field_value(state, path, new_value)

@@ -42,10 +42,8 @@ export const ConditionForm: React.FC<ConditionFormProps> = ({
       label: formState.label,
       narrator_instruction: formState.narratorInstruction,
       condition_expression:
-        (formState.conditionExpression as unknown as Record<
-          string,
-          unknown
-        >) ?? undefined,
+        (formState.conditionExpression as unknown as Record<string, unknown>) ??
+        undefined,
       state_mutation: formState.stateMutation ?? undefined,
     });
   };

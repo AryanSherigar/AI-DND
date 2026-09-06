@@ -30,6 +30,7 @@ function buildPlaythrough(
     objectives: [],
     player_stats: [],
     player_inventory: [],
+    pending_minigame: null,
     ...overrides,
   };
 }

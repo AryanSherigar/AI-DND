@@ -1,27 +1,22 @@
-import React, { useEffect, useRef, useState } from "react";
+import React from "react";
 import { Button } from "@/shared/components/ui/Button";
 import { useScenario } from "../../hooks/useScenario";
+import { useServerSyncedState } from "../../hooks/useServerSyncedState";
 import { DistractionFreeEditor } from "../MarkdownEditor/DistractionFreeEditor";
 import { RulesEditorProps } from "./RulesEditor.types";
 
 export const RulesEditor: React.FC<RulesEditorProps> = ({ scenarioId }) => {
   const { scenario, isLoading, updateScenario, isUpdating, updateError } =
     useScenario(scenarioId);
-  const [rulesText, setRulesText] = useState("");
-  const hasInitialized = useRef(false);
-
-  useEffect(() => {
-    if (scenario && !hasInitialized.current) {
-      setRulesText(scenario.rules?.text ?? "");
-      hasInitialized.current = true;
-    }
-  }, [scenario]);
+  const [rulesText, setRulesText] = useServerSyncedState<string>(
+    scenario ? (scenario.rules?.text ?? "") : undefined,
+  );
 
   const handleSave = (): void => {
-    updateScenario({ rules: { text: rulesText } });
+    updateScenario({ rules: { text: rulesText ?? "" } });
   };
 
-  if (isLoading) {
+  if (isLoading || rulesText === undefined) {
     return <p className="text-sm text-zinc-500">Loading house rules...</p>;
   }
 

@@ -2,56 +2,121 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPostSSEConnection } from "@/shared/lib/sse-client";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { useStudioStore } from "../stores/studio.store";
-import { AssistantMessage } from "../types/assistant.types";
+import { AssistantMessage, BlockValidation } from "../types/assistant.types";
+import { useEntities } from "./useEntities";
+import { useFacts } from "./useFacts";
+import { useScenario } from "./useScenario";
+import { useConditions } from "./useConditions";
+import { useInvariants } from "./useInvariants";
+import { useEndConditions } from "./useEndConditions";
 
-const STORAGE_KEY = "aidnd_studio_assistant_chat";
+export type AssistantChatMode = "newbie" | "master";
+
 const TRS_BASE_URL = import.meta.env.VITE_TRS_URL || "http://localhost:8001";
 
-const DEFAULT_WELCOME: AssistantMessage = {
-  id: "welcome",
-  role: "assistant",
-  content:
+const buildStorageKey = (
+  mode: AssistantChatMode,
+  scenarioId?: string | null,
+): string =>
+  mode === "master" && scenarioId
+    ? `aidnd_studio_assistant_chat:master:${scenarioId}`
+    : "aidnd_studio_assistant_chat";
+
+const WELCOME_BY_MODE: Record<AssistantChatMode, string> = {
+  newbie:
     "Greetings, creator. I am your world-building co-author. Need a compelling premise, unique factions, evocative lore, or narrative rules? Tell me what you envision or click any starter prompt below!",
-  timestamp: Date.now(),
+  master:
+    "Greetings, creator. I am your systems co-designer. Tell me about the people, places, facts, or tracked values you want in this scenario, and I'll propose ready-to-apply pieces.",
 };
 
-const loadInitialMessages = (): AssistantMessage[] => {
+const buildWelcome = (mode: AssistantChatMode): AssistantMessage => ({
+  id: "welcome",
+  role: "assistant",
+  content: WELCOME_BY_MODE[mode],
+  timestamp: Date.now(),
+});
+
+const loadInitialMessages = (
+  storageKey: string,
+  mode: AssistantChatMode,
+): AssistantMessage[] => {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return [DEFAULT_WELCOME];
+    const saved = localStorage.getItem(storageKey);
+    if (!saved) return [buildWelcome(mode)];
     const parsed = JSON.parse(saved);
     return Array.isArray(parsed) && parsed.length > 0
       ? parsed
-      : [DEFAULT_WELCOME];
+      : [buildWelcome(mode)];
   } catch {
-    return [DEFAULT_WELCOME];
+    return [buildWelcome(mode)];
   }
 };
 
-export const useAssistantChat = (activeSection: string = "meta") => {
-  const [messages, setMessages] =
-    useState<AssistantMessage[]>(loadInitialMessages);
+export const useAssistantChat = (
+  activeSection: string = "meta",
+  mode: AssistantChatMode = "newbie",
+  scenarioId: string | null = null,
+) => {
+  const storageKey = buildStorageKey(mode, scenarioId);
+  const [messages, setMessages] = useState<AssistantMessage[]>(() =>
+    loadInitialMessages(storageKey, mode),
+  );
   const [isStreaming, setIsStreaming] = useState(false);
   const cancelStreamRef = useRef<(() => void) | null>(null);
   const newbieDraft = useStudioStore((s) => s.newbieDraft);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const { entities } = useEntities(mode === "master" ? scenarioId : null);
+  const { facts } = useFacts(mode === "master" ? scenarioId : null);
+  const { scenario } = useScenario(mode === "master" ? scenarioId : null);
+  const { conditions } = useConditions(mode === "master" ? scenarioId : null);
+  const { invariants } = useInvariants(mode === "master" ? scenarioId : null);
+  const { endConditions } = useEndConditions(
+    mode === "master" ? scenarioId : null,
+  );
+  const [blockValidationByMessage, setBlockValidationByMessage] = useState<
+    Record<string, BlockValidation[]>
+  >({});
+
+  const previousStorageKeyRef = useRef(storageKey);
+  useEffect(() => {
+    if (previousStorageKeyRef.current === storageKey) return;
+    previousStorageKeyRef.current = storageKey;
+    if (cancelStreamRef.current) {
+      cancelStreamRef.current();
+      cancelStreamRef.current = null;
+    }
+    setMessages(loadInitialMessages(storageKey, mode));
+    setIsStreaming(false);
+  }, [storageKey, mode]);
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+      localStorage.setItem(storageKey, JSON.stringify(messages));
     } catch {
       // Storage quota or private browsing
     }
-  }, [messages]);
+  }, [messages, storageKey]);
 
   const clearChat = useCallback(() => {
     if (cancelStreamRef.current) {
       cancelStreamRef.current();
       cancelStreamRef.current = null;
     }
-    setMessages([DEFAULT_WELCOME]);
+    setMessages([buildWelcome(mode)]);
     setIsStreaming(false);
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey);
+  }, [mode, storageKey]);
+
+  const reportApplyError = useCallback((errorMessage: string) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `assistant-error-${Date.now()}`,
+        role: "assistant",
+        content: `⚠️ ${errorMessage}`,
+        timestamp: Date.now(),
+      },
+    ]);
   }, []);
 
   const stopGeneration = useCallback(() => {
@@ -62,30 +127,86 @@ export const useAssistantChat = (activeSection: string = "meta") => {
     setIsStreaming(false);
   }, []);
 
-  const buildPayload = useCallback(
-    (nextMessages: AssistantMessage[]) => ({
-      messages: nextMessages.map((m) => ({
-        role: m.role,
-        content: m.content,
+  const buildMasterContext = useCallback(
+    () => ({
+      title: scenario?.title || "",
+      logline: scenario?.logline || "",
+      narrator_persona: scenario?.narrator_persona || "",
+      opening_scene: scenario?.opening_scene || "",
+      state_schema: scenario?.state_schema || {},
+      entities: entities.map((e) => ({
+        entity_id: e.entity_id,
+        entity_type: e.entity_type,
+        canonical_name: e.canonical_name,
+        description: e.description || undefined,
+        attributes_schema: e.attributes_schema,
       })),
-      draft_context: {
-        title: newbieDraft.title || "",
-        logline: newbieDraft.logline || "",
-        genre_tags: newbieDraft.genre_tags || [],
-        complexity_tier: newbieDraft.complexity_tier || "newbie",
-        player_count_support: newbieDraft.player_count_support || "solo",
-        estimated_playtime: newbieDraft.estimated_playtime || "",
-        world_lore: newbieDraft.worldLore || "",
-        opening_prompt: newbieDraft.openingPrompt || "",
-        main_conflict: newbieDraft.mainConflict || "",
-        single_lore_prompt: newbieDraft.singleLorePrompt || "",
-        story_cards: newbieDraft.storyCards || [],
-        ai_instructions: newbieDraft.aiInstructions || "",
-        narrative_style: newbieDraft.narrativeStyle || "",
-        active_section: activeSection,
-      },
+      facts: facts.map((f) => ({
+        fact_id: f.fact_id,
+        subject_entity_id: f.subject_entity_id,
+        predicate: f.predicate,
+        object_entity_id: f.object_entity_id,
+        object_literal: f.object_literal,
+      })),
+      conditions: conditions.map((c) => ({
+        condition_id: c.condition_id,
+        label: c.label,
+      })),
+      invariants: invariants.map((i) => ({
+        invariant_id: i.invariant_id,
+        label: i.label,
+      })),
+      end_conditions: endConditions.map((e) => ({
+        end_condition_id: e.end_condition_id,
+        outcome_tag: e.outcome_tag,
+        outcome_title: e.outcome_title,
+      })),
+      active_tab: activeSection,
     }),
-    [newbieDraft, activeSection],
+    [
+      scenario,
+      entities,
+      facts,
+      conditions,
+      invariants,
+      endConditions,
+      activeSection,
+    ],
+  );
+
+  const buildPayload = useCallback(
+    (nextMessages: AssistantMessage[]) => {
+      const base = {
+        messages: nextMessages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+        mode,
+      };
+      if (mode === "master") {
+        return { ...base, master_context: buildMasterContext() };
+      }
+      return {
+        ...base,
+        draft_context: {
+          title: newbieDraft.title || "",
+          logline: newbieDraft.logline || "",
+          genre_tags: newbieDraft.genre_tags || [],
+          complexity_tier: newbieDraft.complexity_tier || "newbie",
+          player_count_support: newbieDraft.player_count_support || "solo",
+          estimated_playtime: newbieDraft.estimated_playtime || "",
+          world_lore: newbieDraft.worldLore || "",
+          opening_prompt: newbieDraft.openingPrompt || "",
+          main_conflict: newbieDraft.mainConflict || "",
+          single_lore_prompt: newbieDraft.singleLorePrompt || "",
+          story_cards: newbieDraft.storyCards || [],
+          ai_instructions: newbieDraft.aiInstructions || "",
+          narrative_style: newbieDraft.narrativeStyle || "",
+          active_section: activeSection,
+        },
+      };
+    },
+    [newbieDraft, activeSection, mode, buildMasterContext],
   );
 
   const sendMessage = useCallback(
@@ -126,6 +247,19 @@ export const useAssistantChat = (activeSection: string = "meta") => {
             );
           } else if (event === "done") {
             setIsStreaming(false);
+            if (data) {
+              try {
+                const parsed = JSON.parse(data);
+                if (Array.isArray(parsed.block_validation)) {
+                  setBlockValidationByMessage((prev) => ({
+                    ...prev,
+                    [assistantId]: parsed.block_validation,
+                  }));
+                }
+              } catch {
+                // No validation payload on this "done" event
+              }
+            }
           } else if (event === "error") {
             setIsStreaming(false);
             let errorText = "AI assistant is temporarily unavailable.";
@@ -174,5 +308,7 @@ export const useAssistantChat = (activeSection: string = "meta") => {
     sendMessage,
     clearChat,
     stopGeneration,
+    reportApplyError,
+    blockValidationByMessage,
   };
 };

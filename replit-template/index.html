@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rune Strike — AI-DND Minigame Starter</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="game">
+      <header class="game__header">
+        <h1 class="game__title">Rune Strike</h1>
+        <p class="game__subtitle">Click the rune 8 times before the timer runs out.</p>
+      </header>
+
+      <div class="game__hud">
+        <div class="game__stat">
+          <span class="game__stat-label">Time</span>
+          <span class="game__stat-value" id="timer">10.0</span>
+        </div>
+        <div class="game__stat">
+          <span class="game__stat-label">Hits</span>
+          <span class="game__stat-value"><span id="hits">0</span> / <span id="hits-goal">8</span></span>
+        </div>
+      </div>
+
+      <div class="game__arena" id="arena">
+        <button class="game__target" id="target" type="button" aria-label="Click the rune">
+          &#9670;
+        </button>
+      </div>
+
+      <div class="game__overlay" id="overlay" hidden>
+        <p class="game__overlay-message" id="overlay-message"></p>
+        <button class="game__restart" id="restart" type="button">Play Again</button>
+      </div>
+    </main>
+
+    <script src="minigame-sdk.js"></script>
+    <script src="game.js"></script>
+  </body>
+</html>

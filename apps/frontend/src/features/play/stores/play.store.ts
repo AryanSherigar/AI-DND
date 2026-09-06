@@ -8,7 +8,7 @@ import {
 } from "../types/play.types";
 import { TurnSummaryEventPayload } from "../types/turnSummary.types";
 import { mapTurnSummaryEvent } from "../utils/chapterDelta";
-import { createPostSSEConnection } from "@/shared/lib/sse-client";
+import { createPostSSEConnection, SSEHandlers } from "@/shared/lib/sse-client";
 import {
   generateRequestId,
   setCurrentRequestId,
@@ -17,8 +17,24 @@ import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { queryClient } from "@/shared/lib/query-client";
 import { ScenarioMood } from "../types/audio.types";
 import { ambientSoundtrack } from "@/shared/lib/audio/ambient-soundtrack";
+import {
+  MinigameEventPayload,
+  MinigameResultPayload,
+} from "@/shared/types/minigame.types";
+import { MINIGAME_RESULT_ACTION_TEXT } from "../constants/minigame.constants";
+import { READER_FONT_STORAGE_KEY } from "@/shared/constants/narration-fonts";
 
 const TRS_BASE_URL = import.meta.env.VITE_TRS_URL || "http://localhost:8001";
+
+// The POST /v1/turn body shared by a normal narrative action and a minigame
+// result submission (TurnRequestInput on the TRS side — app/models/turn.py).
+interface TurnStreamBody {
+  playthrough_id: string;
+  participant_id: string;
+  action_text: string;
+  action_kind: "narrative" | "minigame_result";
+  minigame_result?: MinigameResultPayload;
+}
 
 interface PlayStoreState {
   playthrough: PlaythroughData | null;
@@ -37,9 +53,19 @@ interface PlayStoreState {
   // in-flight turn commits so the chapter summary strip only ever renders
   // from a turn already in playthrough.turns (never mid-stream).
   pending_chapter_delta: ChapterDelta | null;
+  // Master mode: set when a `minigame` SSE event arrives, held until the
+  // in-flight turn commits — mirrors pending_chapter_delta exactly — so the
+  // overlay only ever appears once the triggering turn is fully committed.
+  pending_minigame_trigger: MinigameEventPayload | null;
+  // The minigame currently taking over the play surface full-screen, or one
+  // resumed on reload from PlaythroughData.pending_minigame. Null renders
+  // nothing (MinigameOverlay is an unconditional, guarded no-op mount).
+  active_minigame: MinigameEventPayload | null;
+  reader_font_override: string | null;
 
   // Actions
   setPlaythrough: (data: PlaythroughData) => void;
+  setReaderFontOverride: (fontId: string | null) => void;
   setActiveMode: (mode: ActionMode) => void;
   setEBookTheme: (theme: EBookTheme) => void;
   toggleEBookTheme: () => void;
@@ -53,6 +79,8 @@ interface PlayStoreState {
   openChronicleModal: () => void;
   closeChronicleModal: () => void;
   submitTurn: (actionText: string) => void;
+  submitMinigameResult: (result: MinigameResultPayload) => void;
+  clearActiveMinigame: () => void;
   continueTurn: () => void;
   stopGeneration: () => void;
   retryLastTurn: () => void;
@@ -68,6 +96,7 @@ interface PlayStoreState {
   // Internal — not part of the public store surface; other files should not
   // call these directly. Exposed on the interface only because Zustand
   // actions call each other through get(), which requires them typed here.
+  _startTurnStream: (body: TurnStreamBody, actionTextForLog: string) => void;
   _commitStreamedTurn: (actionText: string) => void;
   _degradeCurrentTurn: (message: string) => void;
 }
@@ -86,9 +115,26 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   degraded_message: null,
   cancel_stream_fn: null,
   pending_chapter_delta: null,
+  pending_minigame_trigger: null,
+  active_minigame: null,
+  reader_font_override:
+    typeof window !== "undefined"
+      ? localStorage.getItem(READER_FONT_STORAGE_KEY)
+      : null,
   active_mood: "peaceful",
   audio_volume: ambientSoundtrack.getVolume(),
   is_audio_muted: ambientSoundtrack.getIsMuted(),
+
+  setReaderFontOverride: (fontId: string | null) => {
+    if (typeof window !== "undefined") {
+      if (fontId) {
+        localStorage.setItem(READER_FONT_STORAGE_KEY, fontId);
+      } else {
+        localStorage.removeItem(READER_FONT_STORAGE_KEY);
+      }
+    }
+    set({ reader_font_override: fontId });
+  },
 
   setPlaythrough: (data: PlaythroughData) => {
     const prevPlaythrough = get().playthrough;
@@ -100,6 +146,11 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     if (isNewPlaythrough) {
       const initialMood = data.initial_mood || "peaceful";
       ambientSoundtrack.transitionTo(initialMood, true);
+      // Resume a minigame the player left mid-resolution — reload must not
+      // require a fresh SSE "minigame" event to show the overlay again.
+      if (data.pending_minigame) {
+        set({ active_minigame: data.pending_minigame });
+      }
     }
   },
   setAudioVolume: (vol: number) => {
@@ -143,79 +194,39 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   },
 
   submitTurn: (actionText: string) => {
-    const { playthrough, cancel_stream_fn } = get();
+    const { playthrough } = get();
     if (!playthrough || !actionText.trim() || playthrough.is_spectator) return;
     if (!playthrough.participant_id) return;
 
-    if (cancel_stream_fn) cancel_stream_fn();
-
-    set({
-      is_narrating: true,
-      streaming_text: "",
-      last_submitted_action: actionText,
-      degraded_message: null,
-      is_action_drawer_open: false,
-    });
-
-    const token = useAuthStore.getState().accessToken;
-    const requestId = generateRequestId();
-    setCurrentRequestId(requestId);
-    let reachedTerminalEvent = false;
-    const cancelFn = createPostSSEConnection(
-      `${TRS_BASE_URL}/v1/turn`,
+    get()._startTurnStream(
       {
         playthrough_id: playthrough.playthrough_id,
         participant_id: playthrough.participant_id,
         action_text: actionText,
+        action_kind: "narrative",
       },
-      token,
-      {
-        onEvent: (eventName: string, data: string) => {
-          if (eventName === "mood") {
-            const mood = data as ScenarioMood;
-            ambientSoundtrack.transitionTo(mood);
-          } else if (eventName === "narration") {
-            set((s) => ({ streaming_text: s.streaming_text + data }));
-          } else if (eventName === "turn_summary") {
-            const payload = JSON.parse(data) as TurnSummaryEventPayload;
-            set((s) => ({
-              pending_chapter_delta: mapTurnSummaryEvent(payload),
-              playthrough: s.playthrough && {
-                ...s.playthrough,
-                active_conditions: payload.active_conditions,
-              },
-            }));
-          } else if (eventName === "done") {
-            reachedTerminalEvent = true;
-            get()._commitStreamedTurn(actionText);
-          } else if (eventName === "degraded") {
-            reachedTerminalEvent = true;
-            get()._degradeCurrentTurn(data);
-          }
-        },
-        onError: () => {
-          reachedTerminalEvent = true;
-          get()._degradeCurrentTurn(
-            "Connection lost. Your turn may not have saved — you can try again.",
-          );
-        },
-        onClose: () => {
-          // The connection ended without "done"/"degraded"/onError firing —
-          // e.g. the server's stream broke mid-generation after headers were
-          // already sent. Without this, the UI would hang on "thinking"
-          // forever with no way for the player to recover.
-          if (!reachedTerminalEvent) {
-            get()._degradeCurrentTurn(
-              "The narrator stopped responding unexpectedly. Please try again.",
-            );
-          }
-        },
-      },
-      requestId,
+      actionText,
     );
-
-    set({ cancel_stream_fn: cancelFn });
   },
+
+  submitMinigameResult: (result: MinigameResultPayload) => {
+    const { playthrough } = get();
+    if (!playthrough || playthrough.is_spectator) return;
+    if (!playthrough.participant_id) return;
+
+    get()._startTurnStream(
+      {
+        playthrough_id: playthrough.playthrough_id,
+        participant_id: playthrough.participant_id,
+        action_text: MINIGAME_RESULT_ACTION_TEXT,
+        action_kind: "minigame_result",
+        minigame_result: result,
+      },
+      MINIGAME_RESULT_ACTION_TEXT,
+    );
+  },
+
+  clearActiveMinigame: () => set({ active_minigame: null }),
 
   stopGeneration: () => {
     const { cancel_stream_fn } = get();
@@ -227,6 +238,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       streaming_text: "",
       cancel_stream_fn: null,
       pending_chapter_delta: null,
+      pending_minigame_trigger: null,
     });
   },
 
@@ -261,9 +273,95 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
 
   // Internal helpers (not part of the public store surface — no consumer
   // outside this file should call these directly).
+  //
+  // Shared SSE-stream machinery for both a normal narrative action and a
+  // minigame result submission — the only difference between the two is the
+  // POST body and the actionText used for the local turn log entry, so both
+  // public actions build a TurnStreamBody and delegate here rather than each
+  // wiring up createPostSSEConnection/onEvent themselves.
+  _startTurnStream: (body: TurnStreamBody, actionTextForLog: string) => {
+    const { cancel_stream_fn } = get();
+    if (cancel_stream_fn) cancel_stream_fn();
+
+    set({
+      is_narrating: true,
+      streaming_text: "",
+      last_submitted_action: actionTextForLog,
+      degraded_message: null,
+      is_action_drawer_open: false,
+    });
+
+    const token = useAuthStore.getState().accessToken;
+    const requestId = generateRequestId();
+    setCurrentRequestId(requestId);
+    let reachedTerminalEvent = false;
+    const handlers: SSEHandlers = {
+      onEvent: (eventName: string, data: string) => {
+        if (eventName === "mood") {
+          const mood = data as ScenarioMood;
+          ambientSoundtrack.transitionTo(mood);
+        } else if (eventName === "narration") {
+          set((s) => ({ streaming_text: s.streaming_text + data }));
+        } else if (eventName === "turn_summary") {
+          const payload = JSON.parse(data) as TurnSummaryEventPayload;
+          set((s) => ({
+            pending_chapter_delta: mapTurnSummaryEvent(payload),
+            playthrough: s.playthrough && {
+              ...s.playthrough,
+              active_conditions: payload.active_conditions,
+            },
+          }));
+        } else if (eventName === "minigame") {
+          // Buffered like pending_chapter_delta — does NOT set
+          // reachedTerminalEvent, since "done" still follows normally.
+          const payload = JSON.parse(data) as MinigameEventPayload;
+          set({ pending_minigame_trigger: payload });
+        } else if (eventName === "done") {
+          reachedTerminalEvent = true;
+          get()._commitStreamedTurn(actionTextForLog);
+        } else if (eventName === "degraded") {
+          reachedTerminalEvent = true;
+          get()._degradeCurrentTurn(data);
+        }
+      },
+      onError: () => {
+        reachedTerminalEvent = true;
+        get()._degradeCurrentTurn(
+          "Connection lost. Your turn may not have saved — you can try again.",
+        );
+      },
+      onClose: () => {
+        // The connection ended without "done"/"degraded"/onError firing —
+        // e.g. the server's stream broke mid-generation after headers were
+        // already sent. Without this, the UI would hang on "thinking"
+        // forever with no way for the player to recover.
+        if (!reachedTerminalEvent) {
+          get()._degradeCurrentTurn(
+            "The narrator stopped responding unexpectedly. Please try again.",
+          );
+        }
+      },
+    };
+
+    const cancelFn = createPostSSEConnection(
+      `${TRS_BASE_URL}/v1/turn`,
+      body,
+      token,
+      handlers,
+      requestId,
+    );
+
+    set({ cancel_stream_fn: cancelFn });
+  },
+
   _commitStreamedTurn: (actionText: string) => {
-    const { playthrough, streaming_text, active_mode, pending_chapter_delta } =
-      get();
+    const {
+      playthrough,
+      streaming_text,
+      active_mode,
+      pending_chapter_delta,
+      pending_minigame_trigger,
+    } = get();
     if (!playthrough) return;
 
     const newTurn: TurnLogItem = {
@@ -285,6 +383,15 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       streaming_text: "",
       cancel_stream_fn: null,
       pending_chapter_delta: null,
+      pending_minigame_trigger: null,
+      // Promote the buffered trigger into the overlay-driving field now that
+      // the triggering turn is fully committed — mirrors pending_chapter_delta
+      // being attached to newTurn above. When nothing triggered this turn,
+      // this resolves to null, which is always correct here: a normal turn
+      // never has an active_minigame set (submission is gated on none being
+      // pending), and a minigame-result turn's overlay was already cleared
+      // via clearActiveMinigame() before this stream started.
+      active_minigame: pending_minigame_trigger ?? null,
     });
 
     void queryClient.invalidateQueries({
@@ -298,6 +405,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       streaming_text: "",
       cancel_stream_fn: null,
       pending_chapter_delta: null,
+      pending_minigame_trigger: null,
       degraded_message: message,
     });
   },

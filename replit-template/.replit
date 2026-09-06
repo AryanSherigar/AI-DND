@@ -1,0 +1,13 @@
+entrypoint = "index.html"
+run = "python3 -m http.server 8000"
+
+[nix]
+channel = "stable-23_11"
+
+[[ports]]
+localPort = 8000
+externalPort = 80
+
+[deployment]
+deploymentTarget = "static"
+publicDir = "/"

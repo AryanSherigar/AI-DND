@@ -20,6 +20,7 @@ from app.routers import (
     invariants,
     logs,
     maps,
+    minigames,
     playthroughs,
     scenario_entity_types,
     scenarios,
@@ -64,6 +65,7 @@ app.include_router(conditions.router)
 app.include_router(end_conditions.router)
 app.include_router(invariants.router)
 app.include_router(maps.router)
+app.include_router(minigames.router)
 app.include_router(playthroughs.router)
 app.include_router(share.router)
 app.include_router(logs.router)

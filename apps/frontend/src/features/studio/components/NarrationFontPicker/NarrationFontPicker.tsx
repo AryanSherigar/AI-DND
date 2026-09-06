@@ -1,24 +1,37 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Select, SelectOption } from "@/shared/components/ui/Select";
-import { NARRATION_FONT_LABELS, NARRATION_FONTS } from "@/shared/constants/narration-fonts";
+import { Select, SelectOptionGroup } from "@/shared/components/ui/Select";
+import {
+  DEFAULT_NARRATION_FONT_ID,
+  FONT_GENRE_CATEGORIES,
+  NARRATION_FONTS_CATALOG,
+  resolveNarrationFont,
+} from "@/shared/constants/narration-fonts";
 import { useScenario } from "../../hooks/useScenario";
 import { NarrationFontPickerProps } from "./NarrationFontPicker.types";
 
-const FONT_OPTIONS: SelectOption[] = NARRATION_FONTS.map((font) => ({
-  value: font,
-  label: NARRATION_FONT_LABELS[font],
-}));
+const FONT_GROUPS: SelectOptionGroup[] = FONT_GENRE_CATEGORIES.map(
+  (category) => ({
+    label: category,
+    options: NARRATION_FONTS_CATALOG.filter((f) => f.category === category).map(
+      (f) => ({
+        value: f.id,
+        label: f.label,
+      }),
+    ),
+  }),
+);
 
 export const NarrationFontPicker: React.FC<NarrationFontPickerProps> = ({
   scenarioId,
 }) => {
   const { scenario, isLoading, updateScenario } = useScenario(scenarioId);
-  const [font, setFont] = useState<string>(NARRATION_FONTS[0]);
+  const [font, setFont] = useState<string>(DEFAULT_NARRATION_FONT_ID);
   const hasInitialized = useRef(false);
 
   useEffect(() => {
     if (scenario && !hasInitialized.current) {
-      setFont(scenario.narration_font ?? NARRATION_FONTS[0]);
+      const resolved = resolveNarrationFont(scenario.narration_font);
+      setFont(resolved.id);
       hasInitialized.current = true;
     }
   }, [scenario]);
@@ -35,12 +48,10 @@ export const NarrationFontPicker: React.FC<NarrationFontPickerProps> = ({
 
   return (
     <div className="space-y-2">
-      <h2 className="text-base font-semibold text-zinc-100">
-        Narration Font
-      </h2>
+      <h2 className="text-base font-semibold text-zinc-100">Narration Font</h2>
       <Select
         aria-label="Narration font"
-        options={FONT_OPTIONS}
+        groups={FONT_GROUPS}
         value={font}
         onChange={handleChange}
       />

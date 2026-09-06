@@ -27,7 +27,7 @@ describe("NarrationFontPicker", () => {
       http.get(`${API_URL}/v1/scenarios/${SCENARIO_ID}`, () =>
         HttpResponse.json({
           scenario_id: SCENARIO_ID,
-          narration_font: "serif",
+          narration_font: "im-fell-english",
         }),
       ),
       http.patch(
@@ -46,8 +46,26 @@ describe("NarrationFontPicker", () => {
     renderPicker();
 
     const select = await screen.findByLabelText(/narration font/i);
-    await user.selectOptions(select, "monospace");
+    await user.selectOptions(select, "special-elite");
 
-    expect(savedPayload).toEqual({ narration_font: "monospace" });
+    expect(savedPayload).toEqual({ narration_font: "special-elite" });
+  });
+
+  it("renders categorized optgroups", async () => {
+    server.use(
+      http.get(`${API_URL}/v1/scenarios/${SCENARIO_ID}`, () =>
+        HttpResponse.json({
+          scenario_id: SCENARIO_ID,
+          narration_font: "cinzel",
+        }),
+      ),
+    );
+
+    renderPicker();
+    const select = await screen.findByLabelText(/narration font/i);
+    const fantasyGroup = select.querySelector(
+      "optgroup[label='Fantasy & Medieval']",
+    );
+    expect(fantasyGroup).not.toBeNull();
   });
 });

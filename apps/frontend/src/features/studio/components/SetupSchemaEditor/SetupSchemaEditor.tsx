@@ -70,7 +70,12 @@ export const SetupSchemaEditor: React.FC<SetupSchemaEditorProps> = ({
           Setup Archetypes
         </h2>
         <div className="flex items-center gap-2">
-          <Button type="button" variant="secondary" size="sm" onClick={handleAdd}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={handleAdd}
+          >
             Add Archetype
           </Button>
           <Button

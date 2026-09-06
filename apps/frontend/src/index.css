@@ -23,6 +23,49 @@
   .font-mono {
     font-family: "IBM Plex Mono", monospace;
   }
+  .font-narration-im-fell-english {
+    font-family: "IM Fell English", Georgia, serif;
+  }
+  .font-narration-cinzel {
+    font-family: "Cinzel", Georgia, serif;
+  }
+  .font-narration-medieval-sharp {
+    font-family: "MedievalSharp", cursive, serif;
+  }
+  .font-narration-eb-garamond {
+    font-family: "EB Garamond", Garamond, Georgia, serif;
+  }
+  .font-narration-merriweather {
+    font-family: "Merriweather", Georgia, serif;
+  }
+  .font-narration-ibm-plex-mono {
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .font-narration-orbitron {
+    font-family: "Orbitron", sans-serif;
+  }
+  .font-narration-share-tech-mono {
+    font-family: "Share Tech Mono", monospace;
+  }
+  .font-narration-special-elite {
+    font-family: "Special Elite", "Courier New", monospace;
+  }
+  .font-narration-courier-prime {
+    font-family: "Courier Prime", Courier, monospace;
+  }
+  .font-narration-almendra {
+    font-family: "Almendra", Georgia, serif;
+  }
+  .font-narration-inter {
+    font-family:
+      "Inter",
+      -apple-system,
+      BlinkMacSystemFont,
+      sans-serif;
+  }
+  .font-narration-open-dyslexic {
+    font-family: "OpenDyslexic", sans-serif;
+  }
 }
 
 /* Animations */
@@ -115,4 +158,10 @@
 }
 .scrollbar-minimal::-webkit-scrollbar-thumb:hover {
   background: rgba(217, 119, 6, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-aurora-spin {
+    animation: none !important;
+  }
 }

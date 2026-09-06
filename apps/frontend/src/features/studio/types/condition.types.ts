@@ -1,10 +1,12 @@
-export type StateMutationOp = "set" | "increment" | "decrement";
-
-export interface StateMutation {
-  path: string;
-  op: StateMutationOp;
-  value: unknown;
-}
+// StateMutation/StateMutationOp moved to shared/types/stateMutation.types.ts
+// (single source of truth — play/'s minigame result handling needs this
+// shape too, and features never import from each other). Re-exported here
+// so existing imports from "../../types/condition.types" keep working.
+import type { StateMutation } from "@/shared/types/stateMutation.types";
+export type {
+  StateMutationOp,
+  StateMutation,
+} from "@/shared/types/stateMutation.types";
 
 export interface ConditionCreate {
   label: string;

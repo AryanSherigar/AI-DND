@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { MapViewer } from "../components/MapViewer/MapViewer";
+import { MinigameOverlay } from "../components/MinigameOverlay/MinigameOverlay";
 import { PlayScreen } from "../components/PlayScreen/PlayScreen";
 import { usePlayStore } from "../stores/play.store";
 import { usePlaythrough } from "../hooks/usePlaythrough";
@@ -97,6 +98,7 @@ export function PlayPage() {
         scenarioSnapshot={serverPlaythrough?.scenario_snapshot}
         state={serverPlaythrough?.state}
       />
+      <MinigameOverlay />
     </>
   );
 }

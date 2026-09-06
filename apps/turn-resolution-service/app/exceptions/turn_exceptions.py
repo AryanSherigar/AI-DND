@@ -43,3 +43,25 @@ class StateWriteError(BaseAppException):
 
     def __init__(self, message: str = "Failed to persist turn state"):
         super().__init__(message=message, status_code=500)
+
+
+class MinigameResultRequiredError(BaseAppException):
+    """Raised when a normal action is submitted while a minigame is pending
+    resolution — a playthrough can never silently drop a pending minigame."""
+
+    def __init__(
+        self,
+        message: str = "A minigame result must be submitted before any other action",
+    ):
+        super().__init__(message=message, status_code=409)
+
+
+class MinigameResultMismatchError(BaseAppException):
+    """Raised when a submitted minigame result doesn't match the pending
+    minigame, or when none is pending at all."""
+
+    def __init__(
+        self,
+        message: str = "Submitted minigame result does not match the pending minigame",
+    ):
+        super().__init__(message=message, status_code=409)

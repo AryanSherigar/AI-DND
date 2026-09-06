@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React from "react";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
 import { Select, SelectOption } from "@/shared/components/ui/Select";
@@ -8,13 +8,17 @@ import {
 } from "@/shared/constants/complexity-tiers";
 import { ContentTag } from "@/shared/constants/content-tags";
 import { useScenario } from "../../hooks/useScenario";
+import { useServerSyncedState } from "../../hooks/useServerSyncedState";
 import {
   ScenarioComplexityTier,
   ScenarioPlayerCountSupport,
 } from "../../types/scenario.types";
 import { ContentTagPicker } from "../PublishFlow/ContentTagPicker";
 import { GenreTagsPicker } from "./GenreTagsPicker";
-import { ScenarioMetaFormProps, ScenarioMetaFormState } from "./ScenarioMetaForm.types";
+import {
+  ScenarioMetaFormProps,
+  ScenarioMetaFormState,
+} from "./ScenarioMetaForm.types";
 
 const PLAYER_COUNT_SUPPORT_OPTIONS: SelectOption[] = [
   { value: "solo", label: "Solo" },
@@ -42,15 +46,9 @@ export const ScenarioMetaForm: React.FC<ScenarioMetaFormProps> = ({
 }) => {
   const { scenario, isLoading, updateScenario, isUpdating, updateError } =
     useScenario(scenarioId);
-  const [form, setForm] = useState<ScenarioMetaFormState | null>(null);
-  const hasInitialized = useRef(false);
-
-  useEffect(() => {
-    if (scenario && !hasInitialized.current) {
-      setForm(buildInitialState(scenario));
-      hasInitialized.current = true;
-    }
-  }, [scenario]);
+  const [form, setForm] = useServerSyncedState<ScenarioMetaFormState>(
+    scenario ? buildInitialState(scenario) : undefined,
+  );
 
   const handleSave = (): void => {
     if (!form) return;

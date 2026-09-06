@@ -1,5 +1,10 @@
-import React, { useState } from "react";
-import { useParams, useNavigate, Navigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import {
+  useParams,
+  useNavigate,
+  useSearchParams,
+  Navigate,
+} from "react-router-dom";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { Header } from "@/shared/components/layout/Header";
 import { useProfile } from "../hooks/useProfile";
@@ -12,13 +17,40 @@ import { ReviewsTab } from "../components/tabs/ReviewsTab";
 
 type ProfileTab = "creations" | "campaigns" | "bookmarks" | "reviews";
 
+const VALID_TABS: ProfileTab[] = [
+  "creations",
+  "campaigns",
+  "bookmarks",
+  "reviews",
+];
+
+const parseProfileTab = (tabParam: string | null): ProfileTab => {
+  if (tabParam && (VALID_TABS as string[]).includes(tabParam)) {
+    return tabParam as ProfileTab;
+  }
+  return "creations";
+};
+
 export const ProfilePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<ProfileTab>("creations");
+  const [activeTab, setActiveTab] = useState<ProfileTab>(() =>
+    parseProfileTab(searchParams.get("tab")),
+  );
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  useEffect(() => {
+    const nextTab = parseProfileTab(searchParams.get("tab"));
+    setActiveTab(nextTab);
+  }, [searchParams]);
+
+  const handleTabChange = (newTab: ProfileTab) => {
+    setActiveTab(newTab);
+    setSearchParams({ tab: newTab });
+  };
 
   const isOwner = Boolean(!id || (user && user.user_id === id));
   const isProfileEnabled = Boolean(id) || (!isAuthLoading && isAuthenticated);
@@ -83,7 +115,7 @@ export const ProfilePage: React.FC = () => {
         <div className="border-b border-zinc-800/80">
           <nav className="flex space-x-6 font-mono text-sm tracking-wider">
             <button
-              onClick={() => setActiveTab("creations")}
+              onClick={() => handleTabChange("creations")}
               className={`pb-4 px-1 border-b-2 font-bold transition-all ${
                 activeTab === "creations"
                   ? "border-amber-400 text-amber-300 shadow-[0_2px_10px_rgba(212,175,106,0.3)]"
@@ -95,7 +127,7 @@ export const ProfilePage: React.FC = () => {
 
             {isOwner && (
               <button
-                onClick={() => setActiveTab("campaigns")}
+                onClick={() => handleTabChange("campaigns")}
                 className={`pb-4 px-1 border-b-2 font-bold transition-all ${
                   activeTab === "campaigns"
                     ? "border-amber-400 text-amber-300 shadow-[0_2px_10px_rgba(212,175,106,0.3)]"
@@ -108,7 +140,7 @@ export const ProfilePage: React.FC = () => {
 
             {isOwner && (
               <button
-                onClick={() => setActiveTab("bookmarks")}
+                onClick={() => handleTabChange("bookmarks")}
                 className={`pb-4 px-1 border-b-2 font-bold transition-all ${
                   activeTab === "bookmarks"
                     ? "border-amber-400 text-amber-300 shadow-[0_2px_10px_rgba(212,175,106,0.3)]"
@@ -120,7 +152,7 @@ export const ProfilePage: React.FC = () => {
             )}
 
             <button
-              onClick={() => setActiveTab("reviews")}
+              onClick={() => handleTabChange("reviews")}
               className={`pb-4 px-1 border-b-2 font-bold transition-all ${
                 activeTab === "reviews"
                   ? "border-amber-400 text-amber-300 shadow-[0_2px_10px_rgba(212,175,106,0.3)]"

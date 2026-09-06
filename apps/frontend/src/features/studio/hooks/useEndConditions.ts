@@ -43,7 +43,11 @@ export const useEndConditions = (scenarioId: string | null) => {
       endConditionId: string;
       payload: EndConditionUpdate;
     }) =>
-      updateEndCondition(requireScenarioId(scenarioId), endConditionId, payload),
+      updateEndCondition(
+        requireScenarioId(scenarioId),
+        endConditionId,
+        payload,
+      ),
     onSuccess: invalidate,
   });
 
@@ -55,18 +59,27 @@ export const useEndConditions = (scenarioId: string | null) => {
 
   const reorderMutation = useMutation({
     mutationFn: (orderedEndConditionIds: string[]) =>
-      reorderEndConditions(requireScenarioId(scenarioId), orderedEndConditionIds),
+      reorderEndConditions(
+        requireScenarioId(scenarioId),
+        orderedEndConditionIds,
+      ),
     onMutate: async (orderedEndConditionIds: string[]) => {
       await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<EndConditionListResponse>(queryKey);
+      const previous =
+        queryClient.getQueryData<EndConditionListResponse>(queryKey);
       if (previous) {
-        const byId = new Map(previous.items.map((item) => [item.end_condition_id, item]));
+        const byId = new Map(
+          previous.items.map((item) => [item.end_condition_id, item]),
+        );
         const items = orderedEndConditionIds
           .map((id, index) => {
             const item = byId.get(id);
             return item ? { ...item, priority: index } : null;
           })
-          .filter((item): item is EndConditionListResponse["items"][number] => item !== null);
+          .filter(
+            (item): item is EndConditionListResponse["items"][number] =>
+              item !== null,
+          );
         queryClient.setQueryData<EndConditionListResponse>(queryKey, { items });
       }
       return { previous };
@@ -86,22 +99,34 @@ export const useEndConditions = (scenarioId: string | null) => {
     createEndCondition: createMutation.mutate,
     isCreating: createMutation.isPending,
     createError: createMutation.error
-      ? extractErrorMessage(createMutation.error, "Failed to save end condition.")
+      ? extractErrorMessage(
+          createMutation.error,
+          "Failed to save end condition.",
+        )
       : null,
     updateEndCondition: updateMutation.mutate,
     isUpdating: updateMutation.isPending,
     updateError: updateMutation.error
-      ? extractErrorMessage(updateMutation.error, "Failed to save end condition.")
+      ? extractErrorMessage(
+          updateMutation.error,
+          "Failed to save end condition.",
+        )
       : null,
     deleteEndCondition: deleteMutation.mutate,
     isDeleting: deleteMutation.isPending,
     deleteError: deleteMutation.error
-      ? extractErrorMessage(deleteMutation.error, "Failed to save end condition.")
+      ? extractErrorMessage(
+          deleteMutation.error,
+          "Failed to save end condition.",
+        )
       : null,
     reorderEndConditions: reorderMutation.mutate,
     isReordering: reorderMutation.isPending,
     reorderError: reorderMutation.error
-      ? extractErrorMessage(reorderMutation.error, "Failed to save end condition.")
+      ? extractErrorMessage(
+          reorderMutation.error,
+          "Failed to save end condition.",
+        )
       : null,
   };
 };

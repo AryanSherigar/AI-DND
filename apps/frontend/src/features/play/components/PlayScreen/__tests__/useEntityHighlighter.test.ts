@@ -46,7 +46,9 @@ describe("useEntityHighlighter", () => {
         canonical_name: "The Warden",
         aliases: ["the guardian"],
         description: "A tireless sentinel.",
-        attributes_schema: { awareness: { type: "number", label: "Awareness" } },
+        attributes_schema: {
+          awareness: { type: "number", label: "Awareness" },
+        },
         obtainable: null,
         attributes: { awareness: 40 },
       },

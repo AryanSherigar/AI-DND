@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { usePlayStore } from "../../../stores/play.store";
 import { EntityHighlightItem } from "../../../types/play.types";
+import { resolveNarrationFont } from "@/shared/constants/narration-fonts";
+import { loadNarrationFont } from "@/shared/lib/font-loader";
 import { EBookPrologueCard } from "./EBookPrologueCard";
 import { EBookTurnEntry } from "./EBookTurnEntry";
 import { EntityInspectTooltip } from "./EntityInspectTooltip";
@@ -14,6 +16,14 @@ export function EBookCanvas() {
   const activeMode = usePlayStore((s) => s.active_mode);
   const openActionDrawer = usePlayStore((s) => s.openActionDrawer);
   const stopGeneration = usePlayStore((s) => s.stopGeneration);
+  const readerFontOverride = usePlayStore((s) => s.reader_font_override);
+
+  const scenarioFont = playthrough?.narration_font;
+  const activeFont = resolveNarrationFont(readerFontOverride ?? scenarioFont);
+
+  useEffect(() => {
+    loadNarrationFont(activeFont.id);
+  }, [activeFont.id]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -111,7 +121,9 @@ export function EBookCanvas() {
               </aside>
             )}
 
-            <div className="font-serif text-base md:text-lg leading-relaxed space-y-4">
+            <div
+              className={`${activeFont.fontClass} text-base md:text-lg leading-relaxed space-y-4`}
+            >
               {streamingText ? (
                 <p>
                   {streamingText}

@@ -1,12 +1,18 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useScenario } from "../hooks/useScenario";
+import { useStudioStore } from "../stores/studio.store";
 import { StudioDocumentLayout } from "../components/Layout/StudioDocumentLayout";
 import { MasterModeStudioLayout } from "../components/Layout/MasterModeStudioLayout";
 
 export const EditScenarioPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { scenario, isLoading, error } = useScenario(id ?? null);
+  const setMode = useStudioStore((s) => s.setMode);
+
+  useEffect(() => {
+    if (scenario) setMode(scenario.mode);
+  }, [scenario, setMode]);
 
   if (!id) {
     return (
