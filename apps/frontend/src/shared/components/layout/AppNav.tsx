@@ -91,7 +91,10 @@ export const AppNav: React.FC = () => {
   const { user } = useAuth();
   const isRoute = (path: string): boolean => location.pathname === path;
   const isDiscover = location.pathname.startsWith("/discover");
-  const showBrowseSections = isDiscover || isRoute("/");
+  const showBrowseSections =
+    isDiscover ||
+    isRoute("/") ||
+    location.pathname.startsWith("/scenario");
 
   return (
     <>

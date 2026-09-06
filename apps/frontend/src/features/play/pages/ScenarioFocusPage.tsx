@@ -59,29 +59,15 @@ export const ScenarioFocusPage: React.FC = () => {
 
   return (
     <div className="custom-scrollbar flex-1 overflow-y-auto pb-20 text-content selection:bg-accent/30">
-      {/* Top Header Navigation */}
-      <header className="sticky top-0 z-20 border-b border-border-subtle bg-surface-raised/90 backdrop-blur-md pt-14 px-4 py-3 md:px-8">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface/80 px-3.5 py-1.5 font-mono text-xs text-content-muted hover:bg-surface-overlay hover:text-white transition-colors"
-          >
-            ← Back
-          </button>
-          <span className="font-display text-sm font-bold text-accent truncate max-w-xs md:max-w-md">
-            {scenario.title}
-          </span>
-          <button
-            onClick={() => navigate("/discover")}
-            className="font-mono text-xs text-content-muted hover:text-accent transition-colors"
-          >
-            Explore Feed
-          </button>
-        </div>
-      </header>
-
       {/* Main Focus Container */}
-      <main className="max-w-7xl mx-auto px-4 md:px-8 pt-6 space-y-8">
+      <main className="mx-auto max-w-7xl space-y-8 px-4 pt-16 md:px-8">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1.5 font-mono text-xs text-content-faint transition-colors hover:text-content"
+        >
+          ← Back
+        </button>
+
         {/* Banner Hero */}
         <ScenarioBannerHero
           scenario={scenario}
