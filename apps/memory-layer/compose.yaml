@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
+    environment:
+      POSTGRES_DB: context_memory
+      POSTGRES_USER: context_memory
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:54329:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U context_memory -d context_memory"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  hydradb:
+    build:
+      context: ./hydradb
+      dockerfile: Dockerfile
+      target: runtime
+    image: hydradb-graph-node:local
+    entrypoint: ["sh", "-c", "mkdir -p /tmp/graph /var/cache/slatedb && echo 'context-memory-local-smoke-token-32b' > /tmp/graph/auth-token && exec graph-node"]
+    environment:
+      CLOUD_PROVIDER: local
+      LOCAL_PATH: /tmp/graph
+      GRAPH_NAMESPACE: default
+      GRAPH_ID: default
+      GRAPH_CELL_ID: cell-0
+      GRAPH_CELLS: cell-0
+      GRAPH_NODE_ID: node-0
+      GRAPH_BOLT_NODE_ADDRESSES: node-0=127.0.0.1:7687
+      GRAPH_ADVERTISED_BOLT_ADDR: 127.0.0.1:7687
+      GRAPH_DATA_CACHE_DIR: /var/cache/slatedb
+      GRAPH_AUTH_TOKEN_FILE: /tmp/graph/auth-token
+      GRAPH_ALLOW_PLAINTEXT: "true"
+      RUST_MIN_STACK: "33554432"
+    volumes:
+      - hydradb_store:/tmp/graph
+      - hydradb_cache:/var/cache/slatedb
+    ports:
+      - "127.0.0.1:8080:8443"
+      - "127.0.0.1:7687:7687"
+      - "127.0.0.1:9090:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9090' || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  hydradb_store:
+  hydradb_cache:

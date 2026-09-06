@@ -1,0 +1,14 @@
+.git
+.cargo/
+.github
+.idea
+.vscode
+target
+*.csv
+*.log
+*.svg
+*.txt
+docs
+grafana
+charts
+scripts

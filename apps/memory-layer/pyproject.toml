@@ -1,0 +1,63 @@
+[project]
+name = "hydradb-hackathon"
+version = "0.1.0"
+description = "HydraDB Long-Term Memory Engine"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "google-genai>=1.0.0",
+    "httpx>=0.27.0",
+    "numpy>=1.24.0",
+    "opentelemetry-api>=1.27.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.27.0",
+    "opentelemetry-sdk>=1.27.0",
+    "psycopg[binary]>=3.2,<4",
+    "pydantic>=2.0.0",
+    "pytest>=8.0.0",
+    "python-dotenv>=1.0.0",
+    "sentence-transformers>=2.0.0",
+    "uvicorn>=0.30.0",
+]
+
+[tool.context-memory]
+contract-version = "v1"
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests", "src"]
+pythonpath = [".", "src"]
+
+[dependency-groups]
+dev = ["import-linter>=2.0"]
+
+[tool.importlinter]
+root_packages = ["api", "chat", "context_memory", "evaluation"]
+
+# Top-level entry points depend on the engine package, never the reverse, and
+# never on each other -- api/evaluation/chat are independent composition
+# roots (routes.py::get_engine, benchmark_runner.py::create_pipeline,
+# interactive_chat.py), each wiring its own instance of the same engine.
+[[tool.importlinter.contracts]]
+name = "Entry points depend on context_memory, not each other"
+type = "layers"
+layers = ["api | chat | evaluation", "context_memory"]
+
+# Inside context_memory: composition wires full engines (connects real
+# adapters, builds MemoryEngine) and sits above engine, which only
+# orchestrates already-built objects. ingestion and retrieval are the two
+# independent domain pipelines (neither depends on the other); persistence/
+# client are the adapters ingestion and retrieval are built against; core is
+# the innermost layer and depends on nothing above it.
+# See docs/RESTRUCTURE_PLAN.md Phase 3.
+[[tool.importlinter.contracts]]
+name = "context_memory internal layering"
+type = "layers"
+layers = [
+    "composition",
+    "engine",
+    "ingestion | retrieval",
+    "persistence | client",
+    "core",
+]
+containers = ["context_memory"]
+
