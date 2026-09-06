@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 
+from app.models.minigame_event import MinigameEventPayload
 from app.models.turn_summary import TurnSummaryPayload
 
 
@@ -45,6 +46,15 @@ def turn_summary_event(payload: TurnSummaryPayload) -> ServerSentEvent:
     done event — the frontend defers showing it until that turn's narration
     finishes streaming, regardless of when it arrives."""
     return ServerSentEvent(event="turn_summary", data=payload.model_dump_json())
+
+
+def minigame_event(payload: MinigameEventPayload) -> ServerSentEvent:
+    """Format the triggered minigame's play-time config as an SSE event,
+    emitted after turn_summary_event, before playthrough_ended_event/
+    done_event. payload never carries win_mutation/lose_mutation/
+    tiered_outcomes/timeout_mutation/narrator_instruction_template — those
+    stay server-side only (§3.6's "Always" boundary)."""
+    return ServerSentEvent(event="minigame", data=payload.model_dump_json())
 
 
 def done_event() -> ServerSentEvent:

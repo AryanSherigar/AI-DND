@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LivingBookHeroProps } from "./LivingBookHero.types";
 
 export function LivingBookHero({
-  baseImageUrl = "/images/book-base.png",
+  baseImageUrl = "/images/book-base.webp",
   mistRenderMode: initialMistRenderMode = "blobs",
   blobCount = 5,
   dustCount = 20,

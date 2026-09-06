@@ -2,7 +2,10 @@
 
 from app.models.assistant import (
     AssistantChatMessage,
+    AssistantChatRequest,
     AssistantDraftContext,
+    AssistantEntitySummary,
+    AssistantMasterContext,
     AssistantStoryCard,
 )
 from app.services.assistant_service import (
@@ -12,7 +15,8 @@ from app.services.assistant_service import (
 
 
 def test_build_system_instruction_without_draft() -> None:
-    instruction = build_system_instruction(None)
+    request = AssistantChatRequest(messages=[])
+    instruction = build_system_instruction(request)
     assert "You are an immersive world-building co-author" in instruction
     assert "ACTION BLOCKS:" in instruction
 
@@ -29,11 +33,40 @@ def test_build_system_instruction_with_draft() -> None:
         ],
         active_section="lore",
     )
-    instruction = build_system_instruction(draft)
+    request = AssistantChatRequest(messages=[], draft_context=draft)
+    instruction = build_system_instruction(request)
     assert "Chronicles of Elyria" in instruction
     assert "Dark Fantasy, Gothic" in instruction
     assert "Silver Dawn" in instruction
     assert "Active Wizard Section: lore" in instruction
+
+
+def test_build_system_instruction_master_mode_with_context() -> None:
+    context = AssistantMasterContext(
+        title="Sunken Kingdom",
+        active_tab="entities",
+        entities=[
+            AssistantEntitySummary(
+                entity_id="entity-1",
+                entity_type="character",
+                canonical_name="Hero",
+            )
+        ],
+    )
+    request = AssistantChatRequest(messages=[], mode="master", master_context=context)
+    instruction = build_system_instruction(request)
+    assert "game systems designer" in instruction
+    assert "Sunken Kingdom" in instruction
+    assert "Hero" in instruction
+    assert "action:entity" in instruction
+    assert "world-building co-author" not in instruction
+
+
+def test_build_system_instruction_master_mode_without_context() -> None:
+    request = AssistantChatRequest(messages=[], mode="master")
+    instruction = build_system_instruction(request)
+    assert "game systems designer" in instruction
+    assert "action:fact" in instruction
 
 
 def test_format_chat_contents() -> None:

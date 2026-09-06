@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { usePlayStore } from "../../../stores/play.store";
 import { EntityHighlightItem } from "../../../types/play.types";
+import { resolveNarrationFont } from "@/shared/constants/narration-fonts";
 import { ChapterSummaryStrip } from "./ChapterSummaryStrip";
 import { DiceRollCard } from "./DiceRollCard";
 import { EBookTurnEntryProps } from "./ebook.types";
@@ -9,6 +10,7 @@ interface ParagraphProps {
   paragraph: string;
   isFirst: boolean;
   knownEntities: EntityHighlightItem[];
+  fontClass: string;
   onSelectEntity: (entity: EntityHighlightItem, rect: DOMRect) => void;
 }
 
@@ -16,16 +18,17 @@ function HighlightedParagraph({
   paragraph,
   isFirst,
   knownEntities,
+  fontClass,
   onSelectEntity,
 }: ParagraphProps) {
   const parts = renderHighlightedText(paragraph, knownEntities, onSelectEntity);
   const dropCapClass = isFirst
-    ? "first-letter:text-3xl md:first-letter:text-4xl first-letter:font-serif first-letter:font-bold first-letter:float-left first-letter:mr-2.5 first-letter:leading-none first-letter:text-inherit"
+    ? "first-letter:text-3xl md:first-letter:text-4xl first-letter:font-bold first-letter:float-left first-letter:mr-2.5 first-letter:leading-none first-letter:text-inherit"
     : "";
 
   return (
     <p
-      className={`font-serif text-base md:text-lg leading-relaxed mb-4 ${dropCapClass}`}
+      className={`${fontClass} text-base md:text-lg leading-relaxed mb-4 ${dropCapClass}`}
     >
       {parts}
     </p>
@@ -99,6 +102,9 @@ export function EBookTurnEntry({
   const characterName = usePlayStore(
     (s) => s.playthrough?.character_name ?? "Adventurer",
   );
+  const scenarioFont = usePlayStore((s) => s.playthrough?.narration_font);
+  const readerFontOverride = usePlayStore((s) => s.reader_font_override);
+  const activeFont = resolveNarrationFont(readerFontOverride ?? scenarioFont);
   const paragraphs = turn.narration_text.split(/\n\s*\n/).filter(Boolean);
 
   return (
@@ -129,6 +135,7 @@ export function EBookTurnEntry({
             paragraph={para}
             isFirst={idx === 0}
             knownEntities={knownEntities}
+            fontClass={activeFont.fontClass}
             onSelectEntity={onSelectEntity}
           />
         ))}

@@ -45,10 +45,7 @@ describe("SetupSchemaEditor", () => {
     await user.click(
       await screen.findByRole("button", { name: /add archetype/i }),
     );
-    await user.type(
-      screen.getByLabelText(/archetype name/i),
-      "Warrior",
-    );
+    await user.type(screen.getByLabelText(/archetype name/i), "Warrior");
     await user.type(screen.getByLabelText(/value key/i), "player.health");
     await user.type(screen.getByLabelText(/value data/i), "100");
     await user.click(screen.getByRole("button", { name: /^add$/i }));

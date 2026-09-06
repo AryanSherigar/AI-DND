@@ -6,9 +6,11 @@ import { StateSchemaEditor } from "../StateSchemaEditor/StateSchemaEditor";
 import { EndConditionsEditor } from "../EndConditionsEditor/EndConditionsEditor";
 import { InvariantEditor } from "../InvariantEditor/InvariantEditor";
 import { MapEditor } from "../MapEditor/MapEditor";
+import { MinigameEditor } from "../MinigameEditor/MinigameEditor";
 import { PlaytestButton } from "../PlaytestButton/PlaytestButton";
 import { DuplicateScenarioButton } from "../DuplicateScenarioButton/DuplicateScenarioButton";
 import { StudioSetupPanel } from "./StudioSetupPanel";
+import { StudioChatDrawer } from "./StudioChatDrawer";
 import { TabHelpBanner } from "./TabHelpBanner";
 import {
   MASTER_MODE_TABS,
@@ -63,9 +65,13 @@ export const MasterModeStudioLayout: React.FC<MasterModeStudioLayoutProps> = ({
         {activeTab === "endings" && (
           <EndConditionsEditor scenarioId={scenarioId} />
         )}
+        {activeTab === "minigames" && (
+          <MinigameEditor scenarioId={scenarioId} />
+        )}
         {activeTab === "maps" && <MapEditor scenarioId={scenarioId} />}
         {activeTab === "setup" && <StudioSetupPanel scenarioId={scenarioId} />}
       </main>
+      <StudioChatDrawer activeSection={activeTab} scenarioId={scenarioId} />
     </div>
   );
 };

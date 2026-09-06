@@ -59,6 +59,7 @@
     - [ADR-7: Ingest-once-clone-many](#adr-7-ingest-once-clone-many-for-scenario-memory-template)
     - [ADR-8: Scenario versioning via snapshot](#adr-8-scenario-versioning-via-scenario_snapshot-not-a-version-table)
     - [ADR-9: when_active and active conditions](#adr-9-when_active-on-facts-and-active-conditions-instead-of-trigger-writes-to-memory)
+    - [ADR-10: Minigames as an interstitial handoff](#adr-10-minigames-as-an-interstitial-handoff-not-a-new-pauseresume-state-machine)
 13. [Open Items](#open-items)
 
 ---
@@ -111,7 +112,7 @@ The following are explicitly not being built for this project:
 - **Full audio narration.** The engine does not read the full story aloud.
 - **Real-time or simultaneous multiplayer.** Multiplayer is turn-based only.
 - **Monetization or creator economy.** No payments, subscriptions, or revenue-sharing are designed or built; noted only as a future direction.
-- **Non-text core gameplay.** Images, music, and character-voice audio (if built) are optional presentation layers on top of a text-based core, not alternate modes of play.
+- **Non-text core gameplay remains the default, with one bounded exception.** Images, music, and character-voice audio (if built) are optional presentation layers on top of a text-based core, not alternate modes of play. The one exception is master-mode minigames (see Partner Track below): short, deterministic interstitial sequences outside the AI narration loop, entered and exited via explicit state transitions — never a replacement for the text-driven core loop, and never involving the AI narrator directly.
 
 The following are conditional stretch goals, attempted only if the core product loop is solid and time remains, and are not committed deliverables:
 
@@ -950,7 +951,9 @@ Postgres is the single source of truth for all product state. The memory layer i
 
 ### Partner Track
 
-The partner track for the hackathon is undecided. The architecture is deliberately partner-agnostic, with pluggable slots at natural boundaries: the memory layer integration, the AI orchestration layer, and the storage tier are all candidates for partner integration without requiring architectural changes. The partner track will be selected and mapped to one of these slots once decided with the team.
+The selected partner track is **Replit**. Creators author master-mode minigames as a new scenario sub-resource (`scenario_minigames`): a curated built-in dodge/survival challenge, or a "bring your own" path where the creator builds and hosts their own minigame on Replit and pastes the deployed URL into Studio. At play-time, the Play frontend live-embeds that URL in a sandboxed iframe during an interstitial, AI-narrator-free sequence, and the embedded page reports its outcome back via `postMessage`. A companion Replit starter template (`replit-template/`) ships a small SDK (`minigame-sdk.js`) creators fork/remix to build their own minigame without touching this repo's code, wired to the same result contract from the start.
+
+This integration sits at a new, purpose-built slot — a play-time interstitial handoff — rather than reusing the memory-layer/AI-orchestration/storage-tier slots originally proposed as candidates (see ADR-10).
 
 ## Architecture Decision Records (ADRs)
 
@@ -1062,6 +1065,18 @@ The partner track for the hackathon is undecided. The architecture is deliberate
 
 ---
 
+### ADR-10: Minigames as an interstitial handoff, not a new pause/resume state machine
+
+**Context:** Master-mode scenarios need short, visually distinct minigame sequences (a curated dodge game, or a creator's own Replit-embedded app) that must run entirely outside the AI narrator's turn loop.
+
+**Decision:** A minigame trigger is evaluated like an end condition (own table, `scenario_minigames`, own `trigger_condition_expression`, priority-ordered, first-match-wins) against the final state of an otherwise-normal turn. On match, the turn completes normally — narration streams as usual — and a new SSE event (`minigame_event`) carries the minigame's play-time config to the client. The frontend renders a full-screen overlay entirely outside the AI loop. On completion, the client submits the result as the *next* turn, via a new `action_kind` discriminator on the existing turn-submission schema, re-entering the exact same pipeline; the deterministic outcome mutation is applied before Gemini is called (same timing convention as active conditions' Effect C), and the AI narrates the outcome via the existing orchestrator with an injected instruction. A "pending minigame" marker lives inside `Playthrough.state` as an internal, non-schema key, the same convention already used for `_last_changed_fields`.
+
+**Alternatives considered:** A new `Playthrough.status` value (e.g. `"in_minigame"`) plus a dedicated pause/resume sub-flow and separate endpoint was rejected — it would introduce a second state machine parallel to the turn pipeline, require new endpoints outside `POST /v1/turn`, and complicate every existing status check for a feature that, functionally, only ever needs "reject a mismatched next action" and "resume where narration left off." Extending `scenario_conditions`' `state_mutation` (Effect C) to also carry minigame-trigger metadata was rejected — end conditions and minigames both need first-match-wins priority ordering and an explicit outcome payload that active conditions' Effect C shape doesn't have, so a dedicated table mirroring `end_conditions` fit the existing precedent better than overloading a shape designed for something else.
+
+**Consequences:** No new Playthrough status, no new Gemini tools, no separate sub-flow endpoint — the entire feature rides the existing `POST /v1/turn` request/response contract via one new discriminator field. `request_receiver.py` gains gating logic to reject a mismatched action while a minigame is pending, and `end_condition_evaluator` is suppressed on a turn where a minigame just triggered. Multiplayer playthroughs never trigger minigames (v1 scope), evaluated at trigger time by participant count.
+
+---
+
 ## Open Items
 
 The following are explicitly unresolved and must be decided before or during the build:
@@ -1069,8 +1084,8 @@ The following are explicitly unresolved and must be decided before or during the
 **Fork playthroughs (Open-1)**
 Whether a player can branch their own copy from a shared playthrough session is still undecided. It was scoped as "build only if cheap given core architecture." Must be resolved with the team once core session architecture is implemented — the `PlaythroughShare` and `Playthrough` data models are designed to accommodate it, but the clone/branch operation and its memory layer implications are not designed.
 
-**Partner track (Open-2)**
-The hackathon partner track is undecided. The architecture is deliberately partner-agnostic, with natural integration slots at the memory layer boundary, the AI orchestration layer, and the storage tier. To be decided with the team once the architecture is drafted and reviewed.
+**Partner track (Open-2) — Resolved**
+The hackathon partner track is Replit, integrated as master-mode minigames (a curated built-in challenge plus a Replit-embed path). See the Partner Track section above and ADR-10.
 
 **Auth provider specifics (Open-3)**
 The exact auth provider and implementation method are deferred to implementation time. The system is designed to treat auth as an external dependency; swapping providers requires no architectural change. Explicitly flagged for replacement with a more robust system post-hackathon.

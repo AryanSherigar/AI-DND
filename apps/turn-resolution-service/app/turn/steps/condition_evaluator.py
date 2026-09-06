@@ -125,7 +125,9 @@ def _apply_and_validate_effect_c(
     if not path:
         return state, None
 
-    candidate_state = _apply_effect_c_mutation(state, mutation, path)
+    candidate_state = state_paths.apply_mutation(
+        state, path, str(mutation.get("op", "set")), mutation.get("value")
+    )
     result = state_validator.validate_applied_change(
         path, candidate_state, loaded_state.scenario_snapshot
     )
@@ -137,23 +139,3 @@ def _apply_and_validate_effect_c(
         )
         return state, None
     return result.updated_state or state, path
-
-
-def _apply_effect_c_mutation(
-    state: dict[str, object], mutation: dict[str, object], path: str
-) -> dict[str, object]:
-    op = mutation.get("op", "set")
-    value = mutation.get("value")
-
-    if op == "set":
-        new_value = value
-    elif op in ("increment", "decrement"):
-        current = state_paths.get_field_value(state, path) or 0
-        delta = float(value or 0)
-        new_value = (
-            float(current) + delta if op == "increment" else float(current) - delta
-        )
-    else:
-        return state
-
-    return state_paths.set_field_value(state, path, new_value)

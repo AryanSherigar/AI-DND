@@ -1,19 +1,29 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useStudioStore, StoryCard } from "../../stores/studio.store";
 import { useAssistantChat } from "../../hooks/useAssistantChat";
+import { useMasterActionApplier } from "../../hooks/useMasterActionApplier";
 import {
   ActionBlock,
   ActionTarget,
   ACTION_TARGET_LABELS,
   ConflictModalState,
+  DestructiveConfirmState,
+  isDeleteActionBlock,
+  MASTER_EXPRESSION_TARGETS,
 } from "../../types/assistant.types";
 import { ActionCard } from "./ActionCard";
 import { ConflictModal } from "./ConflictModal";
+import { DestructiveConfirmModal } from "./DestructiveConfirmModal";
+import {
+  ExpressionReviewModal,
+  ExpressionReviewTarget,
+} from "./ExpressionReviewModal";
 import { QuickPromptChips } from "./QuickPromptChips";
-import { parseMessageSegments } from "./parseActionBlocks";
+import { parseMessageSegments, MessageSegment } from "./parseActionBlocks";
 
 export interface AIChatSidebarProps {
   activeSection?: string;
+  scenarioId?: string;
 }
 
 interface ToastNotification {
@@ -29,18 +39,55 @@ const INITIAL_MODAL_STATE: ConflictModalState = {
   newValue: "",
 };
 
+const INITIAL_DESTRUCTIVE_STATE: DestructiveConfirmState = {
+  isOpen: false,
+  block: null,
+  description: "",
+};
+
+interface ReviewState {
+  target: ExpressionReviewTarget;
+  draft: Record<string, unknown> | null;
+  key: string;
+}
+
+const parseJsonSafe = (content: string): Record<string, unknown> | null => {
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+};
+
 export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
   activeSection = "meta",
+  scenarioId,
 }) => {
   const [input, setInput] = useState("");
   const [toast, setToast] = useState<ToastNotification | null>(null);
   const [modalState, setModalState] =
     useState<ConflictModalState>(INITIAL_MODAL_STATE);
+  const [destructiveState, setDestructiveState] =
+    useState<DestructiveConfirmState>(INITIAL_DESTRUCTIVE_STATE);
+  const [reviewState, setReviewState] = useState<ReviewState | null>(null);
+  const [appliedKeys, setAppliedKeys] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { messages, isStreaming, sendMessage, clearChat, stopGeneration } =
-    useAssistantChat(activeSection);
+  const mode = useStudioStore((s) => s.mode);
   const { newbieDraft, updateNewbieDraft } = useStudioStore();
+  const {
+    messages,
+    isStreaming,
+    sendMessage,
+    clearChat,
+    stopGeneration,
+    reportApplyError,
+    blockValidationByMessage,
+  } = useAssistantChat(activeSection, mode, scenarioId ?? null);
+  const masterApplier = useMasterActionApplier(
+    scenarioId ?? null,
+    reportApplyError,
+  );
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
@@ -131,7 +178,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     });
   };
 
-  const handleApplyBlock = (block: ActionBlock) => {
+  const handleNewbieApplyBlock = (block: ActionBlock) => {
     if (block.target === "story_card") {
       handleApplyStoryCard(block);
       return;
@@ -154,6 +201,68 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     }
   };
 
+  const markApplied = (key: string) =>
+    setAppliedKeys((prev) => new Set(prev).add(key));
+
+  const buildDestructiveDescription = (block: ActionBlock): string => {
+    const label = ACTION_TARGET_LABELS[block.target] || block.target;
+    return `This will permanently delete this ${label.toLowerCase()} from your scenario. This cannot be undone.`;
+  };
+
+  const handleMasterApplyBlock = async (block: ActionBlock, key: string) => {
+    if (isDeleteActionBlock(block)) {
+      setDestructiveState({
+        isOpen: true,
+        block,
+        description: buildDestructiveDescription(block),
+      });
+      return;
+    }
+    if (MASTER_EXPRESSION_TARGETS.includes(block.target)) {
+      setReviewState({
+        target: block.target as ExpressionReviewTarget,
+        draft: parseJsonSafe(block.content),
+        key,
+      });
+      return;
+    }
+    await masterApplier.applyBlock(block);
+    markApplied(key);
+  };
+
+  const handleApplyBlock = (block: ActionBlock, key: string) => {
+    if (mode === "master") {
+      void handleMasterApplyBlock(block, key);
+    } else {
+      handleNewbieApplyBlock(block);
+      markApplied(key);
+    }
+  };
+
+  const handleApplyAll = async (
+    blocks: { block: ActionBlock; key: string }[],
+  ) => {
+    const applicable = blocks.filter(
+      (b) =>
+        !isDeleteActionBlock(b.block) &&
+        !MASTER_EXPRESSION_TARGETS.includes(b.block.target),
+    );
+    await masterApplier.applyBatch(applicable.map((b) => b.block));
+    applicable.forEach((b) => markApplied(b.key));
+  };
+
+  const handleDestructiveConfirm = async () => {
+    const { block } = destructiveState;
+    setDestructiveState(INITIAL_DESTRUCTIVE_STATE);
+    if (!block) return;
+    await masterApplier.applyDestructive(block);
+  };
+
+  const handleReviewApplied = () => {
+    if (reviewState) markApplied(reviewState.key);
+    setReviewState(null);
+  };
+
   const handleModalReplace = () => {
     applyFieldUpdate(modalState.target, modalState.newValue);
     setModalState(INITIAL_MODAL_STATE);
@@ -165,12 +274,73 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     setModalState(INITIAL_MODAL_STATE);
   };
 
+  const getValidationErrors = (
+    messageId: string,
+    actionOrdinal: number,
+  ): string[] | undefined =>
+    blockValidationByMessage[messageId]?.find((v) => v.index === actionOrdinal)
+      ?.errors;
+
+  const renderMessageSegments = (
+    messageId: string,
+    segments: MessageSegment[],
+  ) => {
+    let actionOrdinal = -1;
+    const rendered = segments.map((segment, idx) => {
+      if (segment.type === "text") {
+        return (
+          <span key={idx} className="whitespace-pre-wrap">
+            {segment.content}
+          </span>
+        );
+      }
+      actionOrdinal += 1;
+      const ordinal = actionOrdinal;
+      const key = `${messageId}:${ordinal}`;
+      return (
+        <ActionCard
+          key={idx}
+          block={segment.block}
+          isApplied={appliedKeys.has(key)}
+          validationErrors={getValidationErrors(messageId, ordinal)}
+          onApply={(block) => handleApplyBlock(block, key)}
+        />
+      );
+    });
+
+    const actionEntries = segments
+      .filter(
+        (s): s is Extract<MessageSegment, { type: "action" }> =>
+          s.type === "action",
+      )
+      .map((segment, ordinal) => ({
+        block: segment.block,
+        key: `${messageId}:${ordinal}`,
+      }));
+    const showApplyAll = mode === "master" && actionEntries.length > 1;
+
+    return (
+      <div>
+        {rendered}
+        {showApplyAll && (
+          <button
+            type="button"
+            onClick={() => handleApplyAll(actionEntries)}
+            className="mt-1 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-amber-950/60 text-amber-300 hover:bg-amber-900/60 border border-amber-800/60 transition-colors"
+          >
+            Apply All ({actionEntries.length})
+          </button>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-full bg-zinc-950 font-sans text-zinc-300 relative">
       {/* Header Bar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-950">
         <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-widest">
-          AI Co-Author
+          {mode === "master" ? "Systems Co-Designer" : "AI Co-Author"}
         </span>
         <button
           type="button"
@@ -198,18 +368,9 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
             >
               {msg.role === "assistant" ? (
                 <div>
-                  {parseMessageSegments(msg.content).map((segment, idx) =>
-                    segment.type === "text" ? (
-                      <span key={idx} className="whitespace-pre-wrap">
-                        {segment.content}
-                      </span>
-                    ) : (
-                      <ActionCard
-                        key={idx}
-                        block={segment.block}
-                        onApply={handleApplyBlock}
-                      />
-                    ),
+                  {renderMessageSegments(
+                    msg.id,
+                    parseMessageSegments(msg.content),
                   )}
                   {msg.content === "" && isStreaming && (
                     <span className="inline-block animate-pulse text-zinc-500 font-mono text-xs">
@@ -250,6 +411,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
         activeSection={activeSection}
         onSelectPrompt={(p) => sendMessage(p)}
         disabled={isStreaming}
+        mode={mode}
       />
 
       {/* Input Form */}
@@ -303,6 +465,24 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
         onAppend={handleModalAppend}
         onClose={() => setModalState(INITIAL_MODAL_STATE)}
       />
+
+      {/* Destructive Action Confirmation Modal */}
+      <DestructiveConfirmModal
+        state={destructiveState}
+        onConfirm={() => void handleDestructiveConfirm()}
+        onClose={() => setDestructiveState(INITIAL_DESTRUCTIVE_STATE)}
+      />
+
+      {/* Expression-Tree Review Modal (conditions/invariants/end conditions) */}
+      {scenarioId && (
+        <ExpressionReviewModal
+          target={reviewState?.target ?? null}
+          scenarioId={scenarioId}
+          draft={reviewState?.draft ?? null}
+          onClose={() => setReviewState(null)}
+          onApplied={handleReviewApplied}
+        />
+      )}
     </div>
   );
 };

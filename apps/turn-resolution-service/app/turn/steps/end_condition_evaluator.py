@@ -15,6 +15,7 @@ EVENT_TURN_STEP_COMPLETED = "turn_step_completed"
 EVENT_END_CONDITION_MATCHED = "end_condition_matched"
 EVENT_END_CONDITION_EVALUATION_ERROR = "end_condition_evaluation_error"
 STEP_NAME = "end_condition_evaluator"
+STATE_KEY_PENDING_MINIGAME = "_pending_minigame"
 
 
 class MatchedOutcome:
@@ -34,7 +35,14 @@ def evaluate_end_conditions(
     A condition whose expression raises during evaluation is logged and
     treated as "no match this turn" — a malformed expression that slipped
     past Studio validation must never block ordinary play.
+
+    pipeline.py already skips calling this function on a turn that just
+    stamped a fresh minigame trigger; the guard below is a defensive
+    second line, not the primary suppression mechanism (see
+    docs/specs/master-mode-minigames.spec.md §2, sequence flow step 4).
     """
+    if final_state.get(STATE_KEY_PENDING_MINIGAME):
+        return None
     end_conditions = loaded_state.scenario_snapshot.get("end_conditions", [])
     for condition in end_conditions:
         matched = _try_evaluate(condition, final_state)

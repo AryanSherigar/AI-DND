@@ -14,6 +14,7 @@ from app.db.models.scenario import Scenario
 from app.db.models.scenario_condition import ScenarioCondition
 from app.db.models.scenario_entity_type import ScenarioEntityType
 from app.db.models.scenario_map import ScenarioMap
+from app.db.models.scenario_minigame import ScenarioMinigame
 from app.db.models.share import PlaythroughShare
 from app.db.models.turn_log import TurnLog
 from app.db.models.user import User
@@ -33,6 +34,7 @@ __all__ = [
     "ScenarioCondition",
     "ScenarioEntityType",
     "ScenarioMap",
+    "ScenarioMinigame",
     "ScenarioReview",
     "TurnLog",
     "User",

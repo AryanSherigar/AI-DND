@@ -7,10 +7,20 @@ describe("ChapterSummaryStrip", () => {
   it("renders stat changes and inventory changes", () => {
     const delta: ChapterDelta = {
       stat_changes: [
-        { path: "player.health", label: "Health", before: 100, after: 85, delta: -15 },
+        {
+          path: "player.health",
+          label: "Health",
+          before: 100,
+          after: 85,
+          delta: -15,
+        },
       ],
       inventory_changes: [
-        { path: "player.inventory", entity_id: "sword-1", entity_display_name: "Rusty Sword" },
+        {
+          path: "player.inventory",
+          entity_id: "sword-1",
+          entity_display_name: "Rusty Sword",
+        },
       ],
       dice_rolls: [],
     };

@@ -66,8 +66,6 @@ describe("NarratorPersonaEditor", () => {
     expect(payload.checkpoints[0].trigger_description).toBe(
       "Entering the cairn",
     );
-    expect(payload.checkpoints[0].persona_override).toBe(
-      "Grim and foreboding",
-    );
+    expect(payload.checkpoints[0].persona_override).toBe("Grim and foreboding");
   });
 });

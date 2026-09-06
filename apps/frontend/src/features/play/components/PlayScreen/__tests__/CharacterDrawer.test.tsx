@@ -3,7 +3,9 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { CharacterDrawer } from "../EBook/CharacterDrawer";
 import { MasterEntity, Objective, PlayerStat } from "../../../types/play.types";
 
-const playerStats: PlayerStat[] = [{ key: "health", label: "Health", value: 85 }];
+const playerStats: PlayerStat[] = [
+  { key: "health", label: "Health", value: 85 },
+];
 
 const factionEntity: MasterEntity = {
   entity_id: "faction-1",
@@ -28,8 +30,16 @@ const swordEntity: MasterEntity = {
 };
 
 const objectives: Objective[] = [
-  { outcome_title: "The Ashen Ending", outcome_tag: "win", outcome_text: "The Warden kneels." },
-  { outcome_title: "Consumed", outcome_tag: "lose", outcome_text: "The cairn takes you." },
+  {
+    outcome_title: "The Ashen Ending",
+    outcome_tag: "win",
+    outcome_text: "The Warden kneels.",
+  },
+  {
+    outcome_title: "Consumed",
+    outcome_tag: "lose",
+    outcome_text: "The cairn takes you.",
+  },
 ];
 
 describe("CharacterDrawer", () => {

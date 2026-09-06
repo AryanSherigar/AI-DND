@@ -38,6 +38,7 @@ from app.repositories.end_condition_repo import EndConditionRepo
 from app.repositories.entity_repo import EntityRepo
 from app.repositories.invariant_repo import InvariantRepo
 from app.repositories.map_repo import MapRepo
+from app.repositories.minigame_repo import MinigameRepo
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_repo import ScenarioRepo
@@ -83,6 +84,7 @@ class PlaythroughService:
         invariant_repo: InvariantRepo,
         end_condition_repo: EndConditionRepo,
         map_repo: MapRepo,
+        minigame_repo: MinigameRepo,
     ) -> None:
         self.playthrough_repo = playthrough_repo
         self.participant_repo = participant_repo
@@ -94,6 +96,7 @@ class PlaythroughService:
         self.invariant_repo = invariant_repo
         self.end_condition_repo = end_condition_repo
         self.map_repo = map_repo
+        self.minigame_repo = minigame_repo
 
     async def create_playtest(
         self, scenario_id: uuid.UUID, user_id: uuid.UUID
@@ -386,10 +389,13 @@ class PlaythroughService:
 
         For master mode, also pins entity attributes_schema/obtainable/
         narrator_instruction, rule_invariants, scenario_conditions
-        (including their state_mutation column), and end_conditions (sorted
+        (including their state_mutation column), end_conditions (sorted
         by the creator's explicit priority, ascending — the source of truth
         for end_condition_evaluator's "first match wins" rule,
-        master-mode-end-conditions.spec.md) — TRS never reads Scenario or its
+        master-mode-end-conditions.spec.md), and scenario_minigames (sorted
+        by priority ascending, same first-match-wins semantics — the source
+        of truth for TRS's minigame_trigger_evaluator,
+        master-mode-minigames.spec.md) — TRS never reads Scenario or its
         sub-resource tables directly during a turn
         (master-mode-turn-pipeline.spec.md).
 
@@ -408,6 +414,7 @@ class PlaythroughService:
             "setup_schema": scenario.setup_schema,
             "state_schema": scenario.state_schema,
             "checkpoints": scenario.checkpoints,
+            "narration_font": scenario.narration_font,
         }
         if scenario.mode == "master":
             snapshot["entities"] = await self._snapshot_entities(scenario.scenario_id)
@@ -418,6 +425,9 @@ class PlaythroughService:
                 scenario.scenario_id
             )
             snapshot["end_conditions"] = await self._snapshot_end_conditions(
+                scenario.scenario_id
+            )
+            snapshot["scenario_minigames"] = await self._snapshot_minigames(
                 scenario.scenario_id
             )
             if map_data and map_data.maps:
@@ -529,6 +539,29 @@ class PlaythroughService:
                 "priority": ec.priority,
             }
             for ec in end_conditions
+        ]
+
+    async def _snapshot_minigames(
+        self, scenario_id: uuid.UUID
+    ) -> list[dict[str, object]]:
+        minigames = await self.minigame_repo.list_by_scenario(scenario_id)
+        return [
+            {
+                "minigame_id": str(m.minigame_id),
+                "label": m.label,
+                "minigame_type": m.minigame_type,
+                "trigger_condition_expression": m.trigger_condition_expression,
+                "priority": m.priority,
+                "outcome_mode": m.outcome_mode,
+                "win_mutation": m.win_mutation,
+                "lose_mutation": m.lose_mutation,
+                "tiered_outcomes": m.tiered_outcomes,
+                "timeout_mutation": m.timeout_mutation,
+                "narrator_instruction_template": m.narrator_instruction_template,
+                "dodge_config": m.dodge_config,
+                "replit_embed_url": m.replit_embed_url,
+            }
+            for m in minigames
         ]
 
     async def _snapshot_invariants(

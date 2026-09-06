@@ -1,6 +1,7 @@
 import { usePlayStore } from "../../../stores/play.store";
 import { EBookHeaderProps } from "./ebook.types";
 import { EBookAudioControl } from "./EBookAudioControl";
+import { ReaderTypographyMenu } from "./ReaderTypographyMenu";
 import { StatusBadgeRow } from "./StatusBadgeRow";
 
 export function EBookHeader({
@@ -56,6 +57,7 @@ export function EBookHeader({
 
         <div className="flex items-center gap-1.5 sm:gap-2">
           <EBookAudioControl />
+          <ReaderTypographyMenu isSepia={isSepia} />
 
           <button
             type="button"

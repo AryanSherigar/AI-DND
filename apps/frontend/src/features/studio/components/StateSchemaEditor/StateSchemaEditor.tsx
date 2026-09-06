@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React from "react";
 import { Button } from "@/shared/components/ui/Button";
 import { EmptyState } from "@/shared/components/ui/EmptyState";
 import { useScenario } from "../../hooks/useScenario";
+import { useServerSyncedState } from "../../hooks/useServerSyncedState";
 import { StateFieldDefinition } from "../../types/scenario.types";
 import { StateFieldMapEditor } from "./StateFieldMapEditor";
 import { StateSchemaEditorProps } from "./StateSchemaEditor.types";
@@ -11,23 +12,15 @@ export const StateSchemaEditor: React.FC<StateSchemaEditorProps> = ({
 }) => {
   const { scenario, isLoading, updateScenario, isUpdating, updateError } =
     useScenario(scenarioId);
-  const [schema, setSchema] = useState<Record<string, StateFieldDefinition>>(
-    {},
-  );
-  const hasInitialized = useRef(false);
-
-  useEffect(() => {
-    if (scenario && !hasInitialized.current) {
-      setSchema(scenario.state_schema ?? {});
-      hasInitialized.current = true;
-    }
-  }, [scenario]);
+  const [schema, setSchema] = useServerSyncedState<
+    Record<string, StateFieldDefinition>
+  >(scenario ? (scenario.state_schema ?? {}) : undefined);
 
   const handleSave = (): void => {
-    updateScenario({ state_schema: schema });
+    updateScenario({ state_schema: schema ?? {} });
   };
 
-  if (isLoading) {
+  if (isLoading || schema === undefined) {
     return <p className="text-sm text-zinc-500">Loading state schema...</p>;
   }
 

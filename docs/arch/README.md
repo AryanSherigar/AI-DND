@@ -153,6 +153,7 @@ The architecture documentation is divided into four dedicated subdirectories:
 * [Shared Layer & Audio Engine](file:///home/aryan-sherigar/projects/AI-DND/docs/arch/frontend/shared.md): Design system UI library, `useSSE` hook, API clients, and adaptive ambient soundtrack engine.
 
 ### 📁 [Infrastructure & Tooling](file:///home/aryan-sherigar/projects/AI-DND/docs/arch/infra/docker-and-compose.md) (`docs/arch/infra/`)
+* [Getting Started & System Startup](file:///home/aryan-sherigar/projects/AI-DND/docs/arch/getting-started.md): Step-by-step guide for local startup, hybrid mode, and full compose orchestration.
 * [Docker & Compose](file:///home/aryan-sherigar/projects/AI-DND/docs/arch/infra/docker-and-compose.md): Multi-stage Docker builds, development and production Compose orchestrations.
 * [Configuration & Environment](file:///home/aryan-sherigar/projects/AI-DND/docs/arch/infra/configuration-and-env.md): Environment variable catalog, Pydantic settings parsing, and secrets management.
 * [Scripts & Utilities](file:///home/aryan-sherigar/projects/AI-DND/docs/arch/infra/scripts.md): Standalone tooling, audio generators, and operational scripts.

@@ -1,4 +1,5 @@
 import { ScenarioMood } from "./audio.types";
+import { MinigameEventPayload } from "@/shared/types/minigame.types";
 
 export type ActionMode = "say" | "do" | "story" | "see";
 
@@ -104,6 +105,7 @@ export interface PlaythroughData {
   scenario_title: string;
   mode: "newbie" | "master";
   initial_mood?: ScenarioMood;
+  narration_font?: string | null;
   creator_name: string;
   cover_image_url?: string;
   opening_premise: string;
@@ -129,4 +131,8 @@ export interface PlaythroughData {
   objectives: Objective[];
   player_stats: PlayerStat[];
   player_inventory: MasterEntity[];
+  // Populated from state._pending_minigame on load/reload so a minigame the
+  // player left mid-resolution resumes on mount, without waiting for a new
+  // SSE "minigame" event (see MinigameOverlay's reload-resume behaviour).
+  pending_minigame: MinigameEventPayload | null;
 }

@@ -1,7 +1,7 @@
 import React from "react";
 import { Input } from "@/shared/components/ui/Input";
 import { Select } from "@/shared/components/ui/Select";
-import { StateMutationOp } from "../../types/condition.types";
+import { StateMutationOp } from "@/shared/types/stateMutation.types";
 import { StateMutationFieldsProps } from "./StateMutationFields.types";
 
 const MUTATION_OP_OPTIONS: { value: StateMutationOp; label: string }[] = [
@@ -15,42 +15,50 @@ const EMPTY_MUTATION = { path: "", op: "set" as StateMutationOp, value: "" };
 export const StateMutationFields: React.FC<StateMutationFieldsProps> = ({
   value,
   onChange,
+  isOptional = true,
 }) => {
   const hasStateMutation = value !== null;
+  const displayValue = value ?? EMPTY_MUTATION;
+  const showFields = isOptional ? hasStateMutation : true;
 
   const handleToggle = (event: React.ChangeEvent<HTMLInputElement>): void => {
     onChange(event.target.checked ? EMPTY_MUTATION : null);
   };
 
-  const handlePathChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
-    if (!value) return;
-    onChange({ ...value, path: event.target.value });
+  const handlePathChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ): void => {
+    onChange({ ...displayValue, path: event.target.value });
   };
 
-  const handleOpChange = (event: React.ChangeEvent<HTMLSelectElement>): void => {
-    if (!value) return;
-    onChange({ ...value, op: event.target.value as StateMutationOp });
+  const handleOpChange = (
+    event: React.ChangeEvent<HTMLSelectElement>,
+  ): void => {
+    onChange({ ...displayValue, op: event.target.value as StateMutationOp });
   };
 
-  const handleValueChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
-    if (!value) return;
-    onChange({ ...value, value: event.target.value });
+  const handleValueChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ): void => {
+    onChange({ ...displayValue, value: event.target.value });
   };
 
   return (
     <div className="space-y-2 border border-zinc-800 p-3">
-      <label className="flex items-center gap-2 text-sm text-zinc-300">
-        <input
-          type="checkbox"
-          checked={hasStateMutation}
-          onChange={handleToggle}
-        />
-        Has state mutation (Effect C)
-      </label>
-      {hasStateMutation && (
+      {isOptional && (
+        <label className="flex items-center gap-2 text-sm text-zinc-300">
+          <input
+            type="checkbox"
+            checked={hasStateMutation}
+            onChange={handleToggle}
+          />
+          Has state mutation (Effect C)
+        </label>
+      )}
+      {showFields && (
         <div className="flex items-center gap-2">
           <Input
-            value={value.path}
+            value={displayValue.path}
             onChange={handlePathChange}
             placeholder="path, e.g. player.sanity"
             aria-label="Mutation path"
@@ -59,12 +67,12 @@ export const StateMutationFields: React.FC<StateMutationFieldsProps> = ({
             <Select
               aria-label="Mutation operation"
               options={MUTATION_OP_OPTIONS}
-              value={value.op}
+              value={displayValue.op}
               onChange={handleOpChange}
             />
           </div>
           <Input
-            value={String(value.value)}
+            value={String(displayValue.value)}
             onChange={handleValueChange}
             placeholder="value"
             aria-label="Mutation value"

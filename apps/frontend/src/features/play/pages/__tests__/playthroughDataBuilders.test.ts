@@ -146,4 +146,49 @@ describe("buildMasterPlaythroughData", () => {
 
     expect(data.active_conditions).toEqual(["Bleeding Out"]);
   });
+
+  it("parses pending_minigame from state._pending_minigame when present", () => {
+    const pendingMinigame = {
+      minigame_id: "mg-1",
+      minigame_type: "replit_embed",
+      label: "Rune Puzzle",
+      dodge_config: null,
+      replit_embed_url: "https://example.replit.dev",
+      timeout_seconds: 20,
+    };
+    const data = buildMasterPlaythroughData(
+      buildServerPlaythrough({
+        state: {
+          player: { health: 85, sanity: 98, inventory: ["sword-1"] },
+          entities: { "warden-1": { awareness: 40 } },
+          _pending_minigame: pendingMinigame,
+        },
+      }),
+      emptyTurns,
+      false,
+    );
+
+    expect(data.pending_minigame).toEqual(pendingMinigame);
+  });
+
+  it("defaults pending_minigame to null when state has no pending marker", () => {
+    const data = buildMasterPlaythroughData(
+      buildServerPlaythrough(),
+      emptyTurns,
+      false,
+    );
+
+    expect(data.pending_minigame).toBeNull();
+  });
+
+  it("extracts narration_font from scenario_snapshot", () => {
+    const serverPt = buildServerPlaythrough({
+      scenario_snapshot: {
+        mode: "master",
+        narration_font: "special-elite",
+      },
+    });
+    const data = buildMasterPlaythroughData(serverPt, emptyTurns, false);
+    expect(data.narration_font).toBe("special-elite");
+  });
 });

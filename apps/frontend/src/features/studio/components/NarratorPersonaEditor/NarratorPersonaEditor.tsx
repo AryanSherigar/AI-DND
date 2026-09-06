@@ -2,8 +2,14 @@ import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/shared/components/ui/Button";
 import { useScenario } from "../../hooks/useScenario";
 import { CheckpointOverrideRow } from "./CheckpointOverrideRow";
-import { createCheckpointOverride, toCheckpointOverride } from "./checkpointOverride";
-import { CheckpointPersonaOverride, NarratorPersonaEditorProps } from "./NarratorPersonaEditor.types";
+import {
+  createCheckpointOverride,
+  toCheckpointOverride,
+} from "./checkpointOverride";
+import {
+  CheckpointPersonaOverride,
+  NarratorPersonaEditorProps,
+} from "./NarratorPersonaEditor.types";
 
 export const NarratorPersonaEditor: React.FC<NarratorPersonaEditorProps> = ({
   scenarioId,
@@ -55,7 +61,12 @@ export const NarratorPersonaEditor: React.FC<NarratorPersonaEditorProps> = ({
           Narrator Persona Overrides
         </h2>
         <div className="flex items-center gap-2">
-          <Button type="button" variant="secondary" size="sm" onClick={handleAdd}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={handleAdd}
+          >
             Add Checkpoint
           </Button>
           <Button

@@ -19,6 +19,7 @@ from app.repositories.entity_repo import EntityRepo
 from app.repositories.fact_repo import FactRepo
 from app.repositories.invariant_repo import InvariantRepo
 from app.repositories.map_repo import MapRepo
+from app.repositories.minigame_repo import MinigameRepo
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_entity_type_repo import ScenarioEntityTypeRepo
@@ -41,6 +42,7 @@ async def _make_service(db_session: AsyncSession) -> PlaythroughService:
         invariant_repo=InvariantRepo(db_session),
         end_condition_repo=EndConditionRepo(db_session),
         map_repo=MapRepo(db_session),
+        minigame_repo=MinigameRepo(db_session),
     )
 
 
@@ -56,6 +58,7 @@ async def _make_scenario(
     status: str = "published",
     setup_schema: list[object] | None = None,
     player_count_support: str = "solo",
+    narration_font: str | None = None,
 ) -> Scenario:
     scenario = Scenario(
         creator_id=creator_id,
@@ -67,6 +70,7 @@ async def _make_scenario(
         setup_schema=setup_schema or [],
         narrator_persona="A grim narrator.",
         world_data={"lore": "A cave full of gold."},
+        narration_font=narration_font,
     )
     db_session.add(scenario)
     await db_session.flush()
@@ -102,6 +106,22 @@ async def test_create_playthrough_happy_path(db_session: AsyncSession):
     assert participant is not None
     assert participant.role == "owner"
     assert participant.turn_order_position == 1
+
+
+@pytest.mark.asyncio
+async def test_create_playthrough_snapshots_narration_font(db_session: AsyncSession):
+    service = await _make_service(db_session)
+    user = await _make_user(db_session)
+    scenario = await _make_scenario(
+        db_session, user.user_id, narration_font="special-elite"
+    )
+
+    result = await service.create_playthrough(
+        user_id=user.user_id,
+        data=PlaythroughCreate(scenario_id=scenario.scenario_id, setup_values={}),
+    )
+
+    assert result.scenario_snapshot["narration_font"] == "special-elite"
 
 
 @pytest.mark.asyncio
@@ -293,14 +313,18 @@ async def test_create_playthrough_master_mode_snapshot_includes_entities_and_rul
     invariants are pinned into scenario_snapshot at playthrough creation
     (master-mode-turn-pipeline.spec.md) — TRS never reads Scenario or its
     sub-resource tables directly during a turn."""
+    import httpx
+
     from app.models.condition import ConditionCreate
     from app.models.end_condition import EndConditionCreate
     from app.models.entity import EntityCreate
     from app.models.invariant import InvariantCreate
+    from app.models.minigame import DodgeConfig, MinigameCreate
     from app.services.condition_service import ConditionService
     from app.services.end_condition_service import EndConditionService
     from app.services.entity_service import EntityService
     from app.services.invariant_service import InvariantService
+    from app.services.minigame_service import MinigameService
 
     user = await _make_user(db_session)
     scenario = Scenario(
@@ -393,6 +417,41 @@ async def test_create_playthrough_master_mode_snapshot_includes_entities_and_rul
         ),
     )
 
+    minigame_service = MinigameService(
+        MinigameRepo(db_session),
+        EntityRepo(db_session),
+        ScenarioRepo(db_session),
+        httpx.AsyncClient(),
+    )
+    # Created out of priority order: the snapshot must reflect priority
+    # ascending, not creation order (master-mode-minigames.spec.md).
+    await minigame_service.create_minigame(
+        scenario.scenario_id,
+        user.user_id,
+        MinigameCreate(
+            label="Warden's Onslaught",
+            minigame_type="dodge",
+            outcome_mode="binary",
+            win_mutation={"path": "player.health", "op": "set", "value": 100},
+            lose_mutation={"path": "player.health", "op": "decrement", "value": 15},
+            dodge_config=DodgeConfig(difficulty=3),
+            priority=2,
+        ),
+    )
+    await minigame_service.create_minigame(
+        scenario.scenario_id,
+        user.user_id,
+        MinigameCreate(
+            label="Rune Trial",
+            minigame_type="dodge",
+            outcome_mode="binary",
+            win_mutation={"path": "player.health", "op": "set", "value": 100},
+            lose_mutation={"path": "player.health", "op": "decrement", "value": 5},
+            dodge_config=DodgeConfig(difficulty=1),
+            priority=0,
+        ),
+    )
+
     service = await _make_service(db_session)
     result = await service.create_playthrough(
         user_id=user.user_id,
@@ -418,4 +477,8 @@ async def test_create_playthrough_master_mode_snapshot_includes_entities_and_rul
         "The Ashen Ending",
         "The Vigil's Ending",
         "Consumed",
+    ]
+    assert [m["label"] for m in snapshot["scenario_minigames"]] == [
+        "Rune Trial",
+        "Warden's Onslaught",
     ]

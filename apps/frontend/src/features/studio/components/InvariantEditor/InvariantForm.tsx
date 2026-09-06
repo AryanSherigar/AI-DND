@@ -44,10 +44,8 @@ export const InvariantForm: React.FC<InvariantFormProps> = ({
       narrator_text: formState.narratorText,
       applies_to: formState.appliesTo,
       invariant_expression:
-        (formState.invariantExpression as unknown as Record<
-          string,
-          unknown
-        >) ?? {},
+        (formState.invariantExpression as unknown as Record<string, unknown>) ??
+        {},
     });
   };
 

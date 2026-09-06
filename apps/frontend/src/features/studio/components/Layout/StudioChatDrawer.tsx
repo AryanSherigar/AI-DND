@@ -3,10 +3,12 @@ import { AIChatSidebar } from "../AIChatSidebar/AIChatSidebar";
 
 export interface StudioChatDrawerProps {
   activeSection?: string;
+  scenarioId?: string;
 }
 
 export const StudioChatDrawer: React.FC<StudioChatDrawerProps> = ({
   activeSection = "meta",
+  scenarioId,
 }) => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -62,7 +64,10 @@ export const StudioChatDrawer: React.FC<StudioChatDrawerProps> = ({
           </button>
         </div>
         <div className="flex-1 overflow-hidden">
-          <AIChatSidebar activeSection={activeSection} />
+          <AIChatSidebar
+            activeSection={activeSection}
+            scenarioId={scenarioId}
+          />
         </div>
       </div>
     </>

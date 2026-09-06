@@ -114,7 +114,10 @@ describe("ConditionEditor", () => {
       await screen.findByRole("button", { name: /new condition/i }),
     );
 
-    await user.type(screen.getByPlaceholderText(/^label$/i), "Entered the cairn");
+    await user.type(
+      screen.getByPlaceholderText(/^label$/i),
+      "Entered the cairn",
+    );
     await user.type(
       screen.getByPlaceholderText(/narrator instruction/i),
       "Sanity drops as the cairn closes in.",
@@ -126,9 +129,7 @@ describe("ConditionEditor", () => {
     const valueSelect = screen.getAllByRole("combobox")[2];
     await user.selectOptions(valueSelect, "true");
 
-    await user.click(
-      screen.getByLabelText(/has state mutation \(effect c\)/i),
-    );
+    await user.click(screen.getByLabelText(/has state mutation \(effect c\)/i));
     await user.type(screen.getByLabelText(/mutation path/i), "player.sanity");
     await user.selectOptions(
       screen.getByLabelText(/mutation operation/i),
