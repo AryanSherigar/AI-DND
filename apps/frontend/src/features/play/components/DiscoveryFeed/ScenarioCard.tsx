@@ -76,7 +76,7 @@ const AuthorAvatar: React.FC<{ author: string; accentColor: string }> = ({
 const CardMetadata: React.FC<SubComponentProps> = ({ scenario }) => {
   return (
     <div className="flex-1 min-w-0">
-      <h3 className="font-fell-sc text-base font-bold text-white line-clamp-2 leading-snug drop-shadow-xs">
+      <h3 className="font-display text-base font-bold text-white line-clamp-2 leading-snug drop-shadow-xs">
         {scenario.title}
       </h3>
       <div className="mt-1 flex items-center gap-2 font-mono text-xs text-zinc-400">

@@ -89,7 +89,7 @@ export const ScenarioBannerHero: React.FC<ScenarioBannerHeroProps> = ({
             </div>
 
             {/* Scenario Title */}
-            <h1 className="font-fell-sc text-3xl font-extrabold text-white md:text-5xl drop-shadow-md leading-tight">
+            <h1 className="font-display text-3xl font-extrabold text-white md:text-5xl drop-shadow-md leading-tight">
               {scenario.title}
             </h1>
 

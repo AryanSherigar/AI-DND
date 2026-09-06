@@ -22,8 +22,13 @@ export default {
           "sans-serif",
         ],
         mono: ['"IBM Plex Mono"', "ui-monospace", "SFMono-Regular", "monospace"],
-        fell: ['"IM Fell English"', "Georgia", "serif"],
-        "fell-sc": ['"IM Fell English SC"', "Georgia", "serif"],
+        display: [
+          "Outfit",
+          "Geist",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ],
       },
       colors: {
         background: "#0d0f14",

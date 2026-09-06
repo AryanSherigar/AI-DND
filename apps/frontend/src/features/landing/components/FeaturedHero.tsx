@@ -43,7 +43,7 @@ export const FeaturedHero: React.FC<FeaturedHeroProps> = ({ scenarios }) => {
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           className="max-w-xl"
         >
-          <h1 className="font-fell-sc text-5xl font-bold leading-[1.05] text-content md:text-6xl">
+          <h1 className="font-display text-5xl font-bold leading-[1.05] text-content md:text-6xl">
             {active.title}
           </h1>
 

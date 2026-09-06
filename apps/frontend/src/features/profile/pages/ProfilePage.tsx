@@ -81,7 +81,7 @@ export const ProfilePage: React.FC = () => {
     return (
       <div className="flex flex-1 flex-col items-center justify-center space-y-4 p-6 text-center text-content">
         <div className="text-4xl">📜</div>
-        <h1 className="font-fell-sc text-3xl font-bold text-white">
+        <h1 className="font-display text-3xl font-bold text-white">
           Adventurer Not Found
         </h1>
         <p className="font-mono text-sm text-zinc-400 max-w-md">

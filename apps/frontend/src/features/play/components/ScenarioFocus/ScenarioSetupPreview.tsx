@@ -13,7 +13,7 @@ export const ScenarioSetupPreview: React.FC<ScenarioSetupPreviewProps> = ({
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 md:p-8 shadow-xl space-y-4">
         <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
           <span className="text-xl">⚙️</span>
-          <h2 className="font-fell-sc text-2xl font-bold text-amber-200/90">
+          <h2 className="font-display text-2xl font-bold text-amber-200/90">
             Setup Preview
           </h2>
         </div>
@@ -30,7 +30,7 @@ export const ScenarioSetupPreview: React.FC<ScenarioSetupPreviewProps> = ({
       <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
         <div className="flex items-center gap-2">
           <span className="text-xl">⚙️</span>
-          <h2 className="font-fell-sc text-2xl font-bold text-amber-200/90">
+          <h2 className="font-display text-2xl font-bold text-amber-200/90">
             Setup Options Preview
           </h2>
         </div>

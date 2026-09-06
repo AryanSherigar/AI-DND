@@ -102,7 +102,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       <div className="relative w-full max-w-2xl rounded-2xl border border-amber-500/30 bg-zinc-950 p-6 md:p-8 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
-          <h2 className="font-fell-sc text-2xl font-bold text-amber-300">
+          <h2 className="font-display text-2xl font-bold text-amber-300">
             Edit Adventurer Chronicle
           </h2>
           <button

@@ -103,7 +103,7 @@ export const WideScenarioCard: React.FC<WideScenarioCardProps> = ({
       {/* Content Area */}
       <div className="flex flex-col py-1 flex-1 min-w-0 md:justify-center">
         <div className="flex justify-between items-start gap-4">
-          <h2 className="truncate font-fell-sc text-2xl font-bold text-content transition-colors group-hover:text-accent md:text-3xl lg:text-4xl">
+          <h2 className="truncate font-display text-2xl font-bold text-content transition-colors group-hover:text-accent md:text-3xl lg:text-4xl">
             {title}
           </h2>
           <button className="p-1 text-content-faint hover:text-content">

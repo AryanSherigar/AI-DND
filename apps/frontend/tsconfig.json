@@ -22,8 +22,7 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
 
-    /* Path Aliases */
-    "baseUrl": ".",
+    /* Path Aliases — resolved relative to this file under moduleResolution "bundler" */
     "paths": {
       "@/*": ["./src/*"],
       "firebase/app": ["./node_modules/@firebase/app"],

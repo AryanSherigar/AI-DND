@@ -7,7 +7,7 @@ export const NotFoundPage: React.FC = () => {
       <p className="font-mono text-xs uppercase tracking-[0.3em] text-accent">
         404
       </p>
-      <h1 className="font-fell-sc text-3xl text-content">
+      <h1 className="font-display text-3xl text-content">
         This path leads nowhere
       </h1>
       <p className="max-w-sm font-sans text-sm text-content-faint">

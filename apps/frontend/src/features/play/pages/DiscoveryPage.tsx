@@ -57,7 +57,7 @@ export const DiscoveryPage: React.FC = () => {
             </div>
           ) : (
             <div className="mt-6 flex flex-col items-center justify-center rounded-xl border border-border-subtle bg-surface/60 px-6 py-20 text-center">
-              <h3 className="mb-2 font-fell-sc text-xl text-content">
+              <h3 className="mb-2 font-display text-xl text-content">
                 Nothing matches yet
               </h3>
               <p className="mb-6 font-sans text-sm text-content-faint">

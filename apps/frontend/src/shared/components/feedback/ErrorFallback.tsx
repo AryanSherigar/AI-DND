@@ -7,7 +7,7 @@ export const ErrorFallback: React.FC = () => {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-surface px-6 text-center">
-      <p className="font-fell-sc text-2xl text-content">Something broke</p>
+      <p className="font-display text-2xl text-content">Something broke</p>
       <p className="max-w-sm font-mono text-sm text-content-faint">
         The page hit an unexpected error. Reloading usually clears it.
       </p>

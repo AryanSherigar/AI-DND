@@ -40,7 +40,7 @@ export const ScenarioFocusPage: React.FC = () => {
     return (
       <div className="flex flex-1 flex-col items-center justify-center space-y-4 p-6 pt-14 text-center text-content">
         <div className="text-4xl">📜</div>
-        <h1 className="font-fell-sc text-3xl font-bold text-white">
+        <h1 className="font-display text-3xl font-bold text-white">
           Scenario Not Found
         </h1>
         <p className="font-mono text-sm text-content-muted max-w-md">
@@ -68,7 +68,7 @@ export const ScenarioFocusPage: React.FC = () => {
           >
             ← Back
           </button>
-          <span className="font-fell-sc text-sm font-bold text-accent truncate max-w-xs md:max-w-md">
+          <span className="font-display text-sm font-bold text-accent truncate max-w-xs md:max-w-md">
             {scenario.title}
           </span>
           <button

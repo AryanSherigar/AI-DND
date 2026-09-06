@@ -72,7 +72,7 @@ export const ScenarioCarousel: React.FC<ScenarioCarouselProps> = ({
       viewport={{ once: true, margin: "-100px" }}
       className="group relative w-full py-2"
     >
-      <h2 className="mb-3 px-8 sm:px-12 md:px-16 lg:px-24 font-fell-sc text-3xl font-bold tracking-wide text-content md:text-4xl">
+      <h2 className="mb-3 px-8 md:px-14 font-display text-3xl font-bold tracking-wide text-content md:text-4xl">
         {title}
       </h2>
 
@@ -98,7 +98,7 @@ export const ScenarioCarousel: React.FC<ScenarioCarouselProps> = ({
 
       <div
         ref={scrollContainerRef}
-        className="flex overflow-x-auto gap-2.5 pb-4 pt-1 snap-x snap-mandatory hide-scrollbar px-8 sm:px-12 md:px-16 lg:px-24 scroll-px-8 sm:scroll-px-12 md:scroll-px-16 lg:scroll-px-24"
+        className="flex overflow-x-auto gap-2.5 pb-4 pt-1 snap-x snap-mandatory hide-scrollbar px-8 md:px-14 scroll-px-8 md:scroll-px-14"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         {scenarios.map((scenario) => (

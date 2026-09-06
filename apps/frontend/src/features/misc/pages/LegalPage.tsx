@@ -15,7 +15,7 @@ export const LegalPage: React.FC<LegalPageProps> = ({ title, children }) => {
       >
         wevr
       </Link>
-      <h1 className="mt-8 font-fell-sc text-3xl text-content">{title}</h1>
+      <h1 className="mt-8 font-display text-3xl text-content">{title}</h1>
       <div className="mt-6 space-y-4 font-sans text-sm leading-relaxed text-content-muted">
         {children}
       </div>
