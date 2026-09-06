@@ -65,7 +65,7 @@ export const AttributeRow: React.FC<AttributeRowProps> = ({
   };
 
   return (
-    <div className="grid grid-cols-2 gap-2 border border-zinc-800 p-2 sm:grid-cols-6">
+    <div className="rounded-md grid grid-cols-2 gap-2 border border-border-subtle p-2 sm:grid-cols-6">
       <Input
         aria-label="Attribute key"
         value={keyDraft}

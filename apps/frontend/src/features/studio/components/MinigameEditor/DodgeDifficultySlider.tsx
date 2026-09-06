@@ -14,7 +14,7 @@ export const DodgeDifficultySlider: React.FC<DodgeDifficultySliderProps> = ({
 
   return (
     <div className="space-y-1">
-      <label htmlFor="dodge-difficulty" className="text-sm text-zinc-300">
+      <label htmlFor="dodge-difficulty" className="text-sm text-content-muted">
         Difficulty ({value} / {MAX_DIFFICULTY})
       </label>
       <input
@@ -26,9 +26,9 @@ export const DodgeDifficultySlider: React.FC<DodgeDifficultySliderProps> = ({
         value={value}
         onChange={handleChange}
         aria-label="Dodge difficulty"
-        className="w-full accent-zinc-100"
+        className="w-full accent-amber-400"
       />
-      <div className="flex justify-between text-xs text-zinc-600">
+      <div className="flex justify-between text-xs text-content-faint">
         <span>Easy</span>
         <span>Brutal</span>
       </div>

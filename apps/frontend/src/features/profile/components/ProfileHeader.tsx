@@ -64,7 +64,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
 
             <div className="space-y-1.5 max-w-xl">
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
-                <h1 className="font-fell-sc text-3xl font-extrabold text-white md:text-4xl drop-shadow-md">
+                <h1 className="font-display text-3xl font-extrabold text-white md:text-4xl drop-shadow-md">
                   {profile.display_name}
                 </h1>
                 {isOwner && (

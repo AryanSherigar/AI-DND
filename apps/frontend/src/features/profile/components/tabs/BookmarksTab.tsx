@@ -103,7 +103,7 @@ export const BookmarksTab: React.FC = () => {
 
                 <div className="flex flex-col justify-between p-4 flex-grow space-y-3">
                   <div>
-                    <h4 className="font-fell-sc text-lg font-bold text-white group-hover:text-amber-300 transition-colors line-clamp-1">
+                    <h4 className="font-display text-lg font-bold text-white group-hover:text-amber-300 transition-colors line-clamp-1">
                       {scenario.title}
                     </h4>
                     {scenario.logline && (

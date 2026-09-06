@@ -7,10 +7,10 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 }
 
 const VARIANT_CLASSES: Record<BadgeVariant, string> = {
-  default: "border-zinc-700 bg-zinc-900 text-zinc-300",
-  success: "border-emerald-800 bg-emerald-950 text-emerald-300",
-  warning: "border-amber-800 bg-amber-950 text-amber-300",
-  danger: "border-red-800 bg-red-950 text-red-300",
+  default: "border-border-subtle bg-surface-raised text-content-muted",
+  success: "border-success/40 bg-success/10 text-success",
+  warning: "border-warning/40 bg-warning/10 text-warning",
+  danger: "border-danger/40 bg-danger/10 text-danger",
 };
 
 export const Badge: React.FC<BadgeProps> = ({
@@ -21,7 +21,7 @@ export const Badge: React.FC<BadgeProps> = ({
 }) => {
   return (
     <span
-      className={`inline-flex items-center rounded-none border px-2 py-0.5 font-sans text-xs font-medium tracking-wide ${VARIANT_CLASSES[variant]} ${className}`}
+      className={`inline-flex items-center rounded-sm border px-2 py-0.5 font-sans text-xs font-medium tracking-wide ${VARIANT_CLASSES[variant]} ${className}`}
       {...rest}
     >
       {children}

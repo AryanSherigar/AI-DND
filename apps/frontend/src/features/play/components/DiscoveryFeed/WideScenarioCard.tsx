@@ -61,32 +61,19 @@ export const WideScenarioCard: React.FC<WideScenarioCardProps> = ({
 
   const accentColor = GENRE_COLORS[genre] || "#6B7280";
 
-  const cardContainerStyle = isHovered
-    ? {
-        backgroundColor: `${accentColor}18`,
-        borderColor: `${accentColor}70`,
-        boxShadow: `0 8px 30px ${accentColor}35, 0 0 15px ${accentColor}20`,
-      }
-    : {
-        backgroundColor: "transparent",
-        borderColor: "transparent",
-      };
-
   return (
     <div
       onClick={handleCardClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      style={cardContainerStyle}
-      className="flex flex-col md:flex-row gap-4 md:gap-8 group p-3 md:p-4 rounded-2xl border transition-all duration-300 cursor-pointer"
+      className={`group flex cursor-pointer flex-col gap-4 rounded-xl border p-3 transition-colors duration-200 md:flex-row md:gap-8 md:p-4 ${
+        isHovered
+          ? "border-border-strong bg-surface-overlay"
+          : "border-transparent bg-transparent"
+      }`}
     >
       {/* 16:9 Thumbnail Area */}
-      <div
-        className="relative w-full md:w-80 lg:w-96 flex-shrink-0 aspect-video rounded-xl overflow-hidden border transition-colors bg-[#0d0f14]"
-        style={{
-          borderColor: isHovered ? `${accentColor}80` : "rgba(39, 39, 42, 0.8)",
-        }}
-      >
+      <div className="relative aspect-video w-full flex-shrink-0 overflow-hidden rounded-lg border border-border-subtle bg-surface-inset transition-colors md:w-80 lg:w-96">
         <img
           src={coverImageUrl}
           alt={title}
@@ -97,7 +84,7 @@ export const WideScenarioCard: React.FC<WideScenarioCardProps> = ({
           <Link
             to={`/setup/${scenarioId}`}
             onClick={(e) => e.stopPropagation()}
-            className="flex items-center justify-center w-12 h-12 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full shadow-lg transition-transform transform hover:scale-110"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-lg transition-transform hover:scale-110"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -116,10 +103,10 @@ export const WideScenarioCard: React.FC<WideScenarioCardProps> = ({
       {/* Content Area */}
       <div className="flex flex-col py-1 flex-1 min-w-0 md:justify-center">
         <div className="flex justify-between items-start gap-4">
-          <h2 className="text-2xl md:text-3xl lg:text-4xl font-fell-sc font-bold text-white group-hover:text-emerald-400 transition-colors truncate">
+          <h2 className="truncate font-display text-2xl font-bold text-content transition-colors group-hover:text-accent md:text-3xl lg:text-4xl">
             {title}
           </h2>
-          <button className="text-zinc-500 hover:text-white p-1">
+          <button className="p-1 text-content-faint hover:text-content">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="20"
@@ -139,26 +126,26 @@ export const WideScenarioCard: React.FC<WideScenarioCardProps> = ({
         </div>
 
         {/* Metadata Row */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm font-mono text-zinc-400">
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-sm text-content-faint">
           {"creator_id" in scenario && scenario.creator_id ? (
             <Link
               to={`/profile/${scenario.creator_id}`}
               onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-1.5 text-zinc-300 hover:text-amber-300 transition-colors"
+              className="flex items-center gap-1.5 text-content-muted transition-colors hover:text-accent"
             >
-              <UserIcon className="w-4 h-4 opacity-70" />
+              <UserIcon className="h-4 w-4 opacity-70" />
               <span className="hover:underline">{author}</span>
             </Link>
           ) : (
-            <span className="flex items-center gap-1.5 text-zinc-300">
-              <UserIcon className="w-4 h-4 opacity-70" />
+            <span className="flex items-center gap-1.5 text-content-muted">
+              <UserIcon className="h-4 w-4 opacity-70" />
               {author}
             </span>
           )}
-          <span className="hidden md:inline text-zinc-600">•</span>
+          <span className="hidden text-content-faint md:inline">•</span>
           <span>{playerCount.toLocaleString()} plays</span>
-          <span className="hidden md:inline text-zinc-600">•</span>
-          <span className="flex items-center text-yellow-500/90 gap-1">
+          <span className="hidden text-content-faint md:inline">•</span>
+          <span className="flex items-center gap-1 text-warning">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="12"
@@ -174,28 +161,26 @@ export const WideScenarioCard: React.FC<WideScenarioCardProps> = ({
             </svg>
             {rating.toFixed(1)}
           </span>
-          <span className="hidden md:inline text-zinc-600">•</span>
+          <span className="hidden text-content-faint md:inline">•</span>
           <span
-            className="px-2 py-0.5 rounded-md text-zinc-950 text-[11px] font-bold shadow-md capitalize"
-            style={{
-              backgroundColor: accentColor,
-            }}
+            className="rounded-sm px-2 py-0.5 text-[11px] font-bold capitalize text-neutral-950"
+            style={{ backgroundColor: accentColor }}
           >
             {genre}
           </span>
         </div>
 
         {/* Creator Description / Logline */}
-        <p className="mt-3 text-sm text-zinc-400 leading-relaxed font-sans line-clamp-2 md:line-clamp-3">
+        <p className="mt-3 line-clamp-2 font-sans text-sm leading-relaxed text-content-muted md:line-clamp-3">
           {logline}
         </p>
 
         {/* Bottom tags */}
-        <div className="mt-auto pt-4 flex gap-2">
-          <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 text-xs font-mono">
+        <div className="mt-auto flex gap-2 pt-4">
+          <span className="rounded-sm bg-surface px-2 py-0.5 font-mono text-xs text-content-muted">
             {modeBadge}
           </span>
-          <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 text-xs font-mono">
+          <span className="rounded-sm bg-surface px-2 py-0.5 font-mono text-xs text-content-muted">
             {playerSupportBadge}
           </span>
         </div>

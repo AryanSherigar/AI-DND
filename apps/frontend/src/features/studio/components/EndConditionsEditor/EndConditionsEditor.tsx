@@ -103,11 +103,11 @@ export const EndConditionsEditor: React.FC<EndConditionsEditorProps> = ({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-zinc-100">Endings</h1>
+        <h1 className="text-lg font-semibold text-content">Endings</h1>
         <Button onClick={handleOpenCreate}>New End Condition</Button>
       </div>
       {isLoading && (
-        <p className="text-sm text-zinc-500">Loading end conditions…</p>
+        <p className="text-sm text-content-faint">Loading end conditions…</p>
       )}
       {!isLoading && orderedEndConditions.length === 0 && (
         <EmptyState

@@ -6,7 +6,6 @@ import {
   Navigate,
 } from "react-router-dom";
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { Header } from "@/shared/components/layout/Header";
 import { useProfile } from "../hooks/useProfile";
 import { ProfileHeader } from "../components/ProfileHeader";
 import { EditProfileModal } from "../components/EditProfileModal";
@@ -71,7 +70,7 @@ export const ProfilePage: React.FC = () => {
 
   if (isAuthLoading || (isProfileEnabled && isLoading)) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-400 font-mono gap-3">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 font-mono text-content-faint">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
         <span>Consulting the realm archives...</span>
       </div>
@@ -80,9 +79,9 @@ export const ProfilePage: React.FC = () => {
 
   if (isError || !profile) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-center space-y-4">
+      <div className="flex flex-1 flex-col items-center justify-center space-y-4 p-6 text-center text-content">
         <div className="text-4xl">📜</div>
-        <h1 className="font-fell-sc text-3xl font-bold text-white">
+        <h1 className="font-display text-3xl font-bold text-white">
           Adventurer Not Found
         </h1>
         <p className="font-mono text-sm text-zinc-400 max-w-md">
@@ -100,10 +99,8 @@ export const ProfilePage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 selection:bg-amber-500/30 selection:text-amber-200 pb-20">
-      <Header />
-
-      <main className="max-w-7xl mx-auto px-4 md:px-8 pt-24 space-y-8">
+    <div className="custom-scrollbar flex-1 overflow-y-auto text-content selection:bg-accent/30">
+      <main className="mx-auto max-w-7xl space-y-8 px-4 pb-20 pt-20 md:px-8">
         {/* Profile Hero with Stats */}
         <ProfileHeader
           profile={profile}

@@ -59,7 +59,7 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
       <div className="flex flex-col justify-between p-4 sm:p-5 flex-grow space-y-3">
         <div>
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h3 className="font-fell-sc text-xl font-bold text-white group-hover:text-amber-300 transition-colors">
+            <h3 className="font-display text-xl font-bold text-white group-hover:text-amber-300 transition-colors">
               {campaign.scenario_title}
             </h3>
 

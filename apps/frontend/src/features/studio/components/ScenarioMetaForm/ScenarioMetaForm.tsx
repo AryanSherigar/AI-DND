@@ -63,13 +63,13 @@ export const ScenarioMetaForm: React.FC<ScenarioMetaFormProps> = ({
   };
 
   if (isLoading || !form) {
-    return <p className="text-sm text-zinc-500">Loading scenario details...</p>;
+    return <p className="text-sm text-content-faint">Loading scenario details...</p>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-zinc-100">
+        <h2 className="text-base font-semibold text-content">
           Scenario Details
         </h2>
         <Button
@@ -82,30 +82,30 @@ export const ScenarioMetaForm: React.FC<ScenarioMetaFormProps> = ({
           {isUpdating ? "Saving..." : "Save"}
         </Button>
       </div>
-      {updateError && <p className="text-xs text-red-400">{updateError}</p>}
+      {updateError && <p className="text-xs text-danger">{updateError}</p>}
       <div className="space-y-1">
-        <label className="text-xs text-zinc-500">Title</label>
+        <label className="text-xs text-content-faint">Title</label>
         <Input
           value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })}
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-zinc-500">Logline</label>
+        <label className="text-xs text-content-faint">Logline</label>
         <Input
           value={form.logline}
           onChange={(e) => setForm({ ...form, logline: e.target.value })}
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-zinc-500">Genre Tags</label>
+        <label className="text-xs text-content-faint">Genre Tags</label>
         <GenreTagsPicker
           selected={form.genreTags}
           onChange={(genreTags) => setForm({ ...form, genreTags })}
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-zinc-500">Complexity Tier</label>
+        <label className="text-xs text-content-faint">Complexity Tier</label>
         <Select
           options={COMPLEXITY_TIER_OPTIONS}
           value={form.complexityTier}
@@ -118,7 +118,7 @@ export const ScenarioMetaForm: React.FC<ScenarioMetaFormProps> = ({
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-zinc-500">Player Count Support</label>
+        <label className="text-xs text-content-faint">Player Count Support</label>
         <Select
           options={PLAYER_COUNT_SUPPORT_OPTIONS}
           value={form.playerCountSupport}

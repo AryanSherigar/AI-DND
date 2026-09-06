@@ -15,18 +15,18 @@ export const EntityTypeChangeWarningModal: React.FC<
       onClose={onCancel}
       title={`Change type to ${newTypeLabel}?`}
     >
-      <div className="space-y-3 text-sm text-zinc-300">
+      <div className="space-y-3 text-sm text-content-muted">
         {droppedFields.length > 0 && (
           <p>
             These attributes don't belong to {newTypeLabel}'s template and won't
             be removed automatically, but they won't match it either:{" "}
-            <span className="text-amber-400">{droppedFields.join(", ")}</span>
+            <span className="text-accent">{droppedFields.join(", ")}</span>
           </p>
         )}
         {addedFields.length > 0 && (
           <p>
             {newTypeLabel} also defines attributes this entity doesn't have yet:{" "}
-            <span className="text-zinc-400">{addedFields.join(", ")}</span>
+            <span className="text-content-muted">{addedFields.join(", ")}</span>
           </p>
         )}
         <div className="flex justify-end gap-2 pt-2">

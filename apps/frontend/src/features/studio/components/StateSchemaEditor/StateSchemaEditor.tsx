@@ -21,13 +21,13 @@ export const StateSchemaEditor: React.FC<StateSchemaEditorProps> = ({
   };
 
   if (isLoading || schema === undefined) {
-    return <p className="text-sm text-zinc-500">Loading state schema...</p>;
+    return <p className="text-sm text-content-faint">Loading state schema...</p>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-zinc-100">State Schema</h2>
+        <h2 className="text-base font-semibold text-content">State Schema</h2>
         <Button
           type="button"
           variant="primary"
@@ -38,7 +38,7 @@ export const StateSchemaEditor: React.FC<StateSchemaEditorProps> = ({
           {isUpdating ? "Saving..." : "Save"}
         </Button>
       </div>
-      {updateError && <p className="text-xs text-red-400">{updateError}</p>}
+      {updateError && <p className="text-xs text-danger">{updateError}</p>}
       {Object.keys(schema).length === 0 && (
         <EmptyState
           title="No tracked values yet"

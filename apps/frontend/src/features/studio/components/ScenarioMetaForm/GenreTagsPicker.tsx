@@ -28,10 +28,10 @@ export const GenreTagsPicker: React.FC<GenreTagsPickerProps> = ({
             key={genre}
             type="button"
             onClick={() => handleToggle(genre)}
-            className={`px-3 py-1 text-xs font-mono border transition-colors ${
+            className={`rounded-md border px-3 py-1.5 font-sans text-xs transition-colors ${
               isSelected
-                ? "bg-zinc-100 text-zinc-950 border-zinc-100 font-semibold"
-                : "bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-zinc-200"
+                ? "border-content bg-content font-semibold text-surface"
+                : "border-border-subtle bg-surface-inset text-content-muted hover:border-border-strong hover:text-content"
             }`}
           >
             {genre}

@@ -34,8 +34,8 @@ export const MasterModeCreateFlow: React.FC = () => {
         onSubmit={handleSubmit}
         className="max-w-md w-full text-center space-y-4"
       >
-        <h2 className="text-2xl font-serif text-zinc-200">Master Mode</h2>
-        <p className="text-zinc-400 leading-relaxed">
+        <h2 className="text-2xl font-serif text-content">Master Mode</h2>
+        <p className="text-content-muted leading-relaxed">
           Master mode provides full structural control over game state,
           entities, and active conditions.
         </p>
@@ -56,7 +56,7 @@ export const MasterModeCreateFlow: React.FC = () => {
             : "Create Master-Mode Scenario"}
         </Button>
         {createMutation.isError && (
-          <p className="text-xs text-red-400">
+          <p className="text-xs text-danger">
             {extractErrorMessage(
               createMutation.error,
               "Failed to create scenario.",

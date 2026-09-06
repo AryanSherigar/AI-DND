@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useScenario } from "../hooks/useScenario";
 import { useStudioStore } from "../stores/studio.store";
 import { StudioDocumentLayout } from "../components/Layout/StudioDocumentLayout";
@@ -39,13 +39,41 @@ export const EditScenarioPage: React.FC = () => {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-zinc-950 text-zinc-100 flex flex-col font-sans">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950 flex-shrink-0 z-50">
-        <h1 className="text-sm font-semibold text-zinc-100 tracking-widest uppercase font-mono truncate">
-          {scenario.title || "Untitled Scenario"}
-        </h1>
-        <span className="text-xs uppercase tracking-wider text-zinc-500 font-mono">
-          {scenario.mode === "master" ? "Master Mode" : "Newbie Mode"}
+    <div className="flex h-screen flex-col overflow-hidden bg-surface-sunken font-sans text-content">
+      <header className="z-50 flex flex-shrink-0 items-center justify-between gap-4 bg-surface-sunken px-5 py-2">
+        <div className="flex min-w-0 items-center gap-5">
+          <Link
+            to="/"
+            className="shrink-0 font-mono text-sm font-semibold lowercase tracking-[0.25em] text-content transition-colors hover:text-accent"
+          >
+            wevr
+          </Link>
+          <nav className="hidden shrink-0 items-center gap-1 lg:flex">
+            <Link
+              to="/"
+              className="rounded-md px-2.5 py-1.5 font-sans text-sm text-content-muted transition-colors hover:text-content"
+            >
+              Home
+            </Link>
+            <Link
+              to="/discover"
+              className="rounded-md px-2.5 py-1.5 font-sans text-sm text-content-muted transition-colors hover:text-content"
+            >
+              Discover
+            </Link>
+            <Link
+              to="/studio"
+              className="rounded-md px-2.5 py-1.5 font-sans text-sm text-content transition-colors hover:text-content"
+            >
+              Studio
+            </Link>
+          </nav>
+          <h1 className="truncate font-mono text-sm font-semibold uppercase tracking-widest text-content-faint">
+            {scenario.title || "Untitled scenario"}
+          </h1>
+        </div>
+        <span className="shrink-0 font-mono text-xs uppercase tracking-wider text-content-faint">
+          {scenario.mode === "master" ? "Master mode" : "Newbie mode"}
         </span>
       </header>
       <main className="flex-1 flex flex-col relative min-h-0">

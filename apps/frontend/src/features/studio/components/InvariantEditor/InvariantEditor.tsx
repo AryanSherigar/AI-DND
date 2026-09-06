@@ -87,11 +87,11 @@ export const InvariantEditor: React.FC<InvariantEditorProps> = ({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-zinc-100">World Rules</h1>
+        <h1 className="text-lg font-semibold text-content">World Rules</h1>
         <Button onClick={handleOpenCreate}>New Invariant</Button>
       </div>
       {isLoading && (
-        <p className="text-sm text-zinc-500">Loading invariants…</p>
+        <p className="text-sm text-content-faint">Loading invariants…</p>
       )}
       {!isLoading && invariants.length === 0 && (
         <EmptyState

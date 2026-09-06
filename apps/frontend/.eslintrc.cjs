@@ -11,6 +11,8 @@ module.exports = {
     ".eslintrc.cjs",
     "vite.config.ts",
     "vitest.config.ts",
+    // Vendored third-party primitives, kept close to upstream for re-pulls.
+    "src/shared/components/ui/aceternity/**",
   ],
   parser: "@typescript-eslint/parser",
   plugins: ["react-refresh"],

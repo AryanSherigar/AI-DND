@@ -43,13 +43,13 @@ export const EndConditionRow: React.FC<EndConditionRowProps> = ({
       ref={setNodeRef}
       style={style}
       data-testid={`end-condition-row-${endCondition.end_condition_id}`}
-      className="border border-zinc-800 bg-zinc-950 px-3 py-2"
+      className="rounded-md border border-border-subtle bg-surface-inset px-3 py-2"
     >
       <div className="flex items-center gap-3">
         <button
           type="button"
           aria-label="Drag to reorder"
-          className="cursor-grab text-zinc-600 hover:text-zinc-300"
+          className="cursor-grab text-content-faint hover:text-content-muted"
           {...attributes}
           {...listeners}
         >
@@ -60,7 +60,7 @@ export const EndConditionRow: React.FC<EndConditionRowProps> = ({
           onClick={handleToggle}
           aria-expanded={isExpanded}
           aria-label="Toggle details"
-          className="text-zinc-500 hover:text-zinc-300"
+          className="text-content-faint hover:text-content-muted"
         >
           <span
             className={`inline-block transition-transform ${isExpanded ? "rotate-90" : ""}`}
@@ -74,10 +74,10 @@ export const EndConditionRow: React.FC<EndConditionRowProps> = ({
         </Badge>
         {endCondition.is_secret && <Badge variant="warning">secret</Badge>}
         <div className="flex-1 min-w-0">
-          <p className="truncate text-sm font-medium text-zinc-100">
+          <p className="truncate text-sm font-medium text-content">
             {endCondition.outcome_title}
           </p>
-          <p className="truncate text-xs text-zinc-500">
+          <p className="truncate text-xs text-content-faint">
             {summarizeExpression(endCondition.condition_expression)}
           </p>
         </div>
@@ -89,9 +89,9 @@ export const EndConditionRow: React.FC<EndConditionRowProps> = ({
         </Button>
       </div>
       {isExpanded && (
-        <div className="mt-3 space-y-1 border-t border-zinc-800 pt-3 text-xs text-zinc-500">
+        <div className="mt-3 space-y-1 border-t border-border-subtle pt-3 text-xs text-content-faint">
           <p>{endCondition.outcome_text || "No outcome text set."}</p>
-          <p className="text-zinc-600">
+          <p className="text-content-faint">
             Condition expression:{" "}
             {JSON.stringify(endCondition.condition_expression)}
           </p>

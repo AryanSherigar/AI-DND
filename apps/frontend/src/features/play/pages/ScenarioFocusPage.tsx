@@ -29,7 +29,7 @@ export const ScenarioFocusPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-400 font-mono gap-3">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 pt-14 font-mono text-content-faint">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
         <span>Consulting the Ancient Archives...</span>
       </div>
@@ -38,18 +38,18 @@ export const ScenarioFocusPage: React.FC = () => {
 
   if (isError || !scenario) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-center space-y-4">
+      <div className="flex flex-1 flex-col items-center justify-center space-y-4 p-6 pt-14 text-center text-content">
         <div className="text-4xl">📜</div>
-        <h1 className="font-fell-sc text-3xl font-bold text-white">
+        <h1 className="font-display text-3xl font-bold text-white">
           Scenario Not Found
         </h1>
-        <p className="font-mono text-sm text-zinc-400 max-w-md">
+        <p className="font-mono text-sm text-content-muted max-w-md">
           The requested chronicle could not be located in the realm archives or
           has been archived by its author.
         </p>
         <button
           onClick={() => navigate("/discover")}
-          className="rounded-xl bg-zinc-900 border border-zinc-800 px-6 py-3 font-mono text-sm text-amber-300 hover:bg-zinc-800 transition-colors"
+          className="rounded-xl bg-surface border border-border-subtle px-6 py-3 font-mono text-sm text-accent hover:bg-surface-overlay transition-colors"
         >
           ← Return to Discovery Feed
         </button>
@@ -58,22 +58,22 @@ export const ScenarioFocusPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 selection:bg-amber-500/30 selection:text-amber-200 pb-20">
+    <div className="custom-scrollbar flex-1 overflow-y-auto pb-20 text-content selection:bg-accent/30">
       {/* Top Header Navigation */}
-      <header className="sticky top-0 z-50 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md px-4 py-3 md:px-8">
+      <header className="sticky top-0 z-20 border-b border-border-subtle bg-surface-raised/90 backdrop-blur-md pt-14 px-4 py-3 md:px-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button
             onClick={() => navigate(-1)}
-            className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/80 px-3.5 py-1.5 font-mono text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface/80 px-3.5 py-1.5 font-mono text-xs text-content-muted hover:bg-surface-overlay hover:text-white transition-colors"
           >
             ← Back
           </button>
-          <span className="font-fell-sc text-sm font-bold text-amber-200/90 truncate max-w-xs md:max-w-md">
+          <span className="font-display text-sm font-bold text-accent truncate max-w-xs md:max-w-md">
             {scenario.title}
           </span>
           <button
             onClick={() => navigate("/discover")}
-            className="font-mono text-xs text-zinc-400 hover:text-amber-300 transition-colors"
+            className="font-mono text-xs text-content-muted hover:text-accent transition-colors"
           >
             Explore Feed
           </button>

@@ -10,10 +10,3 @@ export interface UserDropdownProps {
   user: UserResponse;
   onLogout: () => void;
 }
-
-export interface MobileNavProps {
-  isOpen: boolean;
-  onClose: () => void;
-  user: UserResponse | null;
-  onLogout: () => void;
-}

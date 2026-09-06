@@ -31,7 +31,7 @@ export const DuplicateScenarioButton: React.FC<
         {isDuplicating ? "Duplicating..." : "Duplicate"}
       </Button>
       {duplicateError && (
-        <p className="text-xs text-red-400">{duplicateError}</p>
+        <p className="text-xs text-danger">{duplicateError}</p>
       )}
     </div>
   );

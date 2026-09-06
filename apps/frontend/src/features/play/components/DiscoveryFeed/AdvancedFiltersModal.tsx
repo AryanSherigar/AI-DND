@@ -57,7 +57,7 @@ export const AdvancedFiltersModal: React.FC<AdvancedFiltersModalProps> = ({
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <div className="bg-[#0d0f14] border border-zinc-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
         <div className="flex justify-between items-center p-6 border-b border-zinc-800">
-          <h2 className="text-xl font-fell-sc font-bold text-white tracking-wider">
+          <h2 className="text-xl font-display font-bold text-white tracking-wider">
             Advanced Filters
           </h2>
           <button

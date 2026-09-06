@@ -35,10 +35,10 @@ export const ArchetypeValuesEditor: React.FC<ArchetypeValuesEditorProps> = ({
     <div className="space-y-2">
       {Object.entries(values).map(([key, value]) => (
         <div key={key} className="flex items-center gap-2">
-          <span className="flex-1 truncate font-mono text-xs text-zinc-400">
+          <span className="flex-1 truncate font-mono text-xs text-content-muted">
             {key}
           </span>
-          <span className="flex-1 truncate font-mono text-xs text-zinc-300">
+          <span className="flex-1 truncate font-mono text-xs text-content-muted">
             {formatArchetypeValue(value)}
           </span>
           <Button

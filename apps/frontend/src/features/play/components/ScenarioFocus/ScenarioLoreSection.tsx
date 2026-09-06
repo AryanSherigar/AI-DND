@@ -21,7 +21,7 @@ export const ScenarioLoreSection: React.FC<ScenarioLoreSectionProps> = ({
     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 md:p-8 shadow-xl backdrop-blur-sm space-y-4">
       <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
         <span className="text-xl">📜</span>
-        <h2 className="font-fell-sc text-2xl font-bold text-amber-200/90 drop-shadow-sm">
+        <h2 className="font-display text-2xl font-bold text-amber-200/90 drop-shadow-sm">
           World Lore & Setting
         </h2>
       </div>

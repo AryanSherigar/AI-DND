@@ -109,9 +109,9 @@ export const ExpressionBuilder: React.FC<ExpressionBuilderProps> = ({
       </div>
 
       {CLAUSE_KINDS.filter((kind) => value?.[kind]).map((kind) => (
-        <div key={kind} className="ml-4 border-l border-zinc-800 pl-4">
+        <div key={kind} className="ml-4 border-l border-border-subtle pl-4">
           <div className="mb-1 flex items-center justify-between">
-            <span className="text-xs font-medium uppercase text-zinc-500">
+            <span className="text-xs font-medium uppercase text-content-faint">
               {kind}
             </span>
             <Button

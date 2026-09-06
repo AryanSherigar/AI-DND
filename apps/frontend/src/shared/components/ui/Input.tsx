@@ -16,13 +16,13 @@ export const Input: React.FC<InputProps> = ({
     <div className="w-full">
       <input
         id={id}
-        className={`w-full rounded-none border bg-zinc-900 px-3 py-2 font-sans text-sm text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 ${
-          hasError ? "border-red-800" : "border-zinc-800"
+        className={`w-full rounded-md border bg-surface-inset px-3 py-2 font-sans text-sm text-content placeholder:text-content-faint transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50 ${
+          hasError ? "border-danger" : "border-border-subtle"
         } ${className}`}
         aria-invalid={hasError}
         {...rest}
       />
-      {hasError && <p className="mt-1 text-xs text-red-400">{error}</p>}
+      {hasError && <p className="mt-1 text-xs text-danger">{error}</p>}
     </div>
   );
 };

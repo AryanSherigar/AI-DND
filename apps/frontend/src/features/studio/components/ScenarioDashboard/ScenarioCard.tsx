@@ -30,22 +30,22 @@ export const ScenarioCard: React.FC<ScenarioCardProps> = ({
   };
 
   return (
-    <Card className="flex flex-col gap-3">
+    <Card className="flex flex-col gap-3 transition-colors hover:border-border-strong">
       <div className="flex items-start justify-between gap-2">
-        <h2 className="truncate font-mono text-sm font-semibold uppercase tracking-wide text-zinc-100">
-          {scenario.title || "Untitled Scenario"}
+        <h2 className="truncate font-mono text-sm font-semibold uppercase tracking-wide text-content">
+          {scenario.title || "Untitled scenario"}
         </h2>
         <Badge variant={STATUS_BADGE_VARIANT[scenario.status]}>
           {scenario.status}
         </Badge>
       </div>
 
-      <p className="line-clamp-2 min-h-[2.5rem] text-sm text-zinc-400">
+      <p className="line-clamp-2 min-h-[2.5rem] font-sans text-sm text-content-muted">
         {scenario.logline || "No logline yet."}
       </p>
 
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-zinc-500">
-        <span className="font-mono">
+      <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-content-faint">
+        <span>
           {scenario.mode === "master" ? "Master Mode" : "Newbie Mode"}
         </span>
         <span>·</span>
@@ -63,7 +63,7 @@ export const ScenarioCard: React.FC<ScenarioCardProps> = ({
           disabled={isDeleting}
           onClick={() => onDelete(scenario.scenario_id)}
         >
-          {isDeleting ? "Deleting..." : "Delete"}
+          {isDeleting ? "Deleting…" : "Delete"}
         </Button>
       </div>
     </Card>

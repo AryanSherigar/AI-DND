@@ -18,7 +18,7 @@ export const CheckpointOverrideRow: React.FC<CheckpointOverrideRowProps> = ({
   return (
     <Card className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="font-mono text-xs text-zinc-500">
+        <span className="font-mono text-xs text-content-faint">
           {override.checkpoint_id}
         </span>
         <Button type="button" variant="ghost" size="sm" onClick={onRemove}>

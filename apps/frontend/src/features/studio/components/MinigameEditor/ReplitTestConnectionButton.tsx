@@ -37,7 +37,7 @@ export const ReplitTestConnectionButton: React.FC<
         <p className="text-xs text-emerald-400">Connected!</p>
       )}
       {isTesting && status === "timed_out" && (
-        <p className="text-xs text-red-400">
+        <p className="text-xs text-danger">
           No response — check the URL and that your Repl calls
           MinigameSDK.ready().
         </p>

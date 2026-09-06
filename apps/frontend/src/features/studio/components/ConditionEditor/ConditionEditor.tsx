@@ -70,13 +70,13 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-zinc-100">
+        <h1 className="text-lg font-semibold text-content">
           Active Conditions
         </h1>
         <Button onClick={handleOpenCreate}>New Condition</Button>
       </div>
       {isLoading && (
-        <p className="text-sm text-zinc-500">Loading conditions…</p>
+        <p className="text-sm text-content-faint">Loading conditions…</p>
       )}
       {!isLoading && conditions.length === 0 && (
         <EmptyState

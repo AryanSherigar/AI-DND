@@ -21,7 +21,7 @@ export const UserReviewCard: React.FC<UserReviewCardProps> = ({ review }) => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3 mb-3">
         <Link
           to={`/scenario/${review.scenario_id}`}
-          className="font-fell-sc text-lg font-bold text-white hover:text-amber-300 transition-colors"
+          className="font-display text-lg font-bold text-white hover:text-amber-300 transition-colors"
         >
           {review.scenario_title}
         </Link>

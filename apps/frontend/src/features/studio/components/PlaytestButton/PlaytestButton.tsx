@@ -30,7 +30,7 @@ export const PlaytestButton: React.FC<PlaytestButtonProps> = ({
       >
         {isPlaytesting ? "Starting playtest..." : "Playtest"}
       </Button>
-      {playtestError && <p className="text-xs text-red-400">{playtestError}</p>}
+      {playtestError && <p className="text-xs text-danger">{playtestError}</p>}
     </div>
   );
 };

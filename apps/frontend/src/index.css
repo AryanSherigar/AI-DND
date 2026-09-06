@@ -1,28 +1,56 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Space-separated RGB channels — consumed by tailwind.config.ts tokens. */
+    --surface-sunken: 7 8 11;
+    --surface: 13 15 20;
+    --surface-raised: 20 23 30;
+    --surface-overlay: 27 31 40;
+    --surface-inset: 10 12 16;
+
+    --border-subtle: 33 36 46;
+    --border-strong: 49 54 68;
+
+    --content: 237 237 240;
+    --content-muted: 162 166 178;
+    --content-faint: 107 112 128;
+
+    --accent: 217 164 65;
+    --accent-strong: 232 180 88;
+    --accent-subtle: 58 47 28;
+    --accent-contrast: 26 18 6;
+
+    --success: 78 166 122;
+    --danger: 224 87 79;
+    --warning: 224 168 58;
+  }
+
   body {
     margin: 0;
-    font-family: "IM Fell English", serif;
-    background-color: #0d0f14;
-    color: #ffffff;
+    font-family:
+      "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", sans-serif;
+    background-color: rgb(var(--surface));
+    color: rgb(var(--content));
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 }
 
 @layer utilities {
-  .font-fell {
-    font-family: "IM Fell English", serif;
-  }
-  .font-fell-sc {
-    font-family: "IM Fell English SC", serif;
+  .font-display {
+    font-family: "Outfit", "Geist", ui-sans-serif, system-ui, sans-serif;
   }
   .font-mono {
-    font-family: "IBM Plex Mono", monospace;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
   }
+
+  /* Narration typefaces — reader-selectable, loaded on demand by font-loader. */
   .font-narration-im-fell-english {
     font-family: "IM Fell English", Georgia, serif;
   }
@@ -57,74 +85,25 @@
     font-family: "Almendra", Georgia, serif;
   }
   .font-narration-inter {
-    font-family:
-      "Inter",
-      -apple-system,
-      BlinkMacSystemFont,
-      sans-serif;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
   }
   .font-narration-open-dyslexic {
     font-family: "OpenDyslexic", sans-serif;
   }
-}
 
-/* Animations */
-@keyframes boot-flicker {
-  0% {
-    opacity: 0.1;
+  .hide-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
-  2% {
-    opacity: 1;
-  }
-  8% {
-    opacity: 0.1;
-  }
-  9% {
-    opacity: 1;
-  }
-  12% {
-    opacity: 0.1;
-  }
-  20% {
-    opacity: 1;
-  }
-  25% {
-    opacity: 0.3;
-  }
-  30% {
-    opacity: 1;
-  }
-  70% {
-    opacity: 0.7;
-  }
-  72% {
-    opacity: 0.2;
-  }
-  77% {
-    opacity: 0.9;
-  }
-  100% {
-    opacity: 1;
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
 
-@keyframes falling-snow {
-  0% {
-    transform: translateY(-100vh) translateX(0);
-  }
-  100% {
-    transform: translateY(100vh) translateX(100px);
-  }
-}
-
-.animate-boot {
-  animation: boot-flicker 1s steps(2, end) forwards;
-}
-
-/* Minimal Custom Scrollbar */
+/* Minimal custom scrollbar — app chrome. */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #3f3f46 transparent;
+  scrollbar-color: rgb(var(--border-strong)) transparent;
 }
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
@@ -134,14 +113,14 @@
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #27272a; /* zinc-800 */
+  background: rgb(var(--border-subtle));
   border-radius: 10px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46; /* zinc-700 */
+  background: rgb(var(--border-strong));
 }
 
-/* Minimalistic Dark Scrollbar for Narrative Feed */
+/* Minimal scrollbar — narrative feed. */
 .scrollbar-minimal {
   scrollbar-width: thin;
   scrollbar-color: rgba(120, 113, 108, 0.25) transparent;
@@ -157,7 +136,7 @@
   border-radius: 9999px;
 }
 .scrollbar-minimal::-webkit-scrollbar-thumb:hover {
-  background: rgba(217, 119, 6, 0.5);
+  background: rgb(var(--accent) / 0.5);
 }
 
 @media (prefers-reduced-motion: reduce) {

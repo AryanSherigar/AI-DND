@@ -69,9 +69,9 @@ export const MapList: React.FC<MapListProps> = ({
           Add Map
         </Button>
       </div>
-      {createError && <p className="text-xs text-red-400">{createError}</p>}
-      {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
-      {isLoading && <p className="text-sm text-zinc-500">Loading maps…</p>}
+      {createError && <p className="text-xs text-danger">{createError}</p>}
+      {uploadError && <p className="text-xs text-danger">{uploadError}</p>}
+      {isLoading && <p className="text-sm text-content-faint">Loading maps…</p>}
       {!isLoading && maps.length === 0 && (
         <EmptyState
           title="No maps yet"
@@ -82,24 +82,24 @@ export const MapList: React.FC<MapListProps> = ({
         {maps.map((map) => (
           <div
             key={map.map_id}
-            className={`flex items-center justify-between border px-3 py-2 ${
+            className={`rounded-md flex items-center justify-between border px-3 py-2 ${
               selectedMapId === map.map_id
-                ? "border-zinc-400 bg-zinc-900"
-                : "border-zinc-800"
+                ? "border-content-muted bg-surface"
+                : "border-border-subtle"
             }`}
           >
             <button
               onClick={() => onSelectMap(map.map_id)}
-              className="flex-1 text-left text-sm text-zinc-200"
+              className="flex-1 text-left text-sm text-content"
             >
               {map.name}
               {!map.image_url && (
-                <span className="ml-2 text-xs text-zinc-600">
+                <span className="ml-2 text-xs text-content-faint">
                   (no image uploaded)
                 </span>
               )}
             </button>
-            <label className="cursor-pointer px-2 py-1 text-xs text-zinc-400 hover:text-zinc-100">
+            <label className="cursor-pointer px-2 py-1 text-xs text-content-muted hover:text-content">
               Upload image
               <input
                 type="file"

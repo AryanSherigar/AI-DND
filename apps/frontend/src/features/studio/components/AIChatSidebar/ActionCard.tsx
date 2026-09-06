@@ -80,20 +80,20 @@ export const ActionCard: React.FC<ActionCardProps> = ({
   };
 
   return (
-    <div className="my-3 border border-zinc-700 bg-zinc-900/90 rounded-none p-3 space-y-2 text-left shadow-lg">
-      <div className="flex items-center justify-between border-b border-zinc-800 pb-1.5">
-        <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 bg-amber-950/60 border border-amber-800/60 px-1.5 py-0.5">
+    <div className="my-3 border border-border-subtle bg-surface rounded-md p-3 space-y-2 text-left shadow-lg">
+      <div className="flex items-center justify-between border-b border-border-subtle pb-1.5">
+        <span className="rounded-md text-[10px] font-mono uppercase tracking-wider text-accent bg-accent/10 border border-accent/40 px-1.5 py-0.5">
           {badgeTitle}
         </span>
-        <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">
+        <span className="text-[10px] font-mono uppercase tracking-wider text-content-faint">
           {isDelete ? "Proposed Deletion" : "Suggested Action"}
         </span>
       </div>
 
-      {summary && <p className="text-xs font-mono text-zinc-300">{summary}</p>}
+      {summary && <p className="text-xs font-mono text-content-muted">{summary}</p>}
 
       {validationErrors && validationErrors.length > 0 && (
-        <div className="border border-amber-800/60 bg-amber-950/40 p-2 text-[11px] text-amber-300 space-y-0.5">
+        <div className="rounded-md border border-accent/40 bg-accent/10 p-2 text-[11px] text-accent space-y-0.5">
           <p className="font-semibold uppercase tracking-wider">
             Review before saving:
           </p>
@@ -103,7 +103,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
         </div>
       )}
 
-      <pre className="font-mono text-xs text-zinc-200 whitespace-pre-wrap bg-zinc-950/70 p-2 border border-zinc-800/80 max-h-48 overflow-y-auto">
+      <pre className="rounded-md font-mono text-xs text-content whitespace-pre-wrap bg-surface-inset p-2 border border-border-subtle max-h-48 overflow-y-auto">
         {block.content}
       </pre>
 
@@ -111,7 +111,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
         <button
           type="button"
           onClick={handleCopy}
-          className="px-2.5 py-1 text-xs font-mono uppercase text-zinc-400 hover:text-zinc-100 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors"
+          className="rounded-md px-2.5 py-1 text-xs font-mono uppercase text-content-muted hover:text-content bg-surface-inset border border-border-subtle hover:border-border-subtle transition-colors"
         >
           {hasCopied ? "Copied!" : "Copy"}
         </button>
@@ -119,7 +119,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
           type="button"
           onClick={() => onApply(block)}
           disabled={isApplied}
-          className="px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-zinc-100 text-zinc-950 hover:bg-white transition-colors border border-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded-md px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-content text-surface hover:bg-white transition-colors border border-content disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {applyLabel()}
         </button>

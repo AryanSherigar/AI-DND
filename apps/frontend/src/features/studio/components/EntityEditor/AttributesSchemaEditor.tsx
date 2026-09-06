@@ -52,13 +52,13 @@ export const AttributesSchemaEditor: React.FC<AttributesSchemaEditorProps> = ({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-zinc-300">Attributes</span>
+        <span className="text-sm font-medium text-content-muted">Attributes</span>
         <Button type="button" size="sm" variant="secondary" onClick={handleAdd}>
           Add Attribute
         </Button>
       </div>
       {entries.length === 0 && (
-        <p className="text-xs text-zinc-600">No attributes defined.</p>
+        <p className="text-xs text-content-faint">No attributes defined.</p>
       )}
       {entries.map(([key, schema]) => (
         <AttributeRow

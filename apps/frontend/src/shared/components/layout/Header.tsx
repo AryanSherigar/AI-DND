@@ -1,124 +1,157 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { IconMenu2, IconX } from "@tabler/icons-react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { cn } from "@/shared/lib/cn";
+import {
+  Navbar,
+  NavBody,
+  MobileNav,
+  MobileNavHeader,
+  MobileNavMenu,
+} from "@/shared/components/ui/aceternity/resizable-navbar";
 import { HeaderProps } from "./Header.types";
 import { UserDropdown } from "./UserDropdown";
-import { MobileNav } from "./MobileNav";
 
-const getHeaderContainerClass = (
-  is_landing: boolean,
-  is_scrolled: boolean,
-): string => {
-  const base = "fixed top-0 left-0 right-0 z-50 transition-all duration-300";
-  if (is_landing) {
-    if (is_scrolled) {
-      return `${base} bg-[#0d0f14]/90 backdrop-blur-md border-b border-zinc-800/80 shadow-lg shadow-black/50 py-4`;
-    }
-    return `${base} bg-transparent py-6 md:py-8`;
-  }
-  return `${base} bg-white/5 backdrop-blur-lg border-b border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_4px_20px_rgba(0,0,0,0.5)] py-4`;
-};
+const NAV_LINKS = [
+  { to: "/discover", label: "Discover" },
+  { to: "/studio", label: "Studio" },
+];
 
-const getNavLinkClass = (is_active: boolean): string => {
-  if (is_active) {
-    return "text-amber-300 font-bold drop-shadow-[0_0_8px_rgba(212,175,106,0.5)] transition-colors";
-  }
-  return "text-white/80 hover:text-white transition-colors hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]";
-};
+const Wordmark: React.FC = () => (
+  <Link
+    to="/"
+    className="font-mono text-lg font-semibold lowercase tracking-[0.3em] text-content transition-colors hover:text-accent"
+  >
+    wevr
+  </Link>
+);
+
+const DesktopLink: React.FC<{ to: string; label: string; isActive: boolean }> = ({
+  to,
+  label,
+  isActive,
+}) => (
+  <Link
+    to={to}
+    className={cn(
+      "rounded-md px-3 py-1.5 font-sans text-sm transition-colors",
+      isActive
+        ? "text-accent"
+        : "text-content-muted hover:text-content",
+    )}
+  >
+    {label}
+  </Link>
+);
 
 export const Header: React.FC<HeaderProps> = ({ variant = "default" }) => {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const [is_scrolled, setIsScrolled] = useState(false);
-  const [is_mobile_menu_open, setIsMobileMenuOpen] = useState(false);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
-  const is_landing = variant === "landing";
-  const is_discover_active = location.pathname.startsWith("/discover");
-  const is_studio_active = location.pathname.startsWith("/studio");
+  const isActive = (to: string): boolean => location.pathname.startsWith(to);
 
-  useEffect(() => {
-    if (!is_landing) return;
+  const handleMobileToggle = (): void => setIsMobileOpen((prev) => !prev);
+  const handleMobileClose = (): void => setIsMobileOpen(false);
 
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 50);
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [is_landing]);
-
-  const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (location.pathname === "/") {
-      e.preventDefault();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  };
-
-  const handleMobileMenuToggle = () => {
-    setIsMobileMenuOpen((prev) => !prev);
+  const handleMobileSignOut = (): void => {
+    setIsMobileOpen(false);
+    logout();
   };
 
   return (
-    <header className={getHeaderContainerClass(is_landing, is_scrolled)}>
-      <div className="px-6 md:px-12 flex items-center justify-between w-full max-w-7xl mx-auto">
-        {/* Left: Brand Logo */}
-        <Link
-          to="/"
-          onClick={handleLogoClick}
-          className="flex items-center gap-2 group"
-          title="Return to Realm Gateway"
-        >
-          <span className="font-fell-sc text-white text-2xl md:text-3xl font-bold tracking-widest drop-shadow-md group-hover:text-amber-200 transition-colors">
-            AI-DND
-          </span>
-        </Link>
-
-        {/* Center: Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-8 font-mono text-sm tracking-wider">
-          <Link
-            to="/discover"
-            className={getNavLinkClass(is_discover_active)}
-          >
-            Discover
-          </Link>
-          <Link to="/studio" className={getNavLinkClass(is_studio_active)}>
-            Studio
-          </Link>
+    <Navbar
+      className={cn(
+        "fixed top-0",
+        variant === "landing" ? "pt-4" : "pt-3",
+      )}
+    >
+      <NavBody className="rounded-xl border border-border-subtle bg-surface/70 backdrop-blur-md">
+        <Wordmark />
+        <nav className="absolute inset-0 hidden items-center justify-center gap-1 lg:flex">
+          {NAV_LINKS.map((link) => (
+            <DesktopLink
+              key={link.to}
+              to={link.to}
+              label={link.label}
+              isActive={isActive(link.to)}
+            />
+          ))}
         </nav>
-
-        {/* Right: Auth Actions & Mobile Menu Toggle */}
-        <div className="flex items-center gap-3 font-mono">
-          <div className="hidden md:block">
-            {user ? (
-              <UserDropdown user={user} onLogout={logout} />
-            ) : (
-              <Link
-                to="/login"
-                className="px-5 py-2 rounded-md bg-white/10 hover:bg-white/20 border border-white/20 hover:border-amber-400/50 hover:shadow-[0_0_12px_rgba(212,175,106,0.3)] shadow-[inset_0_1px_1px_rgba(255,255,255,0.3)] transition-all text-white font-medium text-sm"
-              >
-                Sign In
-              </Link>
-            )}
-          </div>
-
-          <button
-            onClick={handleMobileMenuToggle}
-            className="md:hidden p-2 rounded-lg border border-zinc-800 bg-zinc-900/80 text-zinc-300 hover:text-white transition-colors"
-            aria-label="Toggle navigation menu"
-          >
-            <span className="text-lg leading-none">
-              {is_mobile_menu_open ? "✕" : "☰"}
-            </span>
-          </button>
+        <div className="relative z-10">
+          {user ? (
+            <UserDropdown user={user} onLogout={logout} />
+          ) : (
+            <Link
+              to="/login"
+              className="rounded-full border border-border-strong bg-surface-raised px-5 py-1.5 font-sans text-sm font-medium text-content transition hover:border-accent/60 hover:bg-surface-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              Sign in
+            </Link>
+          )}
         </div>
-      </div>
+      </NavBody>
 
-      <MobileNav
-        isOpen={is_mobile_menu_open}
-        onClose={() => setIsMobileMenuOpen(false)}
-        user={user}
-        onLogout={logout}
-      />
-    </header>
+      <MobileNav className="rounded-xl">
+        <MobileNavHeader className="rounded-xl border border-border-subtle bg-surface/80 px-4 py-2 backdrop-blur-md">
+          <Wordmark />
+          <button
+            onClick={handleMobileToggle}
+            aria-label="Toggle navigation menu"
+            className="text-content-muted"
+          >
+            {isMobileOpen ? <IconX size={20} /> : <IconMenu2 size={20} />}
+          </button>
+        </MobileNavHeader>
+        <MobileNavMenu
+          isOpen={isMobileOpen}
+          onClose={handleMobileClose}
+          className="rounded-xl border border-border-subtle bg-surface-overlay"
+        >
+          {NAV_LINKS.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              onClick={handleMobileClose}
+              className={cn(
+                "w-full rounded-md px-3 py-2 font-sans text-sm",
+                isActive(link.to)
+                  ? "bg-surface-raised text-accent"
+                  : "text-content-muted",
+              )}
+            >
+              {link.label}
+            </Link>
+          ))}
+          <div className="my-1 h-px w-full bg-border-subtle" />
+          {user ? (
+            <>
+              <Link
+                to="/profile"
+                onClick={handleMobileClose}
+                className="w-full px-3 py-1.5 font-sans text-sm text-content-muted"
+              >
+                Profile
+              </Link>
+              <button
+                onClick={handleMobileSignOut}
+                className="w-full px-3 py-1.5 text-left font-sans text-sm text-danger"
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <Link
+              to="/login"
+              onClick={handleMobileClose}
+              className="w-full rounded-md border border-border-strong bg-surface-raised px-3 py-2 text-center font-sans text-sm font-medium text-content"
+            >
+              Sign in
+            </Link>
+          )}
+        </MobileNavMenu>
+      </MobileNav>
+    </Navbar>
   );
 };

@@ -78,7 +78,7 @@ export const FactForm: React.FC<FactFormProps> = ({
         disabled={isEditing}
       />
       {isEditing && (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-content-faint">
           The subject can't be changed after a fact is created.
         </p>
       )}
@@ -126,7 +126,7 @@ export const FactForm: React.FC<FactFormProps> = ({
           placeholder="Object literal"
         />
       )}
-      <label className="flex items-center gap-2 text-sm text-zinc-300">
+      <label className="flex items-center gap-2 text-sm text-content-muted">
         <input
           type="checkbox"
           checked={formState.hidden}
@@ -137,11 +137,11 @@ export const FactForm: React.FC<FactFormProps> = ({
         Hidden
       </label>
       {!isObjectSet && (
-        <p className="text-xs text-amber-400">
+        <p className="text-xs text-accent">
           Set either an object entity or a literal value.
         </p>
       )}
-      {submitError && <p className="text-xs text-red-400">{submitError}</p>}
+      {submitError && <p className="text-xs text-danger">{submitError}</p>}
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel

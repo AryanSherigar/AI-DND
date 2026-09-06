@@ -62,7 +62,7 @@ export const ScenarioReviewsSection: React.FC<ScenarioReviewsSectionProps> = ({
       <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-zinc-800 pb-4 gap-4">
         <div className="flex items-center gap-2">
           <span className="text-xl">⭐</span>
-          <h2 className="font-fell-sc text-2xl font-bold text-amber-200/90">
+          <h2 className="font-display text-2xl font-bold text-amber-200/90">
             Player Reviews & Ratings
           </h2>
         </div>

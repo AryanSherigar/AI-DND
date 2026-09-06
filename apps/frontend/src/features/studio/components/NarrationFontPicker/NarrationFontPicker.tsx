@@ -43,12 +43,12 @@ export const NarrationFontPicker: React.FC<NarrationFontPickerProps> = ({
   };
 
   if (isLoading) {
-    return <p className="text-sm text-zinc-500">Loading narration font...</p>;
+    return <p className="text-sm text-content-faint">Loading narration font...</p>;
   }
 
   return (
     <div className="space-y-2">
-      <h2 className="text-base font-semibold text-zinc-100">Narration Font</h2>
+      <h2 className="text-base font-semibold text-content">Narration Font</h2>
       <Select
         aria-label="Narration font"
         groups={FONT_GROUPS}

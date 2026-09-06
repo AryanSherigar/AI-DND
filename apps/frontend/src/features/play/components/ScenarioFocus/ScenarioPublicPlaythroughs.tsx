@@ -13,7 +13,7 @@ export const ScenarioPublicPlaythroughs: React.FC<
       <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
         <div className="flex items-center gap-2">
           <span className="text-xl">🗡️</span>
-          <h2 className="font-fell-sc text-2xl font-bold text-amber-200/90">
+          <h2 className="font-display text-2xl font-bold text-amber-200/90">
             Active & Completed Playthroughs
           </h2>
         </div>

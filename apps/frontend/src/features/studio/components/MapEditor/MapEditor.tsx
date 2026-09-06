@@ -11,8 +11,8 @@ export const MapEditor: React.FC<MapEditorProps> = ({ scenarioId }) => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-lg font-semibold text-zinc-100">Maps</h1>
-        <p className="mt-1 text-xs text-zinc-500">
+        <h1 className="text-lg font-semibold text-content">Maps</h1>
+        <p className="mt-1 text-xs text-content-faint">
           Draw one or more maps, then pin your Location entities onto them.
           Movement between locations happens through the player's own narration
           during play — pins and connections give the narrator context, they
