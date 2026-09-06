@@ -231,7 +231,7 @@ class MemoryEngineAgentTurnTests(unittest.TestCase):
 
         return MemoryEngine(
             FakeOrchestrator(), FakeRetrievalEngine("Whiskers is the cat's name."), llm_client,
-            pg_connection=object(), save_point_store=FakeSavePointStore(),
+            pool=object(), save_point_store=FakeSavePointStore(),
         )
 
     def test_agent_turn_answers_directly_when_the_model_calls_no_tool(self) -> None:

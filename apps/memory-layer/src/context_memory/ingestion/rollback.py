@@ -61,39 +61,42 @@ class SavePointStore:
     `observed_at` (knowledge-time) and `created_at` (wall-clock) timelines --
     creating one writes no graph state at all."""
 
-    def __init__(self, connection: object) -> None:
-        self._connection = connection
+    def __init__(self, pool: object) -> None:
+        self._pool = pool
 
     def create(self, context_id: str, session_id: str | None = None, label: str | None = None) -> SavePoint:
         save_id = f"save-{uuid.uuid4().hex[:16]}"
         now = datetime.now(timezone.utc)
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO save_points (save_id, context_id, session_id, label, cutoff_observed_at, created_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s)",
-                    (save_id, context_id, session_id, label, now, now),
-                )
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO save_points (save_id, context_id, session_id, label, cutoff_observed_at, created_at) "
+                        "VALUES (%s, %s, %s, %s, %s, %s)",
+                        (save_id, context_id, session_id, label, now, now),
+                    )
         return SavePoint(save_id, context_id, session_id, label, now, now)
 
     def get(self, save_id: str) -> SavePoint | None:
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT save_id, context_id, session_id, label, cutoff_observed_at, created_at "
-                "FROM save_points WHERE save_id = %s",
-                (save_id,),
-            )
-            row = cursor.fetchone()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT save_id, context_id, session_id, label, cutoff_observed_at, created_at "
+                    "FROM save_points WHERE save_id = %s",
+                    (save_id,),
+                )
+                row = cursor.fetchone()
         return SavePoint(*row) if row else None
 
     def list_for_context(self, context_id: str) -> list[SavePoint]:
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT save_id, context_id, session_id, label, cutoff_observed_at, created_at "
-                "FROM save_points WHERE context_id = %s ORDER BY created_at DESC",
-                (context_id,),
-            )
-            rows = cursor.fetchall()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT save_id, context_id, session_id, label, cutoff_observed_at, created_at "
+                    "FROM save_points WHERE context_id = %s ORDER BY created_at DESC",
+                    (context_id,),
+                )
+                rows = cursor.fetchall()
         return [SavePoint(*row) for row in rows]
 
 
@@ -105,8 +108,8 @@ class RollbackResult:
 
 
 class RollbackService:
-    def __init__(self, connection: object, graph_writer: GraphWriter, journal: StepJournal | None = None) -> None:
-        self._connection = connection
+    def __init__(self, pool: object, graph_writer: GraphWriter, journal: StepJournal | None = None) -> None:
+        self._pool = pool
         self._graph_writer = graph_writer
         self._journal = journal
 
@@ -139,14 +142,15 @@ class RollbackService:
     def _find_archived_candidates(self, save_point: SavePoint) -> list[str]:
         """Every fact whose knowledge-time (`observed_at`) falls after the save
         point's cutoff never existed on this rolled-back timeline."""
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT c.candidate_id FROM extracted_memory_candidates c "
-                "JOIN extraction_attempts a ON c.attempt_id = a.attempt_id "
-                "WHERE a.context_id = %s AND c.observed_at > %s",
-                (save_point.context_id, save_point.cutoff_observed_at),
-            )
-            return [row[0] for row in cursor.fetchall()]
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT c.candidate_id FROM extracted_memory_candidates c "
+                    "JOIN extraction_attempts a ON c.attempt_id = a.attempt_id "
+                    "WHERE a.context_id = %s AND c.observed_at > %s",
+                    (save_point.context_id, save_point.cutoff_observed_at),
+                )
+                return [row[0] for row in cursor.fetchall()]
 
     def _find_restored_candidates(self, context_id: str, archived_ids: list[str]) -> tuple[list[str], dict[str, datetime | None]]:
         """A fact superseded only by something now being archived must become
@@ -158,13 +162,14 @@ class RollbackService:
         if not archived_ids:
             return [], {}
         archived_set = set(archived_ids)
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT logical_key FROM graph_write_manifests "
-                "WHERE context_id = %s AND record_kind = 'relationship' AND logical_key LIKE 'supersedes:%%'",
-                (context_id,),
-            )
-            rows = cursor.fetchall()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT logical_key FROM graph_write_manifests "
+                    "WHERE context_id = %s AND record_kind = 'relationship' AND logical_key LIKE 'supersedes:%%'",
+                    (context_id,),
+                )
+                rows = cursor.fetchall()
         superseded_by: dict[str, str] = {}
         for (logical_key,) in rows:
             _, new_candidate_id, prior_fact_id = logical_key.split(":", 2)
@@ -174,26 +179,28 @@ class RollbackService:
 
         if not restore_set:
             return [], {}
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT candidate_id, valid_to FROM extracted_memory_candidates "
-                "WHERE candidate_id = ANY(%s)",
-                (list(restore_set),),
-            )
-            valid_to_by_id = {row[0]: row[1] for row in cursor.fetchall()}
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT candidate_id, valid_to FROM extracted_memory_candidates "
+                    "WHERE candidate_id = ANY(%s)",
+                    (list(restore_set),),
+                )
+                valid_to_by_id = {row[0]: row[1] for row in cursor.fetchall()}
         return list(restore_set), valid_to_by_id
 
     def _resolve_graph_ids(self, context_id: str, candidate_ids: list[str]) -> dict[str, int]:
         if not candidate_ids:
             return {}
         logical_keys = [f"fact:{cid}" for cid in candidate_ids]
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT logical_key, graph_id FROM graph_id_registry "
-                "WHERE node_kind = 'fact' AND context_id = %s AND logical_key = ANY(%s)",
-                (context_id, logical_keys),
-            )
-            rows = cursor.fetchall()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT logical_key, graph_id FROM graph_id_registry "
+                    "WHERE node_kind = 'fact' AND context_id = %s AND logical_key = ANY(%s)",
+                    (context_id, logical_keys),
+                )
+                rows = cursor.fetchall()
         return {logical_key.removeprefix("fact:"): int(graph_id) for logical_key, graph_id in rows}
 
     def _apply_graph_updates(
@@ -229,29 +236,30 @@ class RollbackService:
     def _apply_postgres_cleanup(
         self, save_point: SavePoint, archived_ids: list[str], restored_ids: list[str], id_to_graph_id: dict[str, int],
     ) -> None:
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    "DELETE FROM conversation_buffer WHERE context_id = %s AND created_at > %s",
-                    (save_point.context_id, save_point.created_at),
-                )
-                if archived_ids:
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
                     cursor.execute(
-                        "UPDATE memory_embeddings SET is_active = false "
-                        "WHERE context_id = %s AND subject_kind = 'fact' AND subject_id = ANY(%s)",
-                        (save_point.context_id, archived_ids),
+                        "DELETE FROM conversation_buffer WHERE context_id = %s AND created_at > %s",
+                        (save_point.context_id, save_point.created_at),
                     )
-                    cursor.execute(
-                        "UPDATE fact_search_index SET is_active = false WHERE context_id = %s AND fact_id = ANY(%s)",
-                        (save_point.context_id, archived_ids),
-                    )
-                if restored_ids:
-                    cursor.execute(
-                        "UPDATE memory_embeddings SET is_active = true "
-                        "WHERE context_id = %s AND subject_kind = 'fact' AND subject_id = ANY(%s)",
-                        (save_point.context_id, restored_ids),
-                    )
-                    cursor.execute(
-                        "UPDATE fact_search_index SET is_active = true WHERE context_id = %s AND fact_id = ANY(%s)",
-                        (save_point.context_id, restored_ids),
-                    )
+                    if archived_ids:
+                        cursor.execute(
+                            "UPDATE memory_embeddings SET is_active = false "
+                            "WHERE context_id = %s AND subject_kind = 'fact' AND subject_id = ANY(%s)",
+                            (save_point.context_id, archived_ids),
+                        )
+                        cursor.execute(
+                            "UPDATE fact_search_index SET is_active = false WHERE context_id = %s AND fact_id = ANY(%s)",
+                            (save_point.context_id, archived_ids),
+                        )
+                    if restored_ids:
+                        cursor.execute(
+                            "UPDATE memory_embeddings SET is_active = true "
+                            "WHERE context_id = %s AND subject_kind = 'fact' AND subject_id = ANY(%s)",
+                            (save_point.context_id, restored_ids),
+                        )
+                        cursor.execute(
+                            "UPDATE fact_search_index SET is_active = true WHERE context_id = %s AND fact_id = ANY(%s)",
+                            (save_point.context_id, restored_ids),
+                        )

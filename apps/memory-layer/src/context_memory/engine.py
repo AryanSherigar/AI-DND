@@ -17,6 +17,7 @@ from context_memory.core.validation import chunk_id_for, content_hash
 from context_memory.cloning.template_clone import CloneResult, clone
 from context_memory.ingestion.batch_models import BatchStatus, TurnBatchEntry
 from context_memory.ingestion.direct_authoring import DirectEntityInput, DirectFactInput, write_entity, write_fact
+from context_memory.ingestion.fact_projection import FactProjectionWriter
 from context_memory.ingestion.graph_writer import GraphWriter
 from context_memory.ingestion.orchestrator import BatchRunResult, IngestionOrchestrator
 from context_memory.ingestion.ports import BatchStore, GraphIdAllocator
@@ -91,7 +92,7 @@ class MemoryEngine:
         orchestrator: IngestionOrchestrator,
         retrieval_engine: HybridRetrievalEngine,
         llm_client: LLMClient,
-        pg_connection: object,
+        pool: object,
         config: Config | None = None,
         journal: StepJournal | None = None,
         save_point_store: SavePointStore | None = None,
@@ -103,14 +104,15 @@ class MemoryEngine:
         checkpoint_store: PostgresCheckpointStore | None = None,
         batch_store: BatchStore | None = None,
         external_fact_id_store: PostgresExternalFactIdStore | None = None,
+        fact_projection_writer: FactProjectionWriter | None = None,
     ):
         self._orchestrator = orchestrator
         self._retrieval_engine = retrieval_engine
         self._llm = llm_client
-        self._pg = pg_connection
+        self._pool = pool
         self._config = config or Config()
         self._journal = journal
-        self._save_point_store = save_point_store or SavePointStore(pg_connection)
+        self._save_point_store = save_point_store or SavePointStore(pool)
         self._rollback_service = rollback_service
         # Milestone 3 of the AI-DND bridge (direct authoring + template
         # clone): optional, like `rollback_service` above -- callers that
@@ -119,14 +121,24 @@ class MemoryEngine:
         self._graph_id_allocator = graph_id_allocator
         self._authoring_graph_writer = authoring_graph_writer
         self._hydra_transport = hydra_transport
-        # Milestones 4-5: default built off `pg_connection`, same
+        # Milestones 4-5: default built off `pool`, same
         # override-or-default pattern `save_point_store` already uses above.
-        self._fact_metadata_store = fact_metadata_store or PostgresFactMetadataStore(pg_connection)
-        self._checkpoint_store = checkpoint_store or PostgresCheckpointStore(pg_connection)
+        self._fact_metadata_store = fact_metadata_store or PostgresFactMetadataStore(pool)
+        self._checkpoint_store = checkpoint_store or PostgresCheckpointStore(pool)
         # AI-DND memory-layer contract: `superseded_fact_id` on a
         # direct-authored fact, same override-or-default pattern as above.
-        self._external_fact_id_store = external_fact_id_store or PostgresExternalFactIdStore(pg_connection)
-        self._batch_store = batch_store or PostgresBatchStore(pg_connection)
+        self._external_fact_id_store = external_fact_id_store or PostgresExternalFactIdStore(pool)
+        self._batch_store = batch_store or PostgresBatchStore(pool)
+        # mem1 gap #46 fix: unlike the stores above, deliberately NOT
+        # default-constructed here -- it needs the same `Embedder` instance
+        # the orchestrator uses (a second SentenceTransformer load is
+        # expensive, see docs/fixes_and_evaluation_findings.md §3.1), which
+        # this class has no access to build on its own. None (every caller
+        # that never authors master-mode scenarios or clones templates, most
+        # existing tests) means write_template_fact/clone_playthrough_space
+        # simply skip the projection step, same as the other optional
+        # authoring deps above when unset.
+        self._fact_projection_writer = fact_projection_writer
         self._executor = ThreadPoolExecutor(max_workers=self._config.ingestion_executor_max_workers)
         # Milestone 2 of the AI-DND bridge: batch_id -> {"batch", "chunk_ids",
         # "result", "error"}. Same-process fast-path cache only -- doesn't
@@ -160,25 +172,26 @@ class MemoryEngine:
             logger, "memory_engine.add_turn_async", {"context_id": context_id, "session_id": session_id, "role": role}
         ) as ctx:
             # 1. Record to conversation buffer
-            with self._pg.cursor() as cursor:
-                cursor.execute(
-                    "SELECT COALESCE(MAX(turn_index), -1) + 1 FROM conversation_buffer WHERE context_id = %s AND session_id = %s",
-                    (context_id, session_id)
-                )
-                turn_index = cursor.fetchone()[0]
+            with self._pool.connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT COALESCE(MAX(turn_index), -1) + 1 FROM conversation_buffer WHERE context_id = %s AND session_id = %s",
+                        (context_id, session_id)
+                    )
+                    turn_index = cursor.fetchone()[0]
 
-                cursor.execute(
-                    """
-                    INSERT INTO conversation_buffer (context_id, session_id, turn_index, role, content, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                    (context_id, session_id, turn_index, role, content, timestamp)
-                )
-                try:
-                    self._pg.commit()
-                except AttributeError:
-                    pass
-                ctx["turn_index"] = turn_index
+                    cursor.execute(
+                        """
+                        INSERT INTO conversation_buffer (context_id, session_id, turn_index, role, content, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        """,
+                        (context_id, session_id, turn_index, role, content, timestamp)
+                    )
+                    try:
+                        conn.commit()
+                    except AttributeError:
+                        pass
+                    ctx["turn_index"] = turn_index
 
             # 2. Ingest via orchestrator
             payload = {
@@ -337,6 +350,7 @@ class MemoryEngine:
         allocator, writer = self._require_authoring_deps()
         return write_fact(
             context_id, fact, allocator, writer, self._fact_metadata_store, self._external_fact_id_store,
+            self._fact_projection_writer,
         )
 
     def write_scenario_checkpoints(self, template_context_id: str, checkpoints: list[str]) -> None:
@@ -439,7 +453,7 @@ class MemoryEngine:
             raise RuntimeError("clone_playthrough_space called without a hydra_transport configured")
         return clone(
             template_context_id, playthrough_context_id, allocator, writer, self._hydra_transport,
-            self._fact_metadata_store,
+            self._fact_metadata_store, self._fact_projection_writer,
         )
 
     def get_entity(self, context_id: str, canonical_name: str) -> dict[str, object] | None:
@@ -520,8 +534,14 @@ class MemoryEngine:
             logger, "memory_engine.retrieve_facts", {"context_id": context_id, "query_len": len(query_text)}
         ):
             return self._retrieval_engine.retrieve_facts(
-                context_id, query_text, question_date, game_state, checkpoint, as_of_turn, template_context_id,
-                participant_id,
+                context_id,
+                query_text,
+                question_date,
+                game_state=game_state,
+                checkpoint=checkpoint,
+                as_of_turn=as_of_turn,
+                template_context_id=template_context_id,
+                participant_id=participant_id,
             )
 
     def generate_reply(

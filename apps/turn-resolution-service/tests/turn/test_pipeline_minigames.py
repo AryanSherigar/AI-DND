@@ -20,6 +20,7 @@ from app.exceptions.turn_exceptions import (
     MinigameResultMismatchError,
     MinigameResultRequiredError,
 )
+from app.models.auth import CurrentUser
 from app.models.turn import TurnRequestInput
 from app.turn import pipeline
 from app.turn.steps import ai_orchestrator, end_condition_evaluator
@@ -191,7 +192,11 @@ async def test_minigame_trigger_yields_event_and_stamps_pending_state(
         participant_id=participant.participant_id,
         action_text="I strike the final blow.",
     )
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     events = [event async for event in response.body_iterator]
 
     assert [e.event for e in events] == [
@@ -228,7 +233,11 @@ async def test_minigame_event_payload_never_leaks_mutation_or_instruction_fields
         participant_id=participant.participant_id,
         action_text="I strike.",
     )
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     events = [event async for event in response.body_iterator]
 
     minigame_event = next(e for e in events if e.event == "minigame")
@@ -260,7 +269,11 @@ async def test_solo_only_gate_suppresses_trigger_in_multiplayer(
         participant_id=participant_one.participant_id,
         action_text="I strike.",
     )
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant_one.user_id, token_version=1),
+    )
     events = [event async for event in response.body_iterator]
 
     assert "minigame" not in [e.event for e in events]
@@ -298,7 +311,11 @@ async def test_end_condition_suppressed_when_minigame_triggers_same_turn(
         participant_id=participant.participant_id,
         action_text="I strike the final blow.",
     )
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     events = [event async for event in response.body_iterator]
 
     assert call_count["n"] == 0
@@ -330,7 +347,11 @@ async def test_pending_minigame_rejects_normal_action(
     )
 
     with pytest.raises(MinigameResultRequiredError):
-        await pipeline.run_turn(turn_input, db_session)
+        await pipeline.run_turn(
+            turn_input,
+            db_session,
+            CurrentUser(user_id=participant.user_id, token_version=1),
+        )
 
 
 async def test_mismatched_minigame_result_is_rejected(
@@ -356,7 +377,11 @@ async def test_mismatched_minigame_result_is_rejected(
     )
 
     with pytest.raises(MinigameResultMismatchError):
-        await pipeline.run_turn(turn_input, db_session)
+        await pipeline.run_turn(
+            turn_input,
+            db_session,
+            CurrentUser(user_id=participant.user_id, token_version=1),
+        )
 
 
 async def test_minigame_result_submission_with_nothing_pending_is_rejected(
@@ -375,7 +400,11 @@ async def test_minigame_result_submission_with_nothing_pending_is_rejected(
     )
 
     with pytest.raises(MinigameResultMismatchError):
-        await pipeline.run_turn(turn_input, db_session)
+        await pipeline.run_turn(
+            turn_input,
+            db_session,
+            CurrentUser(user_id=participant.user_id, token_version=1),
+        )
 
 
 async def test_minigame_result_resolution_applies_mutation_and_clears_pending(
@@ -411,7 +440,11 @@ async def test_minigame_result_resolution_applies_mutation_and_clears_pending(
         action_kind="minigame_result",
         minigame_result={"minigame_id": "mg-wardens-onslaught", "outcome_tag": "win"},
     )
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     events = [event async for event in response.body_iterator]
 
     assert "minigame" not in [e.event for e in events]

@@ -146,6 +146,13 @@ def _request_json(method: str, url: str, headers: Mapping[str, str], body: bytes
     try:
         return _send(conn)
     except HydraHttpError:
+        # Don't trust this connection for the NEXT call on this thread just
+        # because THIS call failed cleanly at the application level -- evict
+        # it, but don't retry here (a genuine bad request/response wouldn't
+        # produce a different result on a fresh connection; retrying would
+        # only double the cost of a real failure).
+        conn.close()
+        _connections.cache.pop(key, None)
         raise
     except (http.client.HTTPException, OSError) as error:
         # A reused connection the server has since closed (idle timeout, HTTP

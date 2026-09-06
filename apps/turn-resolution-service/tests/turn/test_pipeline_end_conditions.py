@@ -13,6 +13,7 @@ from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
 from app.db.models.user import User
 from app.exceptions.turn_exceptions import PlaythroughNotActiveError
+from app.models.auth import CurrentUser
 from app.models.turn import TurnRequestInput
 from app.session import notification_manager
 from app.turn import pipeline
@@ -156,7 +157,11 @@ async def test_matched_end_condition_completes_playthrough(
         participant_id=participant.participant_id,
         action_text="I strike the final blow.",
     )
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     events = [event async for event in response.body_iterator]
 
     assert [e.event for e in events] == [
@@ -201,7 +206,11 @@ async def test_first_matching_condition_wins_ordering(
         participant_id=participant.participant_id,
         action_text="I strike the final blow.",
     )
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     [event async for event in response.body_iterator]
 
     stmt = select(Playthrough).where(
@@ -229,7 +238,11 @@ async def test_no_match_leaves_playthrough_active(
         participant_id=participant.participant_id,
         action_text="I swing and miss.",
     )
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     events = [event async for event in response.body_iterator]
 
     assert [e.event for e in events] == ["narration", "turn_summary", "done"]
@@ -269,7 +282,11 @@ async def test_secret_ending_matches_like_any_other(
         participant_id=participant.participant_id,
         action_text="I offer the pact.",
     )
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     [event async for event in response.body_iterator]
 
     stmt = select(Playthrough).where(
@@ -298,7 +315,11 @@ async def test_post_completion_turn_is_rejected_before_state_loader(
     )
 
     with pytest.raises(PlaythroughNotActiveError):
-        await pipeline.run_turn(turn_input, db_session)
+        await pipeline.run_turn(
+            turn_input,
+            db_session,
+            CurrentUser(user_id=participant.user_id, token_version=1),
+        )
 
     spy.assert_not_awaited()
 
@@ -328,7 +349,11 @@ async def test_multiplayer_fan_out_on_ended_turn(
             participant_id=participant_one.participant_id,
             action_text="I strike the final blow.",
         )
-        response = await pipeline.run_turn(turn_input, db_session)
+        response = await pipeline.run_turn(
+            turn_input,
+            db_session,
+            CurrentUser(user_id=participant_one.user_id, token_version=1),
+        )
         [event async for event in response.body_iterator]
 
         assert not queue.empty()

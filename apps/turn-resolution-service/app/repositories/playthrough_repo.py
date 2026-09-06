@@ -6,6 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.playthrough import Playthrough
+from app.exceptions.turn_exceptions import OptimisticLockError
 
 
 class PlaythroughRepo:
@@ -24,14 +25,21 @@ class PlaythroughRepo:
         self,
         playthrough_id: uuid.UUID,
         state: dict[str, object],
-        turn_count: int,
+        new_turn_count: int,
+        expected_turn_count: int,
     ) -> None:
-        """Update a playthrough's narrative state and turn count."""
-        await self.session.execute(
+        """Update a playthrough's narrative state and turn count with optimistic check."""
+        stmt = (
             update(Playthrough)
-            .where(Playthrough.playthrough_id == playthrough_id)
-            .values(state=state, turn_count=turn_count)
+            .where(
+                Playthrough.playthrough_id == playthrough_id,
+                Playthrough.turn_count == expected_turn_count,
+            )
+            .values(state=state, turn_count=new_turn_count)
         )
+        result = await self.session.execute(stmt)
+        if result.rowcount == 0:
+            raise OptimisticLockError()
 
     async def mark_ended(
         self,

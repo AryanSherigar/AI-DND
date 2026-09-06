@@ -59,7 +59,7 @@ class _RecordingWriteTransport:
 
 def _engine(**authoring_kwargs) -> tuple[MemoryEngine, FakeOrchestrator]:
     orchestrator = FakeOrchestrator()
-    engine = MemoryEngine(orchestrator, retrieval_engine=None, llm_client=None, pg_connection=object(), **authoring_kwargs)
+    engine = MemoryEngine(orchestrator, retrieval_engine=None, llm_client=None, pool=object(), **authoring_kwargs)
     return engine, orchestrator
 
 

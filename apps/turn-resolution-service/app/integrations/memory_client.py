@@ -1,93 +1,138 @@
 """Memory layer client for Turn Resolution Service.
 
-MOCK IMPLEMENTATION — Phase 0-3. Honors the real API contract exactly
-(see app/models/memory.py) so it can be swapped for the real client in
-Phase 4 with zero changes to any caller (context_retrieval.py,
-memory_writer.py). Do not add mock-only fields or behavior that the real
-service won't have — that defeats the point of the mock.
-
-Contract reference: POST /v1/memory/query includes `game_state` (ADR-9),
-used by the real service to evaluate `when_active` expressions on pre-authored
-facts. This mock ignores game_state's contents (it has no facts to filter),
-but accepts and forwards it correctly so callers and tests exercise the real
-request shape.
+Real HTTP client for the memory layer (apps/memory-layer, "mem1"). The only
+file `context_retrieval.py`/`memory_writer.py` are permitted to call
+(CLAUDE.md). The base URL and API key are read only from `app.config`. Never
+logs request/response payloads on failure — only the error type — since a
+query request carries the player's action text and retrieved facts.
 """
 
 from __future__ import annotations
 
-import random
-from uuid import UUID, uuid4
+from typing import Any
+from uuid import UUID
 
+import httpx
+import structlog
+
+from app.config import settings
+from app.exceptions.turn_exceptions import (
+    MemoryBatchNotFoundError,
+    MemoryLayerUnavailableError,
+)
 from app.models.memory import (
     BatchStatus,
-    Fact,
     MemoryIngestRequest,
     MemoryIngestResponse,
     MemoryQueryRequest,
     MemoryQueryResponse,
 )
 
-_MOCK_BATCH_STATUSES: dict[UUID, BatchStatus] = {}
+logger = structlog.get_logger()
 
-MOCK_ABSTAIN_RATE = 0.0
-MOCK_BATCH_FAILURE_RATE = 0.0
+EVENT_MEMORY_QUERY_ERROR = "memory_query_error"
+EVENT_MEMORY_INGEST_ERROR = "memory_ingest_error"
+EVENT_MEMORY_BATCH_STATUS_ERROR = "memory_batch_status_error"
+EVENT_MEMORY_BATCH_RETRY_ERROR = "memory_batch_retry_error"
+
+_NOT_FOUND_STATUS_CODE = 404
+
+_client: httpx.AsyncClient | None = None
+
+
+def _get_client() -> httpx.AsyncClient:
+    """Build the memory-layer HTTP client lazily and cache it.
+
+    Lazy construction avoids binding to settings.memory_service_url at
+    import time, keeping this module import-safe in any environment
+    (tests, CI) regardless of what's configured.
+    """
+    global _client
+    if _client is None:
+        headers = {}
+        if settings.memory_service_api_key:
+            headers["Authorization"] = f"Bearer {settings.memory_service_api_key}"
+        _client = httpx.AsyncClient(
+            base_url=settings.memory_service_url, headers=headers
+        )
+    return _client
+
+
+async def _request(
+    method: str,
+    path: str,
+    timeout_seconds: int,
+    event: str,
+    json_body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Perform one memory-layer HTTP call, translating failures into domain exceptions."""
+    try:
+        response = await _get_client().request(
+            method, path, json=json_body, timeout=timeout_seconds
+        )
+        response.raise_for_status()
+    except httpx.TimeoutException as exc:
+        logger.warning(event, error_type="TimeoutError")
+        raise MemoryLayerUnavailableError() from exc
+    except httpx.ConnectError as exc:
+        logger.warning(event, error_type="ConnectError")
+        raise MemoryLayerUnavailableError() from exc
+    except httpx.HTTPStatusError as exc:
+        raise _map_status_error(exc, event) from exc
+    return response.json()
+
+
+def _map_status_error(exc: httpx.HTTPStatusError, event: str) -> Exception:
+    status_code = exc.response.status_code
+    if status_code == _NOT_FOUND_STATUS_CODE:
+        logger.warning(event, error_type="NotFound")
+        return MemoryBatchNotFoundError()
+    error_type = "ServerError" if status_code >= 500 else "ClientError"
+    logger.warning(event, error_type=error_type, status_code=status_code)
+    return MemoryLayerUnavailableError()
 
 
 async def query_memory(request: MemoryQueryRequest) -> MemoryQueryResponse:
-    """Mock retrieval. Returns plausible fake facts or an abstention."""
-    if random.random() < MOCK_ABSTAIN_RATE:
-        return MemoryQueryResponse(facts=[], abstained=True, resolved_time_point=None)
-
-    fake_facts = [
-        Fact(
-            fact_id=uuid4(),
-            subject="mock_entity",
-            predicate="is_relevant_to",
-            object=request.query_text[:40],
-            valid_from=f"turn_{max(request.as_of_turn or 1, 1)}",
-            valid_until=None,
-            confidence=0.82,
-        )
-    ]
-    return MemoryQueryResponse(
-        facts=fake_facts,
-        abstained=False,
-        resolved_time_point=str(request.as_of_turn) if request.as_of_turn else None,
+    """Query the memory layer for facts relevant to the current turn."""
+    data = await _request(
+        "POST",
+        "/v1/memory/query",
+        settings.memory_query_timeout_seconds,
+        EVENT_MEMORY_QUERY_ERROR,
+        request.model_dump(mode="json"),
     )
+    return MemoryQueryResponse.model_validate(data)
 
 
 async def ingest_batch(request: MemoryIngestRequest) -> MemoryIngestResponse:
-    """Mock batched extraction submission."""
-    batch_id = uuid4()
-    failed = random.random() < MOCK_BATCH_FAILURE_RATE
-    _MOCK_BATCH_STATUSES[batch_id] = BatchStatus(
-        batch_id=batch_id,
-        status="failed" if failed else "succeeded",
-        facts_created=0 if failed else len(request.turns_batch) * 2,
-        error="mock simulated failure" if failed else None,
-        retryable=failed,
+    """Submit a batch of recent turns for asynchronous extraction."""
+    data = await _request(
+        "POST",
+        "/v1/memory/ingest",
+        settings.memory_ingest_timeout_seconds,
+        EVENT_MEMORY_INGEST_ERROR,
+        request.model_dump(mode="json"),
     )
-    return MemoryIngestResponse(batch_id=batch_id)
+    return MemoryIngestResponse.model_validate(data)
 
 
 async def get_batch_status(batch_id: UUID) -> BatchStatus:
-    """Mock batch status check."""
-    if batch_id not in _MOCK_BATCH_STATUSES:
-        return BatchStatus(
-            batch_id=batch_id, status="pending", facts_created=0, retryable=False
-        )
-    return _MOCK_BATCH_STATUSES[batch_id]
+    """Poll the status of a previously submitted ingest batch."""
+    data = await _request(
+        "GET",
+        f"/v1/memory/batch/{batch_id}/status",
+        settings.memory_query_timeout_seconds,
+        EVENT_MEMORY_BATCH_STATUS_ERROR,
+    )
+    return BatchStatus.model_validate(data)
 
 
 async def retry_batch(batch_id: UUID) -> MemoryIngestResponse:
-    """Mock batch retry. Marks the batch succeeded on retry."""
-    if batch_id in _MOCK_BATCH_STATUSES:
-        old = _MOCK_BATCH_STATUSES[batch_id]
-        _MOCK_BATCH_STATUSES[batch_id] = BatchStatus(
-            batch_id=batch_id,
-            status="succeeded",
-            facts_created=max(old.facts_created, 2),
-            error=None,
-            retryable=False,
-        )
-    return MemoryIngestResponse(batch_id=batch_id)
+    """Re-trigger a failed or partial ingest batch."""
+    data = await _request(
+        "POST",
+        f"/v1/memory/batch/{batch_id}/retry",
+        settings.memory_query_timeout_seconds,
+        EVENT_MEMORY_BATCH_RETRY_ERROR,
+    )
+    return MemoryIngestResponse.model_validate(data)

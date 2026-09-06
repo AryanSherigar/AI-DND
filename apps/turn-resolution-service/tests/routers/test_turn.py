@@ -94,3 +94,66 @@ async def test_submit_turn_requires_authentication(async_client: AsyncClient) ->
     )
 
     assert response.status_code == 401
+
+
+async def test_submit_turn_forbidden_for_different_user(
+    async_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    playthrough, participant = await _seed_playthrough(db_session)
+    attacker_user_id = uuid.uuid4()
+
+    response = await async_client.post(
+        "/v1/turn",
+        json={
+            "playthrough_id": str(playthrough.playthrough_id),
+            "participant_id": str(participant.participant_id),
+            "action_text": "I step forward.",
+        },
+        headers={"x-dev-user-id": str(attacker_user_id)},
+    )
+
+    assert response.status_code == 403
+    assert (
+        response.json().get("detail")
+        == "Participant does not belong to authenticated user"
+    )
+
+
+async def test_submit_turn_forbidden_in_multiplayer_impersonation(
+    async_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    playthrough, participant_one = await _seed_playthrough(db_session)
+    user_two = User(
+        user_id=uuid.uuid4(),
+        display_name="Player Two",
+        auth_provider_id=str(uuid.uuid4()),
+    )
+    db_session.add(user_two)
+    await db_session.flush()
+
+    participant_two = Participant(
+        playthrough_id=playthrough.playthrough_id,
+        user_id=user_two.user_id,
+        role="joined",
+        turn_order_position=2,
+    )
+    db_session.add(participant_two)
+    await db_session.flush()
+    await db_session.commit()
+
+    # User Two attempts to execute a turn as Participant One
+    response = await async_client.post(
+        "/v1/turn",
+        json={
+            "playthrough_id": str(playthrough.playthrough_id),
+            "participant_id": str(participant_one.participant_id),
+            "action_text": "I attack out of turn as Player One.",
+        },
+        headers={"x-dev-user-id": str(user_two.user_id)},
+    )
+
+    assert response.status_code == 403
+    assert (
+        response.json().get("detail")
+        == "Participant does not belong to authenticated user"
+    )

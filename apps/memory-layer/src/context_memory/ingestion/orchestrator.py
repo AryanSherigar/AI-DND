@@ -64,6 +64,16 @@ logger = get_logger(__name__)
 # Errors that mean the payload/policy itself is invalid; retrying unchanged input cannot help.
 _TERMINAL_ERROR_TYPES = (ContractValidationError, ImmutableRecordConflictError, GraphPayloadConflictError)
 
+# AI-DND memory-layer contract: sources whose content is narrative game
+# prose rather than chat dialogue, routed to `narrative_extraction_service`
+# (a separately-prompted ExtractionService, see composition.py) instead of
+# the default chat/LongMemEval-tuned one. `scenario_template` (newbie-mode
+# creator lore) is included on the same reasoning as `turn_batch` -- both are
+# narrative-shaped prose -- though only `turn_batch` has been independently
+# verified against real event-phrased content; narrow this set if that
+# extrapolation should be descoped later.
+_NARRATIVE_SOURCE_TYPES = frozenset({"turn_batch", "scenario_template"})
+
 
 @dataclass(frozen=True)
 class ChunkRunResult:
@@ -100,10 +110,16 @@ class IngestionOrchestrator:
         find_existing_facts: FindExistingFacts | None = None,
         write_batch_size: int = 1,
         resolve_many: ResolveManyEntities | None = None,
+        narrative_extraction_service: ExtractionService | None = None,
     ) -> None:
         self._chunk_store = chunk_store
         self._job_store = job_store
         self._extraction_service = extraction_service
+        # AI-DND memory-layer contract: optional narrative-prompted sibling,
+        # dispatched by `batch.source.source_type` in `_extraction_service_for`
+        # below. None (every existing caller/test) preserves the exact prior
+        # behavior of always using `extraction_service`.
+        self._narrative_extraction_service = narrative_extraction_service
         self._graph_plan_builder = graph_plan_builder
         self._graph_writer = graph_writer
         self._resolve_entity = resolve_entity
@@ -226,11 +242,20 @@ class IngestionOrchestrator:
             group_ctx["completed_count"] = sum(1 for cid in order if results[cid].state == IngestionJobState.COMPLETED)
             return [results[cid] for cid in order]
 
+    def _extraction_service_for(self, source_type: str) -> ExtractionService:
+        """AI-DND memory-layer contract: narrative sources get the
+        narrative-tuned extractor when one was supplied; every other source
+        (chat, longmemeval, an omitted narrative service) keeps the default."""
+        if self._narrative_extraction_service is not None and source_type in _NARRATIVE_SOURCE_TYPES:
+            return self._narrative_extraction_service
+        return self._extraction_service
+
     def _extract_and_plan(
         self, batch: ContextBatch, record: ContextRecord, chunk: Chunk
     ) -> tuple[ExtractionResult, GraphWritePlan]:
         with timed_operation(logger, "orchestrator.stage.extraction", {"chunk_id": chunk.chunk_id}) as stage_ctx:
-            extraction = self._extraction_service.extract(batch, record, chunk)
+            extraction_service = self._extraction_service_for(batch.source.source_type)
+            extraction = extraction_service.extract(batch, record, chunk)
             stage_ctx["accepted_facts"] = len(extraction.accepted)
             stage_ctx["rejected_facts"] = len(extraction.rejected)
 

@@ -102,6 +102,19 @@ class FakeConnection:
         return nullcontext()
 
 
+class FakePool:
+    """`SavePointStore`/`RollbackService` now acquire a connection per call
+    via `pool.connection()` -- this just yields the same fake connection
+    every time, so existing tests can keep asserting against one shared
+    `FakeConnection`'s recorded state."""
+
+    def __init__(self, connection: "FakeConnection") -> None:
+        self._connection = connection
+
+    def connection(self):
+        return nullcontext(self._connection)
+
+
 class FakeGraphWriter:
     def __init__(self) -> None:
         self.plans: list[GraphWritePlan] = []
@@ -114,13 +127,13 @@ class FakeGraphWriter:
 class SavePointStoreTests(unittest.TestCase):
     def test_create_then_get_round_trips(self) -> None:
         connection = FakeConnection()
-        store = SavePointStore(connection)
+        store = SavePointStore(FakePool(connection))
         created = store.create("ctx-1", "sess-1", "before boss fight")
         fetched = store.get(created.save_id)
         self.assertEqual(fetched, created)
 
     def test_get_unknown_save_id_returns_none(self) -> None:
-        self.assertIsNone(SavePointStore(FakeConnection()).get("nope"))
+        self.assertIsNone(SavePointStore(FakePool(FakeConnection())).get("nope"))
 
 
 UTC = timezone.utc
@@ -130,7 +143,7 @@ class RollbackServiceTests(unittest.TestCase):
     def test_no_writes_after_save_point_is_a_no_op(self) -> None:
         connection = FakeConnection()
         writer = FakeGraphWriter()
-        service = RollbackService(connection, writer)
+        service = RollbackService(FakePool(connection), writer)
         save_point = SavePoint("save-1", "ctx-1", None, None, datetime.now(UTC), datetime.now(UTC))
 
         result = service.rollback_to(save_point)
@@ -145,7 +158,7 @@ class RollbackServiceTests(unittest.TestCase):
         connection.candidates = [("cand-new", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))]
         connection.graph_ids = {"fact:cand-new": 101}
         writer = FakeGraphWriter()
-        service = RollbackService(connection, writer)
+        service = RollbackService(FakePool(connection), writer)
         save_point = SavePoint("save-1", "ctx-1", None, None, cutoff, datetime.now(UTC))
 
         result = service.rollback_to(save_point)
@@ -165,7 +178,7 @@ class RollbackServiceTests(unittest.TestCase):
         connection.valid_to_by_id = {"cand-old": original_valid_to}
         connection.graph_ids = {"fact:cand-new": 101, "fact:cand-old": 100}
         writer = FakeGraphWriter()
-        service = RollbackService(connection, writer)
+        service = RollbackService(FakePool(connection), writer)
         save_point = SavePoint("save-1", "ctx-1", None, None, cutoff, datetime.now(UTC))
 
         result = service.rollback_to(save_point)
@@ -186,7 +199,7 @@ class RollbackServiceTests(unittest.TestCase):
         connection.valid_to_by_id = {"cand-old": None}
         connection.graph_ids = {"fact:cand-new": 101, "fact:cand-old": 100}
         writer = FakeGraphWriter()
-        service = RollbackService(connection, writer)
+        service = RollbackService(FakePool(connection), writer)
         save_point = SavePoint("save-1", "ctx-1", None, None, cutoff, datetime.now(UTC))
 
         service.rollback_to(save_point)

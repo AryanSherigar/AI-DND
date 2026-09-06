@@ -155,6 +155,45 @@ class FakeExternalFactIdStore:
         self._rows[(context_id, external_fact_id)] = (graph_id, logical_key)
 
 
+class FakeFactProjector:
+    def __init__(self):
+        self.calls: list[tuple[str, int, str]] = []
+
+    def project(self, context_id, fact_graph_id, text):
+        self.calls.append((context_id, fact_graph_id, text))
+
+
+class FactProjectorWiringTests(unittest.TestCase):
+    """mem1 gap #46 fix: write_fact must reach FactProjectionWriter (via its
+    ingestion.fact_projection.FactProjector Protocol) after the graph write
+    succeeds, or the fact stays invisible to CandidateSeeder forever."""
+
+    def test_project_is_called_with_the_new_facts_own_graph_id_and_display_text(self):
+        allocator, writer, _transport = _writer()
+        write_entity("ctx-1", DirectEntityInput(canonical_name="Sukuna", entity_type="character"), allocator, writer)
+        projector = FakeFactProjector()
+
+        fact_id = write_fact(
+            "ctx-1",
+            DirectFactInput(predicate="is_strongest", subject_canonical_name="Sukuna", object_literal="true"),
+            allocator, writer, fact_projector=projector,
+        )
+
+        self.assertEqual(projector.calls, [("ctx-1", fact_id, "Sukuna is_strongest true")])
+
+    def test_no_projector_given_is_a_silent_no_op(self):
+        """Every existing caller that never wires one (most tests above)
+        must keep working exactly as before."""
+        allocator, writer, _transport = _writer()
+        write_entity("ctx-1", DirectEntityInput(canonical_name="Sukuna", entity_type="character"), allocator, writer)
+
+        write_fact(  # must not raise
+            "ctx-1",
+            DirectFactInput(predicate="is_strongest", subject_canonical_name="Sukuna", object_literal="true"),
+            allocator, writer,
+        )
+
+
 class HiddenFactTests(unittest.TestCase):
     """AI-DND memory-layer contract: an author-marked-secret fact -- mem1
     never filters on it, just persists and returns it truthfully."""

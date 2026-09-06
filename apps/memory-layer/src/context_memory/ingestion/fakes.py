@@ -105,6 +105,15 @@ class InMemoryEmbeddingStore:
             k[0] == context_id and k[1] == subject_kind and k[2] == subject_id for k in self._rows
         )
 
+    def get_active(
+        self, context_id: str, subject_kind: str, subject_id: str, model_name: str, model_version: str
+    ) -> tuple[float, ...] | None:
+        """Mirrors `PostgresEmbeddingStore.get_active` -- lets
+        `FactProjectionWriter.project_copy` tests exercise the "reuse an
+        already-computed vector" path without a real database."""
+        row = self._rows.get((context_id, subject_kind, subject_id, model_name, model_version))
+        return row.values if row is not None and row.is_active else None
+
     def deactivate(self, context_id: str, subject_kind: str, subject_id: str) -> None:
         for key, embedding in list(self._rows.items()):
             if key[0] == context_id and key[1] == subject_kind and key[2] == subject_id:

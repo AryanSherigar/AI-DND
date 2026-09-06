@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # but declared here now so the real client has settings to read.
     memory_service_url: str = "http://localhost:8002"
     memory_service_api_key: str = ""
+    memory_query_timeout_seconds: int = 3
+    memory_ingest_timeout_seconds: int = 5
+    memory_template_timeout_seconds: int = 10
+    memory_clone_timeout_seconds: int = 5
 
 
 settings = Settings()

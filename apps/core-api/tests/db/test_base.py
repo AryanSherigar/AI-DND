@@ -108,8 +108,8 @@ def test_indexes_and_unique_constraints() -> None:
     assert "idx_scenarios_genre_tags" in scenarios_index_names
 
     turn_logs_table = Base.metadata.tables["turn_logs"]
-    turn_logs_index_names = {idx.name for idx in turn_logs_table.indexes}
-    assert "idx_turn_logs_playthrough_turn" in turn_logs_index_names
+    turn_logs_constraint_names = {c.name for c in turn_logs_table.constraints}
+    assert "uq_turn_logs_playthrough_turn" in turn_logs_constraint_names
 
     users_table = Base.metadata.tables["users"]
     auth_col = users_table.columns["auth_provider_id"]

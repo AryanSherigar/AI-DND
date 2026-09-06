@@ -256,6 +256,11 @@ class _BatchedFactExtractionResponse(BaseModel):
     turns: list[_BatchedTurnFacts] = []
 
 
+def _format_turn_block(local_idx: int, record: ContextRecord) -> str:
+    speaker_line = f"Speaker: {record.actor_role}\n" if record.actor_role else ""
+    return f"--- Turn {local_idx} ---\n{speaker_line}Content: {record.content}"
+
+
 class LLMExtractor:
     """`ingestion.ports.Extractor` backed by structured LLM fact distillation."""
 
@@ -326,7 +331,12 @@ class LLMExtractor:
         # docs/fixes_and_evaluation_findings.md §3 for the reasoning).
         max_tokens = self._config.extraction_max_tokens_for(len(content))
         with timed_operation(logger, "extractor.extract", {"record_id": record.record_id, "content_len": len(content), "max_tokens": max_tokens}) as ctx:
-            user_prompt = f"Speaker: {record.actor_role}\nContent: {content}\n\nExtract atomic facts:"
+            # `actor_role` is unset for runtime narrative/lore records (no
+            # single speaker) -- omit the line rather than literally sending
+            # "Speaker: None" on every such call. Chat/LongMemEval records
+            # always set actor_role, so this is byte-identical there.
+            speaker_line = f"Speaker: {record.actor_role}\n" if record.actor_role else ""
+            user_prompt = f"{speaker_line}Content: {content}\n\nExtract atomic facts:"
             try:
                 res = self._client.structured_completion(
                     self._config.fact_extraction_system_prompt, user_prompt, _FactExtractionResponse,
@@ -378,10 +388,7 @@ class LLMExtractor:
         if not non_empty:
             return results
 
-        prompt_parts = [
-            f"--- Turn {local_idx} ---\nSpeaker: {record.actor_role}\nContent: {record.content}"
-            for local_idx, (_, record) in enumerate(non_empty)
-        ]
+        prompt_parts = [_format_turn_block(local_idx, record) for local_idx, (_, record) in enumerate(non_empty)]
         user_prompt = "\n\n".join(prompt_parts) + "\n\nExtract atomic facts for each turn above, grouped by turn_index:"
         max_tokens = self._config.extraction_batch_max_tokens_for([len(record.content) for _, record in non_empty])
 

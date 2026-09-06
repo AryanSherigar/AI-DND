@@ -35,6 +35,7 @@ class Fact(BaseModel):
     valid_until: str | None = None
     confidence: float
     hidden: bool = False
+    when_active: dict[str, Any] | None = None
 
 
 class MemoryQueryResponse(BaseModel):

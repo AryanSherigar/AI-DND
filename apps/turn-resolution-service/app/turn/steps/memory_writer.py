@@ -1,4 +1,4 @@
-"""Batches recent turns to the (mocked) memory layer roughly every N turns.
+"""Batches recent turns to the memory layer roughly every N turns.
 
 Failures here are swallowed and logged, never raised: per RFC ADR-5 and the
 Data Consistency section, memory writes are best-effort and must never block

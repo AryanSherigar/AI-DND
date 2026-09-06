@@ -16,7 +16,7 @@ import structlog
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import settings
-from app.exceptions.turn_exceptions import StateWriteError
+from app.exceptions.turn_exceptions import OptimisticLockError, StateWriteError
 from app.models.turn import LoadedState, TurnRequest
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_repo import ScenarioRepo
@@ -66,6 +66,7 @@ async def write_turn(
         loaded_state.scenario_id,
         loaded_state.is_playtest,
         new_turn_count,
+        loaded_state.turn_count,
         narration_text,
         updated_state,
         tool_calls or [],
@@ -82,11 +83,27 @@ async def write_turn(
     return updated_state
 
 
+def _handle_write_error(
+    exc: SQLAlchemyError,
+    attempt: int,
+    max_attempts: int,
+    playthrough_id: str,
+) -> None:
+    if attempt == max_attempts - 1:
+        logger.error(
+            EVENT_TURN_STATE_WRITE_FAILED,
+            playthrough_id=playthrough_id,
+            retry_count=attempt,
+        )
+        raise StateWriteError() from exc
+
+
 async def _persist_with_retry(
     turn_request: TurnRequest,
     scenario_id: uuid.UUID,
     is_playtest: bool,
     new_turn_count: int,
+    expected_turn_count: int,
     narration_text: str,
     updated_state: dict[str, object],
     tool_calls: list[dict[str, object]],
@@ -102,6 +119,7 @@ async def _persist_with_retry(
                 scenario_id,
                 is_playtest,
                 new_turn_count,
+                expected_turn_count,
                 narration_text,
                 updated_state,
                 tool_calls,
@@ -110,15 +128,14 @@ async def _persist_with_retry(
                 scenario_repo,
             )
             return attempt
+        except OptimisticLockError:
+            await playthrough_repo.session.rollback()
+            raise
         except SQLAlchemyError as exc:
             await playthrough_repo.session.rollback()
-            if attempt == max_attempts - 1:
-                logger.error(
-                    EVENT_TURN_STATE_WRITE_FAILED,
-                    playthrough_id=str(turn_request.playthrough_id),
-                    retry_count=attempt,
-                )
-                raise StateWriteError() from exc
+            _handle_write_error(
+                exc, attempt, max_attempts, str(turn_request.playthrough_id)
+            )
     return max_attempts - 1
 
 
@@ -127,6 +144,7 @@ async def _write_once(
     scenario_id: uuid.UUID,
     is_playtest: bool,
     new_turn_count: int,
+    expected_turn_count: int,
     narration_text: str,
     updated_state: dict[str, object],
     tool_calls: list[dict[str, object]],
@@ -134,6 +152,12 @@ async def _write_once(
     turn_log_repo: TurnLogRepo,
     scenario_repo: ScenarioRepo,
 ) -> None:
+    await playthrough_repo.update_state(
+        turn_request.playthrough_id,
+        updated_state,
+        new_turn_count,
+        expected_turn_count,
+    )
     await turn_log_repo.create(
         playthrough_id=turn_request.playthrough_id,
         turn_number=new_turn_count,
@@ -141,9 +165,6 @@ async def _write_once(
         action_text=turn_request.action_text,
         narration_text=narration_text,
         tool_calls=tool_calls,
-    )
-    await playthrough_repo.update_state(
-        turn_request.playthrough_id, updated_state, new_turn_count
     )
     should_increment_play_count = (
         new_turn_count == settings.play_count_increment_turn_threshold

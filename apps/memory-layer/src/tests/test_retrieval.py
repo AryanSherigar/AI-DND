@@ -105,7 +105,7 @@ class JsonFileRewriteCacheTests(unittest.TestCase):
             path = str(Path(tmp) / "rw.json")
             config = Config(query_rewrite_cache_path=path)
             engine = HybridRetrievalEngine(
-                llm_client=object(), embedder=object(), pg_connection=object(),
+                llm_client=object(), embedder=object(), pool=object(),
                 hydra_client=object(), config=config,
             )
             self.assertIsInstance(engine._rewrite_cache, JsonFileRewriteCache)

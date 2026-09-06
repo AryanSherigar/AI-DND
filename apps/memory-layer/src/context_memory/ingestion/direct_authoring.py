@@ -61,6 +61,15 @@ class ExternalFactIdStore(Protocol):
     def put(self, context_id: str, external_fact_id: str, graph_id: int, logical_key: str) -> None: ...
 
 
+class FactProjector(Protocol):
+    """Duck-typed to `ingestion.fact_projection.FactProjectionWriter` -- kept
+    as a locally-declared Protocol for the same reason `FactMetadataStore`/
+    `ExternalFactIdStore` above are: this module depends only on the one
+    method shape it needs, not on fact_projection.py's own internals."""
+
+    def project(self, context_id: str, fact_graph_id: int, text: str) -> None: ...
+
+
 _OPEN_ENDED_VALID_TO = 9999999999
 _NO_LOWER_BOUND_VALID_FROM = 0
 # Creator-authored facts are ground truth, not an LLM's extraction guess --
@@ -135,6 +144,7 @@ def write_fact(
     context_id: str, fact: DirectFactInput, allocator: GraphIdAllocator, graph_writer: GraphWriter,
     fact_metadata_store: FactMetadataStore | None = None,
     external_fact_id_store: ExternalFactIdStore | None = None,
+    fact_projector: FactProjector | None = None,
 ) -> int:
     """Direct-writes one Fact node plus its ABOUT edge to the subject entity
     (and a RELATES_TO edge to the object entity, when the object is a
@@ -221,6 +231,14 @@ def write_fact(
         nodes=tuple(nodes), relationships=tuple(relationships),
     )
     graph_writer.write(plan)
+
+    # mem1 gap #46 fix: without this, `fact_node` above is durable in
+    # HydraDB but CandidateSeeder.seed() -- which starts retrieval only from
+    # memory_embeddings/fact_search_index -- can never find it. See
+    # ingestion.fact_projection's module docstring for the identity
+    # convention (fact_graph_id, not fact_key) this relies on.
+    if fact_projector is not None:
+        fact_projector.project(context_id, fact_graph_id, display_text)
 
     if external_fact_id_store is not None and fact.external_fact_id is not None:
         external_fact_id_store.put(context_id, fact.external_fact_id, fact_graph_id, fact_key)

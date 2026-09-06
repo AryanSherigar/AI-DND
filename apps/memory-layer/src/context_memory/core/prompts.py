@@ -148,6 +148,104 @@ BATCHED_FACT_EXTRACTION_SYSTEM_PROMPT = (
     "Return only the JSON object."
 )
 
+# AI-DND memory-layer contract: narrative-content sibling of
+# FACT_EXTRACTION_SYSTEM_PROMPT, used only for runtime turn-batch ingestion
+# and (per the same reasoning) scenario-template lore ingestion -- never for
+# chat/LongMemEval, whose prompt this leaves untouched. Verified live: the
+# chat-tuned prompt above reliably extracted 0 facts from event-phrased
+# narration ("You discover the Sunstone Amulet gleaming atop a stone
+# pedestal.") because "facts about the user or assistant" reads a narrated
+# EVENT as not being about either persona, even though the event plainly
+# implies a durable world-state change. This prompt reframes the same
+# schema (predicate_key/subject/object/entities/confidence/action are
+# unchanged, only the framing/instructions differ) around world state:
+# possessions, locations, character status, relationships, and discovered
+# knowledge, with a narrated event treated as evidence of the state it
+# produces. Also folds in Bug 3's retrieval-recall finding: `entities` only
+# feeds HydraDB graph edges, never `fact_search_index`/`memory_embeddings`
+# (confirmed by tracing orchestrator._persist_embeddings_and_index and
+# graph_plan_builder.build) -- padding `entities` cannot help keyword-search
+# recall, so this prompt asks for synonym phrasing INLINE in `text` instead
+# (the field BM25/embeddings actually see) and for consistent canonical
+# entity naming (feeds EntityRegistry canonicalization -> structural/
+# entity-boost score), rather than relying on `entities` list padding.
+NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT = (
+    "Extract atomic, enduring facts about the state of the world — possessions, locations, "
+    "character status, relationships, and discovered knowledge — from the narrated events in "
+    "this passage. Treat a narrated EVENT as evidence of a resulting STATE, even when the "
+    "sentence describes an action rather than asserting the state directly: 'You discover the "
+    "Sunstone Amulet gleaming atop a stone pedestal' implies the fact 'the player now possesses "
+    "the Sunstone Amulet' just as much as a sentence that states possession outright. "
+    "Skip pure flavor description that asserts no durable change (mood, scenery, atmosphere) "
+    "and anything true only for this one narrated moment. "
+    "Each fact must stand alone: resolve pronouns and character references, and split compound "
+    "statements into separate facts. "
+    "Never drop an identifier, quantity, or itemized property when splitting or condensing a "
+    "sentence -- it belongs IN that fact, not discarded as a side detail. "
+    "predicate_key is a snake_case category (e.g. possession, location, status, relationship). "
+    "subject is the normalized entity or value the fact is about (e.g. 'player', 'the King'); "
+    "object is the normalized value or entity the predicate points to (e.g. 'Sunstone Amulet', "
+    "'the eastern tower') -- short and canonical, not a restatement of the whole sentence. "
+    # Bug 3's compensation for cutting query-time synonym expansion on this
+    # endpoint: keyword search and embeddings only ever see `text`, never
+    # `entities` -- so a synonym belongs in the sentence itself.
+    "text stays the full atomic sentence, as evidence -- where an object has a common "
+    "alternate name a player might search for (e.g. a sword also called a blade, a key also "
+    "called a key ring), mention it naturally in the same sentence rather than only in a "
+    "separate fact, since this is the field keyword search actually matches against. "
+    # Consistent naming feeds entity-boost/structural retrieval, the other
+    # channel that can pick up slack keyword search can't reach.
+    "Name the same character, item, or place identically across every fact in this passage -- "
+    "do not alternate between 'the King' and 'the ruler' for the same person. "
+    "entities lists the key subjects of the fact: named characters, items, and places, plus "
+    "salient topic nouns (e.g. quest, faction, treasure). "
+    "exact_quote is the verbatim substring evidencing the fact. "
+    "confidence: >0.9 plain assertions, <0.6 hedged or implied. "
+    "action: ADD, or UPDATE/DELETE if it changes or invalidates an earlier fact. "
+    "No durable state changes means an empty facts list — do not invent one. "
+    "Return only the JSON object."
+)
+
+# Batched sibling of NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT, same relationship
+# BATCHED_FACT_EXTRACTION_SYSTEM_PROMPT has to FACT_EXTRACTION_SYSTEM_PROMPT above.
+BATCHED_NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT = (
+    "You will be given several numbered turns, each formatted as '--- Turn N ---' followed by "
+    "a Speaker and Content line. Extract atomic, enduring facts about the state of the world — "
+    "possessions, locations, character status, relationships, and discovered knowledge — "
+    "SEPARATELY for each turn — never merge or infer facts across turns; treat each turn's own "
+    "Content as the only evidence for that turn's facts. "
+    "Treat a narrated EVENT as evidence of a resulting STATE, even when the sentence describes "
+    "an action rather than asserting the state directly: 'You discover the Sunstone Amulet "
+    "gleaming atop a stone pedestal' implies the fact 'the player now possesses the Sunstone "
+    "Amulet' just as much as a sentence that states possession outright. "
+    "Skip pure flavor description that asserts no durable change (mood, scenery, atmosphere) "
+    "and anything true only for this one narrated moment. "
+    "Each fact must stand alone: resolve pronouns and character references using only that "
+    "turn's own Speaker/Content, and split compound statements into separate facts. "
+    "Never drop an identifier, quantity, or itemized property when splitting or condensing a "
+    "sentence -- it belongs IN that fact, not discarded as a side detail. "
+    "predicate_key is a snake_case category (e.g. possession, location, status, relationship). "
+    "subject is the normalized entity or value the fact is about (e.g. 'player', 'the King'); "
+    "object is the normalized value or entity the predicate points to (e.g. 'Sunstone Amulet', "
+    "'the eastern tower') -- short and canonical, not a restatement of the whole sentence. "
+    "text stays the full atomic sentence, as evidence -- where an object has a common "
+    "alternate name a player might search for, mention it naturally in the same sentence "
+    "rather than only in a separate fact, since this is the field keyword search actually "
+    "matches against. "
+    "Name the same character, item, or place identically across every fact in this passage -- "
+    "do not alternate between 'the King' and 'the ruler' for the same person. "
+    "entities lists the key subjects of the fact: named characters, items, and places, plus "
+    "salient topic nouns (e.g. quest, faction, treasure). "
+    "exact_quote is the verbatim substring from THAT SAME turn's Content evidencing the fact "
+    "— never quote text from a different turn. "
+    "confidence: >0.9 plain assertions, <0.6 hedged or implied. "
+    "action: ADD, or UPDATE/DELETE if it changes or invalidates an earlier fact. "
+    "Return one entry in `turns` for EVERY turn shown, with turn_index copied exactly from "
+    "that turn's '--- Turn N ---' marker and a facts list (empty if that turn has no durable "
+    "state changes — do not invent one, and do not omit the entry). "
+    "Return only the JSON object."
+)
+
 # {question_date} is substituted at call time (current reference time for the question).
 TEMPORAL_RESOLVER_SYSTEM_PROMPT_TEMPLATE = (
     "You are a temporal query resolver. Current reference time is {question_date} (UTC). "

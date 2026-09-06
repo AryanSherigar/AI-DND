@@ -8,10 +8,12 @@ wiring happens now; both callers delegate to it.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import psycopg
+from psycopg_pool import ConnectionPool
 
 from context_memory.client.hydradb_http import HydraHttpTransport
 from context_memory.core.config import Config
@@ -21,6 +23,7 @@ from context_memory.core.tracing import configure_tracing
 from context_memory.engine import MemoryEngine
 from context_memory.ingestion.embedding import SentenceTransformerEmbedder
 from context_memory.ingestion.extraction import ExtractionService
+from context_memory.ingestion.fact_projection import FactProjectionWriter
 from context_memory.ingestion.fact_lookup import HydraFactLookup
 from context_memory.ingestion.graph_plan_builder import GraphPlanBuilder
 from context_memory.ingestion.graph_writer import GraphWriter
@@ -56,7 +59,7 @@ def _journaled(client: LLMClient, journal: StepJournal | None, call_role: str) -
 
 def build_ingestion_and_retrieval(
     *,
-    pg_connection: Any,
+    pool: Any,
     hydra_transport: Any,
     embedder: Any,
     config: Config,
@@ -74,16 +77,36 @@ def build_ingestion_and_retrieval(
     or received here (Phase 5's step journal) -- the one composition root is
     exactly where this belongs, since it's the only place any of these
     clients is ever built."""
-    chunk_store = PostgresChunkStore(pg_connection)
-    job_store = PostgresJobStore(pg_connection)
-    manifest_store = PostgresGraphManifestStore(pg_connection)
-    embedding_store = PostgresEmbeddingStore(pg_connection)
-    search_index_store = PostgresSearchIndexStore(pg_connection)
-    ext_store = extraction_store or PostgresExtractionStore(pg_connection)
+    chunk_store = PostgresChunkStore(pool)
+    job_store = PostgresJobStore(pool)
+    manifest_store = PostgresGraphManifestStore(pool)
+    embedding_store = PostgresEmbeddingStore(pool)
+    search_index_store = PostgresSearchIndexStore(pool)
+    ext_store = extraction_store or PostgresExtractionStore(pool)
 
     if extractor is None:
         extractor = LLMExtractor(_journaled(config.get_extractor_client(), journal, "extractor"), config)
     extraction_service = ExtractionService(extractor, ext_store)
+
+    # AI-DND memory-layer contract: a second, narrative-prompted extractor
+    # pair, dispatched by source_type inside IngestionOrchestrator (see
+    # `_extraction_service_for`). Only differs from the pair above in which
+    # prompt fields `narrative_config` carries -- same client role, same
+    # audit store, so a narrative-sourced attempt shows up in the same
+    # extraction_attempts trail as any other. Building this unconditionally
+    # (rather than only when a narrative source is expected) costs nothing:
+    # `evaluation/benchmark_runner.py` also calls this function, and its
+    # batches are always tagged "longmemeval", which the orchestrator's
+    # dispatch never selects this extractor for.
+    narrative_config = replace(
+        config,
+        fact_extraction_system_prompt=config.narrative_fact_extraction_system_prompt,
+        batched_fact_extraction_system_prompt=config.batched_narrative_fact_extraction_system_prompt,
+    )
+    narrative_extractor = LLMExtractor(
+        _journaled(config.get_extractor_client(), journal, "extractor"), narrative_config
+    )
+    narrative_extraction_service = ExtractionService(narrative_extractor, ext_store)
 
     entity_resolution_model = LLMEntityResolutionModel(
         _journaled(config.get_entity_resolution_client(), journal, "entity_resolution"), config
@@ -123,12 +146,13 @@ def build_ingestion_and_retrieval(
         update_classifier=update_classifier,
         find_existing_facts=fact_lookup.find_existing,
         write_batch_size=config.ingestion_write_batch_size,
+        narrative_extraction_service=narrative_extraction_service,
     )
 
     retrieval_engine = HybridRetrievalEngine(
         llm_client=_journaled(reader_llm_client, journal, "reader"),
         embedder=embedder,
-        pg_connection=pg_connection,
+        pool=pool,
         hydra_client=hydra_transport,
         config=config,
         temporal_resolver_client=_journaled(config.get_temporal_resolver_client(), journal, "temporal_resolver"),
@@ -155,10 +179,19 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
     if not hydra_url.startswith("http://") and not hydra_url.startswith("https://"):
         hydra_url = f"http://{hydra_url}"
 
-    pg_connection = psycopg.connect(config.database_url, autocommit=True)
+    pool = ConnectionPool(
+        config.database_url,
+        min_size=config.postgres_pool_min_size,
+        max_size=config.postgres_pool_max_size,
+        timeout=config.postgres_pool_timeout_seconds,
+        kwargs={"autocommit": True},
+        open=True,
+    )
+    pool.wait(timeout=config.postgres_pool_timeout_seconds)
     migrations_dir = Path(__file__).resolve().parents[2] / "db" / "migrations"
     if migrations_dir.exists():
-        apply_migrations(pg_connection, migrations_dir)
+        with pool.connection() as conn:
+            apply_migrations(conn, migrations_dir)
 
     hydra_transport = HydraHttpTransport(
         base_url=hydra_url,
@@ -167,10 +200,16 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
         timeout_seconds=config.hydradb_request_timeout_seconds,
     )
     embedder = SentenceTransformerEmbedder(model_name=config.embedding_model_name)
-    journal = StepJournal(pg_connection) if config.step_journal_enabled else None
+    # StepJournal keeps its own dedicated, non-pooled connection -- it
+    # already serializes access with its own internal lock (a different
+    # concurrency shape than the pool's per-call acquisition), so folding it
+    # into the shared pool would add nothing and would complicate its
+    # single-connection design for no benefit.
+    journal_connection = psycopg.connect(config.database_url, autocommit=True) if config.step_journal_enabled else None
+    journal = StepJournal(journal_connection) if journal_connection is not None else None
 
     orchestrator, retrieval_engine, _extractor = build_ingestion_and_retrieval(
-        pg_connection=pg_connection,
+        pool=pool,
         hydra_transport=hydra_transport,
         embedder=embedder,
         config=config,
@@ -179,14 +218,14 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
     )
 
     # Phase 6: rollback gets its own `GraphWriter` -- `PostgresGraphManifestStore`
-    # is a stateless wrapper over `pg_connection` (no cache to duplicate), so a
+    # is a stateless wrapper over `pool` (no cache to duplicate), so a
     # second instance costs nothing and keeps rollback decoupled from
     # `build_ingestion_and_retrieval`'s internals rather than threading a new
     # return value through it.
-    rollback_manifest_store = PostgresGraphManifestStore(pg_connection)
+    rollback_manifest_store = PostgresGraphManifestStore(pool)
     rollback_graph_writer = GraphWriter(rollback_manifest_store, hydra_transport)
-    save_point_store = SavePointStore(pg_connection)
-    rollback_service = RollbackService(pg_connection, rollback_graph_writer, journal)
+    save_point_store = SavePointStore(pool)
+    rollback_service = RollbackService(pool, rollback_graph_writer, journal)
 
     # Milestone 3 of the AI-DND bridge (direct authoring + template clone):
     # same "second instance costs nothing" reasoning as rollback's writer
@@ -195,15 +234,26 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
     # also stores), so building one here rather than threading it out of
     # `build_ingestion_and_retrieval` keeps that shared composition function
     # (also used by evaluation/benchmark_runner.py) untouched.
-    authoring_allocator = PostgresChunkStore(pg_connection)
-    authoring_manifest_store = PostgresGraphManifestStore(pg_connection)
+    authoring_allocator = PostgresChunkStore(pool)
+    authoring_manifest_store = PostgresGraphManifestStore(pool)
     authoring_graph_writer = GraphWriter(authoring_manifest_store, hydra_transport)
+
+    # mem1 gap #46 fix: same "second instance costs nothing" reasoning as
+    # the writers above -- both Postgres stores are stateless wrappers over
+    # `pool`. Reuses the SAME `embedder` object already built above (not a
+    # second one): a second SentenceTransformer load is expensive (see
+    # docs/fixes_and_evaluation_findings.md §3.1), and `authoring_allocator`
+    # already doubles as the GraphIdAllocator, so it doubles again here as
+    # the FactProjectionWriter's ChunkStore.
+    fact_projection_writer = FactProjectionWriter(
+        embedder, PostgresEmbeddingStore(pool), PostgresSearchIndexStore(pool), authoring_allocator,
+    )
 
     return MemoryEngine(
         orchestrator=orchestrator,
         retrieval_engine=retrieval_engine,
         llm_client=config.get_reader_client(),
-        pg_connection=pg_connection,
+        pool=pool,
         config=config,
         journal=journal,
         save_point_store=save_point_store,
@@ -211,4 +261,5 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
         graph_id_allocator=authoring_allocator,
         authoring_graph_writer=authoring_graph_writer,
         hydra_transport=hydra_transport,
+        fact_projection_writer=fact_projection_writer,
     )

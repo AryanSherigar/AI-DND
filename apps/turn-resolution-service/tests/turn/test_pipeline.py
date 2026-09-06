@@ -14,7 +14,8 @@ from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
 from app.db.models.turn_log import TurnLog
 from app.db.models.user import User
-from app.exceptions.turn_exceptions import StateWriteError
+from app.exceptions.turn_exceptions import OptimisticLockError, StateWriteError
+from app.models.auth import CurrentUser
 from app.models.turn import TurnRequestInput
 from app.session import notification_manager, spectator_manager
 from app.turn import pipeline
@@ -84,7 +85,11 @@ async def test_run_turn_streams_narration_and_persists_turn(
         action_text="I step forward.",
     )
 
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     events = [event async for event in response.body_iterator]
 
     event_types = [event.event for event in events]
@@ -127,7 +132,11 @@ async def test_run_turn_degrades_gracefully_on_write_failure(
         action_text="I step forward.",
     )
 
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     events = [event async for event in response.body_iterator]
 
     event_types = [event.event for event in events]
@@ -138,6 +147,36 @@ async def test_run_turn_degrades_gracefully_on_write_failure(
     )
     turn_log = (await db_session.execute(turn_log_stmt)).scalars().first()
     assert turn_log is None
+
+
+async def test_run_turn_degrades_on_optimistic_lock_collision(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    async def fake_stream(system_instruction: str, prompt: str, timeout_seconds: int):
+        yield "Narration before collision."
+
+    monkeypatch.setattr(ai_orchestrator.gemini_client, "stream_narration", fake_stream)
+    playthrough, participant = await _seed_playthrough(db_session)
+    monkeypatch.setattr(
+        pipeline.state_writer,
+        "write_turn",
+        AsyncMock(side_effect=OptimisticLockError()),
+    )
+
+    turn_input = TurnRequestInput(
+        playthrough_id=playthrough.playthrough_id,
+        participant_id=participant.participant_id,
+        action_text="I step forward.",
+    )
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
+    events = [event async for event in response.body_iterator]
+    assert [event.event for event in events] == ["narration", "degraded"]
+    degraded = next(event for event in events if event.event == "degraded")
+    assert degraded.data == pipeline._DEGRADED_CONCURRENCY_MESSAGE
 
 
 async def test_run_turn_notifies_next_participant_in_multiplayer(
@@ -176,7 +215,11 @@ async def test_run_turn_notifies_next_participant_in_multiplayer(
             participant_id=participant_one.participant_id,
             action_text="I step forward.",
         )
-        response = await pipeline.run_turn(turn_input, db_session)
+        response = await pipeline.run_turn(
+            turn_input,
+            db_session,
+            CurrentUser(user_id=participant_one.user_id, token_version=1),
+        )
         [event async for event in response.body_iterator]
 
         assert not queue.empty()
@@ -357,7 +400,11 @@ async def test_run_turn_master_mode_end_to_end(
         participant_id=participant.participant_id,
         action_text="I step into the cairn.",
     )
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     events = [event async for event in response.body_iterator]
 
     # Final narration text is chunked into pseudo-streamed pieces (see
@@ -448,7 +495,11 @@ async def test_run_turn_master_mode_effect_c_precedes_gemini_call(
         participant_id=participant.participant_id,
         action_text="I step into the cairn.",
     )
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     [event async for event in response.body_iterator]
 
     assert call_order == ["condition_evaluator", "gemini_call"]
@@ -493,7 +544,11 @@ async def test_run_turn_master_mode_rejects_invariant_violating_mutation(
         participant_id=participant.participant_id,
         action_text="I try to overheal.",
     )
-    response = await pipeline.run_turn(turn_input, db_session)
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
     [event async for event in response.body_iterator]
 
     playthrough_stmt = select(Playthrough).where(
@@ -528,7 +583,11 @@ async def test_run_turn_streams_mood_event_and_relays_to_spectator(
             participant_id=participant.participant_id,
             action_text="I enter the shadows.",
         )
-        response = await pipeline.run_turn(turn_input, db_session)
+        response = await pipeline.run_turn(
+            turn_input,
+            db_session,
+            CurrentUser(user_id=participant.user_id, token_version=1),
+        )
         events = [event async for event in response.body_iterator]
 
         event_types = [event.event for event in events]

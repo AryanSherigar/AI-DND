@@ -19,8 +19,8 @@ logger = get_logger(__name__)
 
 
 class GraphExpander:
-    def __init__(self, pg_connection: object, hydra_client: GraphTransport, config: Config | None = None) -> None:
-        self._pg = pg_connection
+    def __init__(self, pool: object, hydra_client: GraphTransport, config: Config | None = None) -> None:
+        self._pool = pool
         self._hydra = hydra_client
         self._config = config or Config()
 
@@ -32,7 +32,6 @@ class GraphExpander:
 
         with timed_operation(logger, "retrieval.phase2.graph_expansion", {"context_id": context_id, "seed_count": len(seed_facts)}) as ctx:
             graph_data = {}
-            fact_logical_keys = [f"fact:{fid}" for fid in seed_facts.keys()]
 
             # Resolve each fact's integer graph_id from Postgres's own
             # graph_id_registry (the same registry ingestion allocated from —
@@ -46,17 +45,36 @@ class GraphExpander:
             # grammar that looks purpose-built for writes only, this queries
             # per-fact instead, matching the original design (docs/decisions.md
             # ADR-033).
+            #
+            # mem1 gap #46 fix: a bare-digit fid IS already the fact's own
+            # graph_id (ingestion.fact_projection.FactProjectionWriter's
+            # identity convention for direct-authored/cloned facts -- see its
+            # module docstring) -- resolve those directly, with no registry
+            # round trip at all, and only send genuinely candidate_id-shaped
+            # fids (extraction's convention, never a bare digit string) to
+            # the registry lookup below. `graph_id_by_fact_key` keeps the
+            # exact same `"fact:" + fid` key shape either way, so every use
+            # of it below this point is unchanged.
             graph_id_by_fact_key: dict[str, int] = {}
-            try:
-                with self._pg.cursor() as cursor:
-                    cursor.execute(
-                        "SELECT logical_key, graph_id FROM graph_id_registry WHERE node_kind = 'fact' AND context_id = %s AND logical_key = ANY(%s)",
-                        (context_id, fact_logical_keys),
-                    )
-                    for logical_key, graph_id in cursor.fetchall():
-                        graph_id_by_fact_key[logical_key] = int(graph_id)
-            except Exception as e:
-                logger.warning("graph_id_registry lookup error: %s", e)
+            registry_lookup_keys = []
+            for fid in seed_facts.keys():
+                if fid.isdigit():
+                    graph_id_by_fact_key[f"fact:{fid}"] = int(fid)
+                else:
+                    registry_lookup_keys.append(f"fact:{fid}")
+
+            if registry_lookup_keys:
+                try:
+                    with self._pool.connection() as conn:
+                        with conn.cursor() as cursor:
+                            cursor.execute(
+                                "SELECT logical_key, graph_id FROM graph_id_registry WHERE node_kind = 'fact' AND context_id = %s AND logical_key = ANY(%s)",
+                                (context_id, registry_lookup_keys),
+                            )
+                            for logical_key, graph_id in cursor.fetchall():
+                                graph_id_by_fact_key[logical_key] = int(graph_id)
+                except Exception as e:
+                    logger.warning("graph_id_registry lookup error: %s", e)
 
             # 1. Fetch node bitemporal properties plus any connected entity, one
             # fact at a time. A plain (non-UNWIND) MATCH ... OPTIONAL MATCH ...
@@ -100,6 +118,25 @@ class GraphExpander:
             turn_number_by_fact: dict[str, int] = {}
 
             def _fetch_node(fact_key: str, graph_id: int) -> tuple[str, Sequence[dict[str, object]] | None]:
+                # §5 fix: f.turn_number -- real as_of_turn filtering needs the
+                # turn a fact was extracted from (graph_plan_builder._fact_node
+                # writes it straight from the chunk's own metadata).
+                # §6 fix: f.scope_type AS memory_scope -- ingestion writes this
+                # property as `scope_type` (graph_plan_builder._fact_node);
+                # reading it back as `f.memory_scope` (a property no Fact node
+                # has ever carried) meant `memory_scope` below was always None,
+                # and the chat-TTL branch a few lines down never ran.
+                #
+                # NOTE: these two paragraphs used to live as `-- ...` lines
+                # INSIDE the Cypher string below. OpenCypher's comment syntax
+                # is `//`, not `--`, so they were never comments to HydraDB's
+                # parser -- they were invalid query text, and every node read
+                # failed with "OpenCypher parse error: Invalid input '<0xC2>'"
+                # (the first byte of the UTF-8 encoding of '§', which the
+                # parser couldn't tokenize). 100% reproducible, unrelated to
+                # connection reuse or concurrency. Keep future annotations
+                # about individual RETURN fields up here, never inside the
+                # f-string itself.
                 node_cypher = f"""
                 MATCH (f {{id: {int(graph_id)}}})
                 OPTIONAL MATCH (f)-[:ABOUT]->(e)
@@ -116,15 +153,7 @@ class GraphExpander:
                     f.confidence AS confidence,
                     f.subject AS subject,
                     f.object_literal AS object_literal,
-                    -- §5 fix: real as_of_turn filtering needs the turn a
-                    -- fact was extracted from (graph_plan_builder._fact_node
-                    -- writes it straight from the chunk's own metadata).
                     f.turn_number AS turn_number,
-                    -- §6 fix: ingestion writes this property as `scope_type`
-                    -- (graph_plan_builder._fact_node) -- reading it back as
-                    -- `f.memory_scope` (a property no Fact node has ever
-                    -- carried) meant `memory_scope` below was always None,
-                    -- and the chat-TTL branch a few lines down never ran.
                     f.scope_type AS memory_scope,
                     e.logical_key AS entity_key,
                     o.canonical_name AS object_entity_name
@@ -137,6 +166,13 @@ class GraphExpander:
                     logger.warning("HydraDB node query error for %s: %s", fact_key, e)
                     return fact_key, None
 
+            # Fail-open bookkeeping: a fact whose node read genuinely errors
+            # (network blip, transient HydraDB error) should degrade -- stay
+            # in the result set with no graph-derived metadata -- rather than
+            # silently vanish. One bad read must never cascade into an empty
+            # retrieval; see valid_fact_keys union below.
+            failed_fetch_fact_keys: set[str] = set()
+
             with ThreadPoolExecutor(max_workers=self._config.retrieval_graph_fetch_workers) as pool:
                 futures = [
                     pool.submit(_fetch_node, fact_key, graph_id)
@@ -145,6 +181,7 @@ class GraphExpander:
                 for future in as_completed(futures):
                     fact_key, rows = future.result()
                     if rows is None:
+                        failed_fetch_fact_keys.add(fact_key)
                         continue
                     for row in rows:
                         raw_nodes.append({**row, "fact_key": fact_key})
@@ -276,6 +313,16 @@ class GraphExpander:
                 if entity_key:
                     entities.add(entity_key)
                     entity_to_facts.setdefault(entity_key, []).append(fact_key)
+
+            # Fail open: a fact whose node read errored has no fetched row to
+            # apply bitemporal/chat-TTL/archived filtering against -- keep it
+            # rather than treat "we couldn't read this" the same as "this
+            # failed temporal validation". graph_data's per-fact dicts below
+            # already default every graph-derived field via .get(), so a fact
+            # with no fetched row degrades gracefully (no entity linking, no
+            # bitemporal window applied) rather than erroring.
+            valid_fact_keys |= failed_fetch_fact_keys
+            ctx["graph_read_failed_facts"] = len(failed_fetch_fact_keys)
 
             # Prune seed_facts that failed temporal validation
             pruned_count = 0

@@ -19,7 +19,7 @@ router = APIRouter(prefix="/v1/turn", tags=["Turn"])
 async def submit_turn(
     turn_input: TurnRequestInput,
     session: Annotated[AsyncSession, Depends(get_db_session)],
-    _user: Annotated[CurrentUser, Depends(get_current_user)],
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> EventSourceResponse:
     """Submit a player action and stream back narration over SSE."""
-    return await run_turn(turn_input, session)
+    return await run_turn(turn_input, session, current_user)

@@ -10,8 +10,8 @@ from context_memory.core.ports import Embedder
 
 
 class SiblingExpander:
-    def __init__(self, pg_connection: object, embedder: Embedder, config: Config | None = None) -> None:
-        self._pg = pg_connection
+    def __init__(self, pool: object, embedder: Embedder, config: Config | None = None) -> None:
+        self._pool = pool
         self._embedder = embedder
         self._config = config or Config()
 
@@ -76,31 +76,32 @@ class SiblingExpander:
         lam = self._config.retrieval_sibling_continuity_penalty
         gamma = self._config.retrieval_sibling_relevance_ratio
 
-        with self._pg.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT sibling.subject_id, fsi.raw_text, emc.observed_at,
-                       (anchor.embedding <=> %s::vector) AS anchor_query_distance,
-                       (sibling.embedding <=> %s::vector) AS sibling_query_distance,
-                       (anchor.embedding <=> sibling.embedding) AS boundary_distance
-                FROM memory_embeddings anchor
-                JOIN memory_embeddings sibling
-                  ON sibling.source_chunk_id = anchor.source_chunk_id
-                 AND sibling.context_id = anchor.context_id
-                 AND sibling.subject_kind = 'fact'
-                 AND sibling.is_active = true
-                JOIN fact_search_index fsi
-                  ON fsi.fact_id = sibling.subject_id AND fsi.is_active = true
-                LEFT JOIN extracted_memory_candidates emc
-                  ON emc.candidate_id = sibling.subject_id
-                WHERE anchor.context_id = %s
-                  AND anchor.subject_kind = 'fact'
-                  AND anchor.subject_id = ANY(%s)
-                  AND sibling.subject_id != ALL(%s)
-                """,
-                (vector_literal, vector_literal, context_id, fact_ids, fact_ids),
-            )
-            rows = cursor.fetchall()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT sibling.subject_id, fsi.raw_text, emc.observed_at,
+                           (anchor.embedding <=> %s::vector) AS anchor_query_distance,
+                           (sibling.embedding <=> %s::vector) AS sibling_query_distance,
+                           (anchor.embedding <=> sibling.embedding) AS boundary_distance
+                    FROM memory_embeddings anchor
+                    JOIN memory_embeddings sibling
+                      ON sibling.source_chunk_id = anchor.source_chunk_id
+                     AND sibling.context_id = anchor.context_id
+                     AND sibling.subject_kind = 'fact'
+                     AND sibling.is_active = true
+                    JOIN fact_search_index fsi
+                      ON fsi.fact_id = sibling.subject_id AND fsi.is_active = true
+                    LEFT JOIN extracted_memory_candidates emc
+                      ON emc.candidate_id = sibling.subject_id
+                    WHERE anchor.context_id = %s
+                      AND anchor.subject_kind = 'fact'
+                      AND anchor.subject_id = ANY(%s)
+                      AND sibling.subject_id != ALL(%s)
+                    """,
+                    (vector_literal, vector_literal, context_id, fact_ids, fact_ids),
+                )
+                rows = cursor.fetchall()
 
         # pgvector's <=> is cosine DISTANCE (0 = identical), so similarity is
         # (1 - distance). A sibling reachable via more than one anchor in this

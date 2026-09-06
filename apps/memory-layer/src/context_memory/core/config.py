@@ -27,11 +27,13 @@ from context_memory.core.llm_client import LLMClient
 from context_memory.core.prompts import (
     BATCHED_ENTITY_RESOLUTION_SYSTEM_PROMPT,
     BATCHED_FACT_EXTRACTION_SYSTEM_PROMPT,
+    BATCHED_NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT,
     BATCHED_TEMPORAL_UPDATE_SYSTEM_PROMPT,
     DURATION_QUERY_GUIDANCE,
     DURATION_QUERY_STRUCTURED_ADDENDUM,
     ENTITY_RESOLUTION_SYSTEM_PROMPT,
     FACT_EXTRACTION_SYSTEM_PROMPT,
+    NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT,
     QUERY_REWRITER_SYSTEM_PROMPT,
     READER_SYSTEM_PROMPT_TEMPLATE,
     RERANK_SYSTEM_PROMPT,
@@ -502,6 +504,17 @@ class Config:
             "CONTEXT_MEMORY_HYDRADB_URL", os.getenv("HYDRA_DB_HOST", "http://127.0.0.1:8080")
         )
     )
+    # A single shared, non-pooled psycopg connection was reachable
+    # concurrently from FastAPI's request-thread handlers and the background
+    # ingestion executor -- a thread's own read-back verification could see
+    # `True` (Postgres shows a session its own uncommitted writes) just
+    # before an unrelated concurrent thread's rollback on that same
+    # connection silently discarded it. `min_size`/`max_size` need tuning
+    # against real deployed concurrency; these defaults are a starting
+    # point, not a measured final value.
+    postgres_pool_min_size: int = field(default_factory=lambda: int(os.getenv("CONTEXT_MEMORY_POSTGRES_POOL_MIN_SIZE", "2")))
+    postgres_pool_max_size: int = field(default_factory=lambda: int(os.getenv("CONTEXT_MEMORY_POSTGRES_POOL_MAX_SIZE", "10")))
+    postgres_pool_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("CONTEXT_MEMORY_POSTGRES_POOL_TIMEOUT_SECONDS", "30")))
     hydradb_token: str = field(
         default_factory=lambda: os.getenv(
             "CONTEXT_MEMORY_HYDRADB_TOKEN",
@@ -530,6 +543,23 @@ class Config:
     batched_temporal_update_system_prompt: str = BATCHED_TEMPORAL_UPDATE_SYSTEM_PROMPT
     fact_extraction_system_prompt: str = FACT_EXTRACTION_SYSTEM_PROMPT
     batched_fact_extraction_system_prompt: str = BATCHED_FACT_EXTRACTION_SYSTEM_PROMPT
+    # AI-DND memory-layer contract: narrative-content sibling of the two
+    # fields above, used only for runtime turn-batch/scenario-template
+    # ingestion (see ingestion/orchestrator.py's `_extraction_service_for`).
+    # Env-overridable (unlike the two chat-tuned fields above, which stay
+    # bare defaults) -- this pair has no LongMemEval-equivalent benchmark to
+    # protect, so following rerank_system_prompt/duration_query_guidance's
+    # override-friendly pattern here costs nothing and helps hand-tuning.
+    narrative_fact_extraction_system_prompt: str = field(
+        default_factory=lambda: os.getenv(
+            "NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT", NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT
+        )
+    )
+    batched_narrative_fact_extraction_system_prompt: str = field(
+        default_factory=lambda: os.getenv(
+            "BATCHED_NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT", BATCHED_NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT
+        )
+    )
     temporal_resolver_system_prompt_template: str = TEMPORAL_RESOLVER_SYSTEM_PROMPT_TEMPLATE
     query_rewriter_system_prompt: str = QUERY_REWRITER_SYSTEM_PROMPT
     reader_system_prompt_template: str = READER_SYSTEM_PROMPT_TEMPLATE

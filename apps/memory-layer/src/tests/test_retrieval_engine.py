@@ -4,6 +4,7 @@ import re
 import threading
 import unittest
 from collections import defaultdict
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 
 from context_memory.core.config import Config
@@ -115,6 +116,11 @@ class FakeConnection:
         )
     def cursor(self):
         return self.cursor_obj
+    def connection(self):
+        """Doubles as its own fake pool: retrieval classes now acquire a
+        connection per call via `pool.connection()` -- yielding self keeps
+        every existing test's stubbed cursor/rows working unchanged."""
+        return nullcontext(self)
 
 class FakeHydra:
     def __init__(self, return_paths=True):
@@ -807,17 +813,18 @@ class WhenActiveFilteringTests(unittest.TestCase):
             def __exit__(self, *a): pass
         class ExplodingConnection:
             def cursor(self): return ExplodingCursor()
+            def connection(self): return nullcontext(self)
 
         llm = FakeLLMClient([
             DateRange(valid_from=None, valid_to=None), QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
         ])
-        # Seed via a normal connection for Phase 1, but swap self._pg after
+        # Seed via a normal connection for Phase 1, but swap self._pool after
         # construction so only the metadata/checkpoint lookups explode.
         conn = FakeConnection(
             semantic_rows=[("42", 0.1)], registry_rows=[("fact:42", 1)], missing_text_rows=[("42", "x")],
         )
         engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydraWithFactFields())
-        engine._pg = ExplodingConnection()
+        engine._pool = ExplodingConnection()
 
         result = engine.retrieve_facts("ctx-1", "q", datetime.now(timezone.utc), game_state={})
 
@@ -1032,6 +1039,9 @@ class SemanticSearchModelFilterTests(unittest.TestCase):
         def cursor(self):
             return self.cursor_obj
 
+        def connection(self):
+            return nullcontext(self)
+
     class _VersionedEmbedder:
         model_name = "all-MiniLM-L6-v2"
         model_version = "2"
@@ -1202,3 +1212,82 @@ class DurationQueryTests(unittest.TestCase):
         prompt = llm.last_reader_system_prompt
         self.assertNotIn("today's date is", prompt)
         self.assertNotIn("AGO / SINCE", prompt)
+
+
+class GraphIdShapedFactIdTests(unittest.TestCase):
+    """mem1 gap #46 fix: a direct-authored/cloned fact's seed_facts key is
+    already its own graph_id (ingestion.fact_projection.FactProjectionWriter's
+    identity convention -- a bare digit string), so GraphExpander must resolve
+    it directly instead of reconstructing `fact:{fid}` and asking
+    graph_id_registry -- that registry never has a row for a content-hash
+    logical_key under this fid at all."""
+
+    def test_bare_digit_fid_resolves_without_any_registry_row(self):
+        class ProbeHydra:
+            """Fails the test outright if graph_id 142 is never asked for
+            directly -- proving the digit-shaped fid was used as the graph_id,
+            not passed through a registry translation that (with an
+            intentionally EMPTY registry_rows below) would have resolved to
+            nothing and silently dropped this fact instead."""
+
+            def read(self, cypher, params, bookmark):
+                if "SUPERSEDES" in cypher:
+                    return []
+                if "MATCH (f {id: 142})" in cypher:
+                    return [{
+                        "text": "Sukuna status alive", "speaker": None,
+                        "valid_from": 0, "valid_to": 9999999999,
+                        "observed_at": 1000, "superseded_at": 9999999999,
+                        "memory_scope": None, "entity_key": None,
+                    }]
+                if "algo.MSpaths" in cypher:
+                    return []
+                raise AssertionError(f"unexpected cypher: {cypher}")
+
+        # Deliberately empty: a registry lookup for "fact:142" must never
+        # happen for this fid, so there is nothing to answer it with.
+        conn = FakeConnection(registry_rows=[])
+        expander = GraphExpander(conn, ProbeHydra())
+        seed_facts = {"142": ScoredFact("142", "")}
+
+        graph_data = expander.expand("ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc))
+
+        self.assertIn("142", graph_data)
+        self.assertIn("142", seed_facts)
+
+    def test_candidate_id_shaped_fid_still_uses_the_registry_lookup(self):
+        """Regression guard: extraction's own facts (never digit-shaped)
+        must keep resolving through the existing registry path unchanged."""
+        conn = FakeConnection(registry_rows=[("fact:cand-abc123", 7)])
+        expander = GraphExpander(conn, FakeHydra())
+        seed_facts = {"cand-abc123": ScoredFact("cand-abc123", "")}
+
+        graph_data = expander.expand("ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc))
+
+        self.assertIn("cand-abc123", graph_data)
+
+    def test_a_mixed_batch_resolves_both_kinds_independently(self):
+        """The realistic production shape: a playthrough context with BOTH
+        cloned/direct-authored facts (digit-shaped) and live per-turn
+        extracted facts (candidate_id-shaped) seeded in the same call."""
+        class ProbeHydra:
+            def read(self, cypher, params, bookmark):
+                if "SUPERSEDES" in cypher:
+                    return []
+                if "algo.MSpaths" in cypher:
+                    return []
+                return [{
+                    "text": "x", "speaker": None,
+                    "valid_from": 0, "valid_to": 9999999999,
+                    "observed_at": 1000, "superseded_at": 9999999999,
+                    "memory_scope": None, "entity_key": None,
+                }]
+
+        conn = FakeConnection(registry_rows=[("fact:cand-abc123", 7)])
+        expander = GraphExpander(conn, ProbeHydra())
+        seed_facts = {"142": ScoredFact("142", ""), "cand-abc123": ScoredFact("cand-abc123", "")}
+
+        graph_data = expander.expand("ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc))
+
+        self.assertIn("142", graph_data)
+        self.assertIn("cand-abc123", graph_data)

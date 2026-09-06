@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.playthrough import Playthrough
@@ -65,3 +66,27 @@ async def test_create_persists_turn_log_row(db_session: AsyncSession) -> None:
     assert fetched.action_text == "I look around."
     assert fetched.narration_text == "You see a torchlit corridor."
     assert fetched.tool_calls == []
+
+
+async def test_create_duplicate_turn_number_raises_integrity_error(
+    db_session: AsyncSession,
+) -> None:
+    playthrough = await _seed_playthrough(db_session)
+    repo = TurnLogRepo(db_session)
+
+    await repo.create(
+        playthrough_id=playthrough.playthrough_id,
+        turn_number=1,
+        participant_id=None,
+        action_text="Turn 1 action.",
+        narration_text="Turn 1 narration.",
+    )
+
+    with pytest.raises(IntegrityError):
+        await repo.create(
+            playthrough_id=playthrough.playthrough_id,
+            turn_number=1,
+            participant_id=None,
+            action_text="Duplicate turn 1 action.",
+            narration_text="Duplicate turn 1 narration.",
+        )

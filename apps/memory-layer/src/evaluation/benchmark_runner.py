@@ -175,7 +175,7 @@ def _report_rate_limits(llm_client: LLMClient) -> int | None:
 
 
 def create_pipeline(
-    pg_connection: Any,
+    pool: Any,
     hydra_transport: Any,
     llm_client: LLMClient,
     embedder: Any,
@@ -212,7 +212,7 @@ def create_pipeline(
         )
 
     orchestrator, retrieval_engine, extractor = build_ingestion_and_retrieval(
-        pg_connection=pg_connection,
+        pool=pool,
         hydra_transport=hydra_transport,
         embedder=embedder,
         config=config,
@@ -464,7 +464,7 @@ def main() -> int:
         print("Error: input dataset must contain a JSON array of instances.", file=sys.stderr)
         return 1
 
-    import psycopg
+    from psycopg_pool import ConnectionPool
 
     # Built from Config, not ad-hoc env parsing. This function used to read
     # FIREWORKS_BASE_URL/FIREWORKS_API_KEY/EXTRACTOR_MODEL directly, which
@@ -479,12 +479,21 @@ def main() -> int:
     llm_client = config.get_extractor_client()
 
     print(f"Connecting to PostgreSQL at {args.database_url}...")
-    with psycopg.connect(args.database_url, autocommit=True) as pg_conn:
+    with ConnectionPool(
+        args.database_url,
+        min_size=config.postgres_pool_min_size,
+        max_size=config.postgres_pool_max_size,
+        timeout=config.postgres_pool_timeout_seconds,
+        kwargs={"autocommit": True},
+        open=True,
+    ) as pg_pool:
+        pg_pool.wait(timeout=config.postgres_pool_timeout_seconds)
         from pathlib import Path
         from context_memory.persistence.migrations import apply_migrations
         migrations_dir = Path(__file__).resolve().parents[2] / "db" / "migrations"
         if migrations_dir.exists():
-            apply_migrations(pg_conn, migrations_dir)
+            with pg_pool.connection() as pg_conn:
+                apply_migrations(pg_conn, migrations_dir)
 
         hydra_client = HydraHttpTransport(
             base_url=args.hydradb_url,
@@ -519,7 +528,7 @@ def main() -> int:
                 args.extraction_workers = safe_workers
 
         orchestrator, retrieval_engine, active_extractor = create_pipeline(
-            pg_connection=pg_conn,
+            pool=pg_pool,
             hydra_transport=hydra_client,
             llm_client=llm_client,
             embedder=embedder,

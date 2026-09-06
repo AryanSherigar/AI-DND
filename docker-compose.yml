@@ -39,6 +39,8 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       PYTHONPATH: /app
+      MEMORY_SERVICE_URL: http://memory-layer:8002
+      MEMORY_SERVICE_API_KEY: ${MEMORY_SERVICE_API_KEY:-dev-memory-layer-key-change-in-production}
     ports:
       - "${CORE_API_PORT:-8000}:8000"
     depends_on:
@@ -61,7 +63,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:3000","http://localhost:80"]}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      MEMORY_SERVICE_URL: ${MEMORY_SERVICE_URL:-http://memory-layer:8002}
+      MEMORY_SERVICE_URL: http://memory-layer:8002
       MEMORY_SERVICE_API_KEY: ${MEMORY_SERVICE_API_KEY:-dev-memory-layer-key-change-in-production}
     ports:
       - "${TRS_PORT:-8001}:8001"
@@ -130,12 +132,14 @@ services:
     restart: unless-stopped
     environment:
       CONTEXT_MEMORY_DATABASE_URL: ${MEMORY_LAYER_DATABASE_URL:-postgresql://context_memory:context_memory@postgres-memory:5432/context_memory}
-      CONTEXT_MEMORY_HYDRADB_URL: http://hydradb:8080
+      CONTEXT_MEMORY_HYDRADB_URL: http://hydradb:8443
       CONTEXT_MEMORY_HYDRADB_TOKEN: ${HYDRADB_API_KEY:-context-memory-local-smoke-token-32b}
       CONTEXT_MEMORY_HYDRADB_DATABASE: ${HYDRADB_GRAPH_ID:-default}
       CONTEXT_MEMORY_API_KEY: ${MEMORY_LAYER_API_KEY:-dev-memory-layer-key-change-in-production}
       CONTEXT_MEMORY_ALLOWED_ORIGINS: ${CORS_ORIGINS:-}
       GOOGLE_CLOUD_API_KEY: ${GOOGLE_CLOUD_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gemini-3.5-flash-lite}
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "${MEMORY_LAYER_PORT:-8002}:8002"

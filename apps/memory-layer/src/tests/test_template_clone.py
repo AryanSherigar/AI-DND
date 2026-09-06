@@ -161,6 +161,87 @@ class CloneTests(unittest.TestCase):
         self.assertEqual(result.relationships_cloned, 3)
 
 
+class FakeFactProjector:
+    def __init__(self):
+        self.calls: list[tuple[str, str, str, int, str]] = []
+
+    def project_copy(self, source_context_id, source_subject_id, target_context_id, new_fact_graph_id, text):
+        self.calls.append((source_context_id, source_subject_id, target_context_id, new_fact_graph_id, text))
+
+
+class FactProjectorCloneTests(unittest.TestCase):
+    """mem1 gap #46 fix: clone() must reach FactProjectionWriter (via its
+    ingestion.fact_projection.FactProjector Protocol) for every successfully
+    cloned fact, or the playthrough's copy stays invisible to
+    CandidateSeeder even though the template's own copy might already be
+    indexed."""
+
+    def test_direct_authored_origin_fact_is_read_back_by_its_own_old_graph_id(self):
+        """logical_key `fact:direct:...` never encodes a graph_id (it's a
+        content hash) -- FactProjectionWriter.project stores THIS kind of
+        fact under its own graph_id instead, so that's what clone must ask
+        project_copy to read back from the source context."""
+        source = FakeHydraTransport(
+            entity_rows=[{"id": 1, "logical_key": "entity:Sukuna", "canonical_name": "Sukuna", "entity_type": "character"}],
+            fact_rows=[{"id": 2, "logical_key": "fact:direct:abc", "text": "Sukuna is strongest", "predicate_key": "is_strongest"}],
+            about_rows=[{"src": 2, "dst": 1}],
+        )
+        allocator = InMemoryGraphIdAllocator()
+        writer = _writer()
+        projector = FakeFactProjector()
+
+        clone("scenario-template::s1", "playthrough-1", allocator, writer, source, fact_projector=projector)
+
+        new_fact_id = allocator.allocate_graph_id("fact", "playthrough-1", "fact:direct:abc")
+        self.assertEqual(
+            projector.calls,
+            [("scenario-template::s1", "2", "playthrough-1", new_fact_id, "Sukuna is strongest")],
+        )
+
+    def test_extraction_origin_fact_is_read_back_by_its_candidate_id(self):
+        """logical_key `fact:<candidate_id>` IS orchestrator.py's own
+        projection identity for this fact -- clone must read the source row
+        back under that candidate_id, not the old graph_id."""
+        source = FakeHydraTransport(
+            entity_rows=[],
+            fact_rows=[{"id": 9, "logical_key": "fact:cand-abc123", "text": "The user lives in Bengaluru", "predicate_key": "location"}],
+        )
+        allocator = InMemoryGraphIdAllocator()
+        writer = _writer()
+        projector = FakeFactProjector()
+
+        clone("scenario-template::s1", "playthrough-1", allocator, writer, source, fact_projector=projector)
+
+        new_fact_id = allocator.allocate_graph_id("fact", "playthrough-1", "fact:cand-abc123")
+        self.assertEqual(
+            projector.calls,
+            [("scenario-template::s1", "cand-abc123", "playthrough-1", new_fact_id, "The user lives in Bengaluru")],
+        )
+
+    def test_a_fact_with_no_text_is_not_projected(self):
+        source = FakeHydraTransport(
+            entity_rows=[],
+            fact_rows=[{"id": 2, "logical_key": "fact:direct:abc", "text": None, "predicate_key": "is_strongest"}],
+        )
+        allocator = InMemoryGraphIdAllocator()
+        writer = _writer()
+        projector = FakeFactProjector()
+
+        clone("scenario-template::s1", "playthrough-1", allocator, writer, source, fact_projector=projector)
+
+        self.assertEqual(projector.calls, [])
+
+    def test_no_projector_given_is_a_silent_no_op(self):
+        source = FakeHydraTransport(
+            entity_rows=[],
+            fact_rows=[{"id": 2, "logical_key": "fact:direct:abc", "text": "x", "predicate_key": "p"}],
+        )
+        allocator = InMemoryGraphIdAllocator()
+        writer = _writer()
+
+        clone("scenario-template::s1", "playthrough-1", allocator, writer, source)  # must not raise
+
+
 class FakeFactMetadataStore:
     """Milestones 4-5 fixture: in-memory stand-in for
     persistence.postgres.PostgresFactMetadataStore, matching its

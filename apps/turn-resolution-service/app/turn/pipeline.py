@@ -39,7 +39,12 @@ from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt
 
 from app.config import settings
 from app.db.models.participant import Participant
-from app.exceptions.turn_exceptions import NarrationGenerationError, StateWriteError
+from app.exceptions.turn_exceptions import (
+    NarrationGenerationError,
+    OptimisticLockError,
+    StateWriteError,
+)
+from app.models.auth import CurrentUser
 from app.models.minigame_event import MinigameEventPayload
 from app.models.tool_call import MasterModeTurnResult
 from app.models.turn import LoadedState, TurnRequest, TurnRequestInput
@@ -77,13 +82,17 @@ EVENT_MINIGAME_PREWARM_FAILED = "minigame_prewarm_failed"
 _DEGRADED_WRITE_MESSAGE = (
     "Your turn couldn't be saved. Please try submitting your action again."
 )
+_DEGRADED_CONCURRENCY_MESSAGE = "Another turn was processed while yours was generating. Please submit your action again."
+
 _MINIGAME_TYPE_REPLIT_EMBED = "replit_embed"
 _PREWARM_TIMEOUT_SECONDS = 2.0
 _PREWARM_MAX_ATTEMPTS = 2
 
 
 async def run_turn(
-    turn_input: TurnRequestInput, session: AsyncSession
+    turn_input: TurnRequestInput,
+    session: AsyncSession,
+    current_user: CurrentUser,
 ) -> EventSourceResponse:
     """Validate, generate narration, persist, and stream a single turn."""
     playthrough_repo = PlaythroughRepo(session)
@@ -92,7 +101,7 @@ async def run_turn(
     scenario_repo = ScenarioRepo(session)
 
     turn_request = await request_receiver.receive_request(
-        turn_input, playthrough_repo, participant_repo
+        turn_input, playthrough_repo, participant_repo, current_user
     )
     loaded_state = await state_loader.load_state(
         turn_request.playthrough_id, playthrough_repo
@@ -199,6 +208,15 @@ async def _run_turn_events(
             tool_calls=tool_calls,
             mutated_paths=mutated_paths or None,
         )
+    except OptimisticLockError:
+        logger.warning(
+            EVENT_SSE_STREAM_CLOSED,
+            playthrough_id=playthrough_id,
+            outcome="degraded",
+            reason="optimistic_lock_failed",
+        )
+        yield response_streamer.degraded_event(_DEGRADED_CONCURRENCY_MESSAGE)
+        return
     except StateWriteError:
         logger.warning(
             EVENT_SSE_STREAM_CLOSED, playthrough_id=playthrough_id, outcome="degraded"

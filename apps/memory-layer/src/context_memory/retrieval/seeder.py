@@ -11,8 +11,8 @@ logger = get_logger(__name__)
 
 
 class CandidateSeeder:
-    def __init__(self, pg_connection: object, embedder: Embedder, config: Config | None = None) -> None:
-        self._pg = pg_connection
+    def __init__(self, pool: object, embedder: Embedder, config: Config | None = None) -> None:
+        self._pool = pool
         self._embedder = embedder
         self._config = config or Config()
 
@@ -40,59 +40,61 @@ class CandidateSeeder:
             model_name = getattr(self._embedder, "model_name", "unknown")
             model_version = getattr(self._embedder, "model_version", "1")
 
-            with self._pg.cursor() as cursor:
-                cursor.execute(
-                    f"""
-                    SELECT subject_id, embedding <=> %s::vector AS distance
-                    FROM memory_embeddings
-                    WHERE context_id = %s AND subject_kind = 'fact' AND is_active = true
-                      AND model_name = %s AND model_version = %s
-                    ORDER BY distance ASC
-                    LIMIT %s
-                    """,
-                    (vector_literal, context_id, model_name, model_version, limit)
-                )
-                for position, row in enumerate(cursor.fetchall(), start=1):
-                    fact_id = str(row[0])
-                    distance = float(row[1]) if row[1] is not None else 0.0
-                    semantic_score = 1.0 / (1.0 + distance)
-                    if fact_id not in facts:
-                        facts[fact_id] = ScoredFact(fact_id, "", semantic_score=semantic_score, semantic_rank=position)
-                    else:
-                        facts[fact_id].semantic_score = max(facts[fact_id].semantic_score, semantic_score)
-                        facts[fact_id].semantic_rank = min(facts[fact_id].semantic_rank or position, position)
+            with self._pool.connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        SELECT subject_id, embedding <=> %s::vector AS distance
+                        FROM memory_embeddings
+                        WHERE context_id = %s AND subject_kind = 'fact' AND is_active = true
+                          AND model_name = %s AND model_version = %s
+                        ORDER BY distance ASC
+                        LIMIT %s
+                        """,
+                        (vector_literal, context_id, model_name, model_version, limit)
+                    )
+                    for position, row in enumerate(cursor.fetchall(), start=1):
+                        fact_id = str(row[0])
+                        distance = float(row[1]) if row[1] is not None else 0.0
+                        semantic_score = 1.0 / (1.0 + distance)
+                        if fact_id not in facts:
+                            facts[fact_id] = ScoredFact(fact_id, "", semantic_score=semantic_score, semantic_rank=position)
+                        else:
+                            facts[fact_id].semantic_score = max(facts[fact_id].semantic_score, semantic_score)
+                            facts[fact_id].semantic_rank = min(facts[fact_id].semantic_rank or position, position)
 
             # 2. Keyword Search (BM25). Use websearch_to_tsquery with OR combination and @@ matching
             terms = [t.strip() for t in (expanded_query.synonyms + expanded_query.decomposed_queries + [question]) if t.strip()]
             search_query_str = " OR ".join(f'"{t}"' if " " in t else t for t in terms) if terms else question
             if search_query_str:
-                with self._pg.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        SELECT fact_id, raw_text, ts_rank_cd(text_tsvector, websearch_to_tsquery('english', %s)) AS rank
-                        FROM fact_search_index
-                        WHERE context_id = %s AND is_active = true AND text_tsvector @@ websearch_to_tsquery('english', %s)
-                        ORDER BY rank DESC
-                        LIMIT %s
-                        """,
-                        (search_query_str, context_id, search_query_str, limit)
-                    )
-                    position = 0
-                    for row in cursor.fetchall():
-                        fact_id = str(row[0])
-                        raw_text = str(row[1])
-                        rank = float(row[2]) if row[2] is not None else 0.0
-                        if rank <= 0.0:
-                            continue
-                        position += 1  # dense rank over accepted rows only, not the raw fetch
-                        keyword_score = rank / (1.0 + rank)
-                        if fact_id not in facts:
-                            facts[fact_id] = ScoredFact(fact_id, raw_text, keyword_score=keyword_score, keyword_rank=position)
-                        else:
-                            facts[fact_id].keyword_score = max(facts[fact_id].keyword_score, keyword_score)
-                            facts[fact_id].keyword_rank = min(facts[fact_id].keyword_rank or position, position)
-                            if not facts[fact_id].text:
-                                facts[fact_id].text = raw_text
+                with self._pool.connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            SELECT fact_id, raw_text, ts_rank_cd(text_tsvector, websearch_to_tsquery('english', %s)) AS rank
+                            FROM fact_search_index
+                            WHERE context_id = %s AND is_active = true AND text_tsvector @@ websearch_to_tsquery('english', %s)
+                            ORDER BY rank DESC
+                            LIMIT %s
+                            """,
+                            (search_query_str, context_id, search_query_str, limit)
+                        )
+                        position = 0
+                        for row in cursor.fetchall():
+                            fact_id = str(row[0])
+                            raw_text = str(row[1])
+                            rank = float(row[2]) if row[2] is not None else 0.0
+                            if rank <= 0.0:
+                                continue
+                            position += 1  # dense rank over accepted rows only, not the raw fetch
+                            keyword_score = rank / (1.0 + rank)
+                            if fact_id not in facts:
+                                facts[fact_id] = ScoredFact(fact_id, raw_text, keyword_score=keyword_score, keyword_rank=position)
+                            else:
+                                facts[fact_id].keyword_score = max(facts[fact_id].keyword_score, keyword_score)
+                                facts[fact_id].keyword_rank = min(facts[fact_id].keyword_rank or position, position)
+                                if not facts[fact_id].text:
+                                    facts[fact_id].text = raw_text
 
             ctx["total_seeded_facts"] = len(facts)
             return facts

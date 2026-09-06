@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import settings
-from app.exceptions.turn_exceptions import StateWriteError
+from app.exceptions.turn_exceptions import OptimisticLockError, StateWriteError
 from app.models.turn import LoadedState, TurnRequest
 from app.turn.steps.state_writer import write_turn
 
@@ -60,6 +60,7 @@ async def test_write_turn_persists_turn_log_and_state() -> None:
     turn_log_repo.create.assert_awaited_once()
     playthrough_repo.update_state.assert_awaited_once()
     assert playthrough_repo.update_state.call_args.args[2] == 1
+    assert playthrough_repo.update_state.call_args.args[3] == 0
     scenario_repo.increment_play_count.assert_not_awaited()
     assert len(updated_state["narrative"]["turns_so_far"]) == 1
 
@@ -162,3 +163,44 @@ async def test_write_turn_persists_working_state_and_mutated_paths() -> None:
     assert turn_log_repo.create.call_args.kwargs["tool_calls"] == [
         {"tool_name": "adjust_numeric_field", "is_valid": True}
     ]
+
+
+async def test_write_turn_aborts_immediately_on_optimistic_lock_error() -> None:
+    playthrough_repo, turn_log_repo, scenario_repo = _repos()
+    playthrough_repo.update_state.side_effect = OptimisticLockError()
+
+    with pytest.raises(OptimisticLockError):
+        await write_turn(
+            _turn_request(),
+            _loaded_state(turn_count=0),
+            "narration",
+            playthrough_repo,
+            turn_log_repo,
+            scenario_repo,
+        )
+
+    assert playthrough_repo.update_state.await_count == 1
+    turn_log_repo.create.assert_not_awaited()
+    playthrough_repo.session.rollback.assert_awaited_once()
+
+
+async def test_write_turn_calls_update_state_before_turn_log_create() -> None:
+    playthrough_repo, turn_log_repo, scenario_repo = _repos()
+    call_order: list[str] = []
+    playthrough_repo.update_state.side_effect = lambda *_, **__: call_order.append(
+        "update_state"
+    )
+    turn_log_repo.create.side_effect = lambda *_, **__: call_order.append(
+        "turn_log_create"
+    )
+
+    await write_turn(
+        _turn_request(),
+        _loaded_state(turn_count=0),
+        "narration",
+        playthrough_repo,
+        turn_log_repo,
+        scenario_repo,
+    )
+
+    assert call_order == ["update_state", "turn_log_create"]

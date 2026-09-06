@@ -10,10 +10,12 @@ from app.db.models.playthrough import Playthrough as PlaythroughModel
 from app.exceptions.turn_exceptions import (
     MinigameResultMismatchError,
     MinigameResultRequiredError,
+    ParticipantAccessDeniedError,
     ParticipantNotFoundError,
     PlaythroughNotActiveError,
     TurnOrderError,
 )
+from app.models.auth import CurrentUser
 from app.models.turn import TurnRequest, TurnRequestInput
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
@@ -23,6 +25,7 @@ logger = structlog.get_logger()
 
 EVENT_TURN_STEP_COMPLETED = "turn_step_completed"
 EVENT_TURN_REJECTED_NOT_ACTIVE = "turn_rejected_not_active"
+EVENT_TURN_REJECTED_ACCESS_DENIED = "turn_rejected_access_denied"
 STEP_NAME = "request_receiver"
 STATE_KEY_PENDING_MINIGAME = "_pending_minigame"
 
@@ -31,35 +34,25 @@ async def receive_request(
     turn_input: TurnRequestInput,
     playthrough_repo: PlaythroughRepo,
     participant_repo: ParticipantRepo,
+    current_user: CurrentUser,
 ) -> TurnRequest:
-    """Validate playthrough status, pending-minigame gating, participant
-    membership, and turn order."""
+    """Validate playthrough status, participant membership, user ownership,
+    pending-minigame gating, and turn order."""
     start = time.monotonic()
     playthrough = await playthrough_repo.get_by_id(turn_input.playthrough_id)
-    if playthrough is None or playthrough.status != "active":
-        logger.warning(
-            EVENT_TURN_REJECTED_NOT_ACTIVE,
-            playthrough_id=str(turn_input.playthrough_id),
-            status=playthrough.status if playthrough is not None else "not_found",
-        )
-        raise PlaythroughNotActiveError(_not_active_message(playthrough))
-
-    _validate_minigame_gating(turn_input, _pending_minigame(playthrough))
+    _validate_playthrough_active(playthrough, turn_input.playthrough_id)
 
     participants = await participant_repo.list_by_playthrough(turn_input.playthrough_id)
-    acting_participant = _find_participant(participants, turn_input.participant_id)
-    if acting_participant is None:
-        raise ParticipantNotFoundError()
+    acting_participant = _validate_acting_participant(
+        participants, turn_input, current_user
+    )
+
+    _validate_minigame_gating(turn_input, _pending_minigame(playthrough))
 
     if len(participants) > 1:
         _validate_turn_order(participants, acting_participant, playthrough.turn_count)
 
-    logger.info(
-        EVENT_TURN_STEP_COMPLETED,
-        step_name=STEP_NAME,
-        playthrough_id=str(turn_input.playthrough_id),
-        duration_ms=(time.monotonic() - start) * 1000,
-    )
+    _log_step_completed(start, turn_input.playthrough_id)
     return TurnRequest(
         playthrough_id=turn_input.playthrough_id,
         participant_id=turn_input.participant_id,
@@ -67,6 +60,49 @@ async def receive_request(
         action_kind=turn_input.action_kind,
         minigame_result=turn_input.minigame_result,
         turn_count=playthrough.turn_count,
+    )
+
+
+def _validate_playthrough_active(
+    playthrough: PlaythroughModel | None, playthrough_id: uuid.UUID
+) -> None:
+    if playthrough is None or playthrough.status != "active":
+        logger.warning(
+            EVENT_TURN_REJECTED_NOT_ACTIVE,
+            playthrough_id=str(playthrough_id),
+            status=playthrough.status if playthrough is not None else "not_found",
+        )
+        raise PlaythroughNotActiveError(_not_active_message(playthrough))
+
+
+def _validate_acting_participant(
+    participants: list[Participant],
+    turn_input: TurnRequestInput,
+    current_user: CurrentUser,
+) -> Participant:
+    acting_participant = _find_participant(participants, turn_input.participant_id)
+    if acting_participant is None:
+        raise ParticipantNotFoundError()
+
+    if acting_participant.user_id != current_user.user_id:
+        logger.warning(
+            EVENT_TURN_REJECTED_ACCESS_DENIED,
+            playthrough_id=str(turn_input.playthrough_id),
+            participant_id=str(turn_input.participant_id),
+            participant_user_id=str(acting_participant.user_id),
+            current_user_id=str(current_user.user_id),
+        )
+        raise ParticipantAccessDeniedError()
+
+    return acting_participant
+
+
+def _log_step_completed(start: float, playthrough_id: uuid.UUID) -> None:
+    logger.info(
+        EVENT_TURN_STEP_COMPLETED,
+        step_name=STEP_NAME,
+        playthrough_id=str(playthrough_id),
+        duration_ms=(time.monotonic() - start) * 1000,
     )
 
 

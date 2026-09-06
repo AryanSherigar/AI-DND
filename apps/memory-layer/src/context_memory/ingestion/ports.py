@@ -22,6 +22,7 @@ __all__ = [
     "GraphTransport", "EntityNameIndex", "TemporalUpdateClassifierPort",
     "BatchTemporalUpdateClassifierPort", "BatchStore",
     "VerifiableEmbeddingStore", "VerifiableSearchIndexStore", "VerifiableGraphWriter",
+    "CopyableEmbeddingStore",
 ]
 
 # `Protocol` can't express "this method is optional" on a single class --
@@ -106,6 +107,23 @@ class VerifiableEmbeddingStore(EmbeddingStore, Protocol):
     `put_batch`'s absence today falls back to the per-item loop."""
 
     def contains(self, context_id: str, subject_kind: str, subject_id: str) -> bool: ...
+
+
+@runtime_checkable
+class CopyableEmbeddingStore(EmbeddingStore, Protocol):
+    """mem1 gap #46 fix: opt-in read-back of an already-computed vector for
+    an exact (model_name, model_version) match -- used by
+    `ingestion.fact_projection.FactProjectionWriter.project_copy` to reuse a
+    vector when cloning a fact into a new context instead of re-embedding
+    identical text on every clone. Same isinstance-gated pattern as
+    `VerifiableEmbeddingStore`/`BatchEmbeddingStore`: a store that doesn't
+    support it (most test fakes) is simply never asked, and `project_copy`
+    falls back to embedding fresh, same as it already does for a fact with no
+    prior projection at all."""
+
+    def get_active(
+        self, context_id: str, subject_kind: str, subject_id: str, model_name: str, model_version: str
+    ) -> tuple[float, ...] | None: ...
 
 
 class ExtractionStore(Protocol):

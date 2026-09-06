@@ -12,3 +12,10 @@ docs
 grafana
 charts
 scripts
+
+# Secrets and local environment configs
+.env
+.env.*
+!.env.example
+
+.DS_Store

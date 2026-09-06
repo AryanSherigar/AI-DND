@@ -163,3 +163,92 @@ async def test_retrieve_context_includes_revealed_hidden_facts(monkeypatch) -> N
     result = await context_retrieval.retrieve_context(_turn_request(), loaded_state)
 
     assert result.facts == [hidden_fact]
+
+
+async def test_retrieve_context_filters_facts_with_unmet_when_active(
+    monkeypatch,
+) -> None:
+    gated_fact = Fact(
+        fact_id=uuid.uuid4(),
+        subject="vault_door",
+        predicate="contains",
+        object="treasure",
+        confidence=0.9,
+        when_active={"field": "flags.vault_open", "op": "==", "value": True},
+    )
+
+    async def fake_query_memory(request):
+        return MemoryQueryResponse(
+            facts=[gated_fact], abstained=False, resolved_time_point=None
+        )
+
+    monkeypatch.setattr(
+        context_retrieval.memory_client, "query_memory", fake_query_memory
+    )
+
+    loaded_state = LoadedState(
+        scenario_id=uuid.uuid4(),
+        scenario_snapshot={},
+        state={"flags": {"vault_open": False}},
+        turn_count=2,
+        checkpoint=None,
+    )
+    result = await context_retrieval.retrieve_context(_turn_request(), loaded_state)
+
+    assert result.facts == []
+
+
+async def test_retrieve_context_includes_facts_with_met_when_active(
+    monkeypatch,
+) -> None:
+    gated_fact = Fact(
+        fact_id=uuid.uuid4(),
+        subject="vault_door",
+        predicate="contains",
+        object="treasure",
+        confidence=0.9,
+        when_active={"field": "flags.vault_open", "op": "==", "value": True},
+    )
+
+    async def fake_query_memory(request):
+        return MemoryQueryResponse(
+            facts=[gated_fact], abstained=False, resolved_time_point=None
+        )
+
+    monkeypatch.setattr(
+        context_retrieval.memory_client, "query_memory", fake_query_memory
+    )
+
+    loaded_state = LoadedState(
+        scenario_id=uuid.uuid4(),
+        scenario_snapshot={},
+        state={"flags": {"vault_open": True}},
+        turn_count=2,
+        checkpoint=None,
+    )
+    result = await context_retrieval.retrieve_context(_turn_request(), loaded_state)
+
+    assert result.facts == [gated_fact]
+
+
+async def test_retrieve_context_keeps_facts_with_no_when_active(monkeypatch) -> None:
+    ungated_fact = Fact(
+        fact_id=uuid.uuid4(),
+        subject="the_warden",
+        predicate="guards",
+        object="hollow_cairn",
+        confidence=0.9,
+    )
+
+    async def fake_query_memory(request):
+        return MemoryQueryResponse(
+            facts=[ungated_fact], abstained=False, resolved_time_point=None
+        )
+
+    monkeypatch.setattr(
+        context_retrieval.memory_client, "query_memory", fake_query_memory
+    )
+
+    result = await context_retrieval.retrieve_context(_turn_request(), _loaded_state())
+
+    assert result.facts == [ungated_fact]

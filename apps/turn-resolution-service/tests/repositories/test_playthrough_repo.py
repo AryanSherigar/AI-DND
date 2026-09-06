@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
 from app.db.models.user import User
+from app.exceptions.turn_exceptions import OptimisticLockError
 from app.repositories.playthrough_repo import PlaythroughRepo
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -70,10 +71,28 @@ async def test_update_state_persists_new_state_and_turn_count(
     repo = PlaythroughRepo(db_session)
     new_state = {"setup": {}, "narrative": {"turns_so_far": [{"action_text": "look"}]}}
 
-    await repo.update_state(playthrough.playthrough_id, new_state, 1)
+    await repo.update_state(
+        playthrough.playthrough_id, new_state, new_turn_count=1, expected_turn_count=0
+    )
     await db_session.flush()
     fetched = await repo.get_by_id(playthrough.playthrough_id)
 
     assert fetched is not None
     assert fetched.turn_count == 1
     assert fetched.state == new_state
+
+
+async def test_update_state_raises_optimistic_lock_error_on_mismatch(
+    db_session: AsyncSession,
+) -> None:
+    playthrough = await _seed_playthrough(db_session)
+    repo = PlaythroughRepo(db_session)
+    new_state = {"setup": {}, "narrative": {"turns_so_far": [{"action_text": "look"}]}}
+
+    with pytest.raises(OptimisticLockError):
+        await repo.update_state(
+            playthrough.playthrough_id,
+            new_state,
+            new_turn_count=1,
+            expected_turn_count=99,
+        )

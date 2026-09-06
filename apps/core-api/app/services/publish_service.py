@@ -197,4 +197,5 @@ def _to_fact_payload(fact: Fact) -> FactIngestPayload:
         valid_from=fact.valid_from,
         when_active=fact.when_active,
         hidden=fact.hidden,
+        superseded_fact_id=fact.superseded_fact_id,
     )

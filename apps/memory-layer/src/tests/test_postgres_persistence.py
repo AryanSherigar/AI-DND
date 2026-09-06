@@ -9,8 +9,10 @@ from uuid import uuid4
 
 try:
     import psycopg
+    from psycopg_pool import ConnectionPool
 except ImportError:  # pragma: no cover - exercised only before optional dependency setup
     psycopg = None
+    ConnectionPool = None
 
 from context_memory.core.enums import IngestionJobState
 from context_memory.ingestion.fakes import DeterministicExtractor
@@ -41,12 +43,19 @@ DATABASE_URL = os.environ.get("CONTEXT_MEMORY_TEST_DATABASE_URL")
 class PostgresPersistenceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        # `cls.connection` stays a raw connection for this test file's own
+        # direct verification queries (`with self.connection.cursor() ...`);
+        # `cls.pool` is what the Postgres*Store classes now require, since
+        # each acquires its own connection per call rather than sharing one.
         cls.connection = psycopg.connect(DATABASE_URL)
         apply_migrations(cls.connection, MIGRATIONS)
+        cls.pool = ConnectionPool(DATABASE_URL, min_size=1, max_size=5, kwargs={"autocommit": True}, open=True)
+        cls.pool.wait(timeout=30)
 
     @classmethod
     def tearDownClass(cls) -> None:
         cls.connection.close()
+        cls.pool.close()
 
     def chunk(self, record_id: str, raw_text: str) -> Chunk:
         unique = uuid4().hex
@@ -61,7 +70,7 @@ class PostgresPersistenceTests(unittest.TestCase):
         )
 
     def test_idempotent_insert_and_changed_payload_conflict(self) -> None:
-        store = PostgresChunkStore(self.connection)
+        store = PostgresChunkStore(self.pool)
         chunk = self.chunk("record-001", "alpha")
         self.assertEqual(store.put(chunk), chunk)
         self.assertEqual(store.put(chunk), chunk)
@@ -78,7 +87,7 @@ class PostgresPersistenceTests(unittest.TestCase):
             store.put(changed)
 
     def test_duplicate_text_from_distinct_records_is_preserved(self) -> None:
-        store = PostgresChunkStore(self.connection)
+        store = PostgresChunkStore(self.pool)
         first = self.chunk("record-001", "same text")
         second = self.chunk("record-002", "same text")
         store.put(first)
@@ -87,7 +96,7 @@ class PostgresPersistenceTests(unittest.TestCase):
         self.assertEqual(store.get(second.context_id, second.chunk_id), second)
 
     def test_graph_id_is_stable_and_unique(self) -> None:
-        store = PostgresChunkStore(self.connection)
+        store = PostgresChunkStore(self.pool)
         context_id = f"context:{uuid4().hex}"
         first = store.allocate_graph_id("fact", context_id, "fact:001")
         again = store.allocate_graph_id("fact", context_id, "fact:001")
@@ -99,7 +108,7 @@ class PostgresPersistenceTests(unittest.TestCase):
     def test_longmemeval_adapter_uses_generic_service_and_replays(self) -> None:
         payload = json.loads((FIXTURES / "longmemeval_adapter_input_v1.json").read_text())[0]
         batch = adapt_longmemeval_instance(payload, "integration-longmemeval-run")
-        service = IngestionService(PostgresChunkStore(self.connection))
+        service = IngestionService(PostgresChunkStore(self.pool))
         first = service.ingest(batch)
         replay = service.ingest(batch)
         self.assertEqual(first.chunk_ids, replay.chunk_ids)
@@ -112,14 +121,14 @@ class PostgresPersistenceTests(unittest.TestCase):
             f"ingestion:{unique}", f"context:{unique}", SourceDescriptor("integration_test", unique), (record,)
         )
         chunk = chunk_from_record(batch, record)
-        PostgresChunkStore(self.connection).put(chunk)
+        PostgresChunkStore(self.pool).put(chunk)
         extractor = DeterministicExtractor({
             record.record_id: (
                 ExtractionDraft("accepted", "Dog", 6, 7, 0.9),
                 ExtractionDraft("rejected", "bad", 7, 9, 0.5),
             )
         })
-        result = ExtractionService(extractor, PostgresExtractionStore(self.connection)).extract(batch, record, chunk)
+        result = ExtractionService(extractor, PostgresExtractionStore(self.pool)).extract(batch, record, chunk)
         with self.connection.cursor() as cursor:
             cursor.execute("SELECT extractor_kind, quality_status, accepted_count, rejected_count FROM extraction_attempts WHERE attempt_id = %s", (result.attempt_id,))
             attempt = cursor.fetchone()
@@ -132,7 +141,7 @@ class PostgresPersistenceTests(unittest.TestCase):
         self.assertEqual(rejected, (1,))
 
     def test_entity_registry_uses_stable_postgres_graph_ids(self) -> None:
-        store = PostgresChunkStore(self.connection)
+        store = PostgresChunkStore(self.pool)
         context_id = f"context:{uuid4().hex}"
         first = EntityRegistry(store).resolve(context_id=context_id, surface="Max")
         replay = EntityRegistry(store).resolve(context_id=context_id, surface=" max ")
@@ -141,10 +150,10 @@ class PostgresPersistenceTests(unittest.TestCase):
         self.assertNotEqual(first.entity.graph_id, other_context.entity.graph_id)
 
     def test_embedding_put_is_idempotent_and_rejects_changed_hash(self) -> None:
-        chunk_store = PostgresChunkStore(self.connection)
+        chunk_store = PostgresChunkStore(self.pool)
         chunk = self.chunk("record-001", "Max is a golden retriever")
         chunk_store.put(chunk)
-        store = PostgresEmbeddingStore(self.connection)
+        store = PostgresEmbeddingStore(self.pool)
         embedding = Embedding(
             context_id=chunk.context_id, subject_kind="fact", subject_id=f"fact:{uuid4().hex}",
             source_chunk_id=chunk.chunk_id, model_name="sentence-transformers/all-MiniLM-L6-v2",
@@ -161,10 +170,10 @@ class PostgresPersistenceTests(unittest.TestCase):
             store.put(changed)
 
     def test_embedding_deactivate_marks_inactive_without_deleting(self) -> None:
-        chunk_store = PostgresChunkStore(self.connection)
+        chunk_store = PostgresChunkStore(self.pool)
         chunk = self.chunk("record-001", "Max moved to Seattle")
         chunk_store.put(chunk)
-        store = PostgresEmbeddingStore(self.connection)
+        store = PostgresEmbeddingStore(self.pool)
         subject_id = f"fact:{uuid4().hex}"
         embedding = Embedding(
             context_id=chunk.context_id, subject_kind="fact", subject_id=subject_id,
@@ -182,10 +191,10 @@ class PostgresPersistenceTests(unittest.TestCase):
         self.assertEqual(row, (False,))
 
     def test_job_lifecycle_reaches_completed(self) -> None:
-        chunk_store = PostgresChunkStore(self.connection)
+        chunk_store = PostgresChunkStore(self.pool)
         chunk = self.chunk("record-001", "Max likes walks")
         chunk_store.put(chunk)
-        jobs = PostgresJobStore(self.connection)
+        jobs = PostgresJobStore(self.pool)
         job = jobs.get(chunk.chunk_id)
         self.assertEqual(job.state, IngestionJobState.PENDING_GRAPH)
         job = jobs.transition(chunk.chunk_id, IngestionJobState.PENDING_EMBEDDINGS)
@@ -195,19 +204,19 @@ class PostgresPersistenceTests(unittest.TestCase):
         self.assertEqual(job.state, IngestionJobState.COMPLETED)
 
     def test_seed_is_idempotent_and_does_not_reset_progress(self) -> None:
-        chunk_store = PostgresChunkStore(self.connection)
+        chunk_store = PostgresChunkStore(self.pool)
         chunk = self.chunk("record-001", "Max likes walks")
         chunk_store.put(chunk)  # already seeds pending_graph
-        jobs = PostgresJobStore(self.connection)
+        jobs = PostgresJobStore(self.pool)
         jobs.transition(chunk.chunk_id, IngestionJobState.PENDING_EMBEDDINGS)
         reseeded = jobs.seed(chunk.chunk_id, chunk.context_id)
         self.assertEqual(reseeded.state, IngestionJobState.PENDING_EMBEDDINGS)  # not reset to pending_graph
 
     def test_illegal_transition_is_rejected(self) -> None:
-        chunk_store = PostgresChunkStore(self.connection)
+        chunk_store = PostgresChunkStore(self.pool)
         chunk = self.chunk("record-001", "Max likes walks")
         chunk_store.put(chunk)
-        jobs = PostgresJobStore(self.connection)
+        jobs = PostgresJobStore(self.pool)
         # COMPLETED is terminal with no next state at all.
         jobs.transition(chunk.chunk_id, IngestionJobState.PENDING_EMBEDDINGS)
         jobs.transition(chunk.chunk_id, IngestionJobState.VERIFYING)
@@ -216,10 +225,10 @@ class PostgresPersistenceTests(unittest.TestCase):
             jobs.transition(chunk.chunk_id, IngestionJobState.PENDING_GRAPH)
 
     def test_retryable_failure_increments_attempt_count(self) -> None:
-        chunk_store = PostgresChunkStore(self.connection)
+        chunk_store = PostgresChunkStore(self.pool)
         chunk = self.chunk("record-001", "Max likes walks")
         chunk_store.put(chunk)
-        jobs = PostgresJobStore(self.connection)
+        jobs = PostgresJobStore(self.pool)
         job = jobs.transition(chunk.chunk_id, IngestionJobState.RETRYABLE_FAILED, error="simulated")
         self.assertEqual(job.attempt_count, 1)
         self.assertEqual(job.last_error, "simulated")
@@ -228,10 +237,10 @@ class PostgresPersistenceTests(unittest.TestCase):
         self.assertEqual(job.attempt_count, 2)
 
     def test_graph_manifest_replay_and_changed_payload_conflict(self) -> None:
-        store = PostgresChunkStore(self.connection)
+        store = PostgresChunkStore(self.pool)
         context_id = f"context:{uuid4().hex}"
         graph_id = store.allocate_graph_id("session", context_id, "session:001")
-        manifest = PostgresGraphManifestStore(self.connection)
+        manifest = PostgresGraphManifestStore(self.pool)
         plan = GraphWritePlan(context_id, "plan:001", (GraphNode(graph_id, "Session", "session:001", {"context_id": context_id, "session_id": "session-001"}),), ())
         manifest.register(plan)
         manifest.register(plan)
@@ -246,10 +255,10 @@ class PostgresPersistenceTests(unittest.TestCase):
         GraphPayloadConflictError the Session-node bug did (different partial
         payload, same logical_key) -- the bug this test guards against was never
         hypothetical, it's the same shape, just for a different node kind."""
-        store = PostgresChunkStore(self.connection)
+        store = PostgresChunkStore(self.pool)
         context_id = f"context:{uuid4().hex}"
         graph_id = store.allocate_graph_id("fact", context_id, "fact:cand-001")
-        manifest = PostgresGraphManifestStore(self.connection)
+        manifest = PostgresGraphManifestStore(self.pool)
 
         full_properties = {
             "context_id": context_id, "logical_key": "fact:cand-001", "text": "Max lives in Boston",

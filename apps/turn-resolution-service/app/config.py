@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     # but declared here now so the real client has settings to read.
     memory_service_url: str = "http://localhost:8002"
     memory_service_api_key: str = ""
+    memory_query_timeout_seconds: int = 3
+    memory_ingest_timeout_seconds: int = 5
     tool_call_max_round_trips: int = 5
     minigame_iframe_handshake_timeout_seconds: int = 20
     log_level: str = "INFO"

@@ -17,6 +17,15 @@ class ParticipantNotFoundError(BaseAppException):
         super().__init__(message=message, status_code=404)
 
 
+class ParticipantAccessDeniedError(BaseAppException):
+    """Raised when the acting participant does not belong to the authenticated user."""
+
+    def __init__(
+        self, message: str = "Participant does not belong to authenticated user"
+    ):
+        super().__init__(message=message, status_code=403)
+
+
 class TurnOrderError(BaseAppException):
     """Raised when a participant acts out of turn in a multiplayer playthrough."""
 
@@ -63,5 +72,29 @@ class MinigameResultMismatchError(BaseAppException):
     def __init__(
         self,
         message: str = "Submitted minigame result does not match the pending minigame",
+    ):
+        super().__init__(message=message, status_code=409)
+
+
+class MemoryLayerUnavailableError(BaseAppException):
+    """Raised when the memory layer is transiently unavailable (timeout, 5xx,
+    connection error, or an unexpected client error)."""
+
+    def __init__(self, message: str = "Memory layer is temporarily unavailable"):
+        super().__init__(message=message, status_code=502)
+
+
+class MemoryBatchNotFoundError(BaseAppException):
+    """Raised when a batch_id is unknown to the memory layer."""
+
+    def __init__(self, message: str = "Memory batch not found"):
+        super().__init__(message=message, status_code=404)
+
+
+class OptimisticLockError(BaseAppException):
+    """Raised when a concurrent write updated the playthrough state first."""
+
+    def __init__(
+        self, message: str = "Playthrough state was modified by another transaction"
     ):
         super().__init__(message=message, status_code=409)

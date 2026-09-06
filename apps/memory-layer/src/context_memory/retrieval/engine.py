@@ -15,7 +15,7 @@ from context_memory.core.llm_client import LLMClient
 from context_memory.core.logging import get_logger, timed_operation
 from context_memory.core.ports import Embedder, GraphTransport
 from context_memory.retrieval.detectors import looks_like_count_query
-from context_memory.retrieval.models import QueryRewriterOutput, RetrievedFact, RetrievedFacts, ScoredFact
+from context_memory.retrieval.models import DateRange, QueryRewriterOutput, RetrievedFact, RetrievedFacts, ScoredFact
 from context_memory.retrieval.fuser import CandidateFuser
 from context_memory.retrieval.graph_expander import GraphExpander
 from context_memory.retrieval.query_rewriter import JsonFileRewriteCache, QueryRewriter
@@ -43,7 +43,7 @@ class HybridRetrievalEngine:
         self,
         llm_client: LLMClient,
         embedder: Embedder,
-        pg_connection: object,
+        pool: object,
         hydra_client: GraphTransport,
         config: Config | None = None,
         temporal_resolver_client: LLMClient | None = None,
@@ -59,7 +59,7 @@ class HybridRetrievalEngine:
         across different models."""
         self._llm = llm_client
         self._embedder = embedder
-        self._pg = pg_connection
+        self._pool = pool
         self._hydra = hydra_client
         self._config = config or Config()
         self._temporal_resolver_client = temporal_resolver_client or llm_client
@@ -70,11 +70,11 @@ class HybridRetrievalEngine:
         if self._config.query_rewrite_cache_enabled:
             path = self._config.query_rewrite_cache_path
             self._rewrite_cache = JsonFileRewriteCache(path) if path else {}
-        self._seeder = CandidateSeeder(pg_connection, embedder, self._config)
-        self._graph_expander = GraphExpander(pg_connection, hydra_client, self._config)
+        self._seeder = CandidateSeeder(pool, embedder, self._config)
+        self._graph_expander = GraphExpander(pool, hydra_client, self._config)
         self._fuser = CandidateFuser(Reranker(self._rerank_client, self._config), self._config)
         self._reader = AnswerReader(
-            llm_client, SiblingExpander(pg_connection, embedder, self._config), self._config
+            llm_client, SiblingExpander(pool, embedder, self._config), self._config
         )
 
     def retrieve_and_answer(self, context_id: str, question: str, question_date: datetime, top_k: int | None = None) -> str:
@@ -133,8 +133,19 @@ class HybridRetrievalEngine:
         it can't be evaluated) -- same "config gap is never a silent hide"
         philosophy `_fact_is_visible`'s checkpoint check already uses.
         """
+        # AI-DND memory-layer contract (Bug 3): this is the only caller of
+        # this endpoint (POST /v1/memory/query, TRS's per-turn blocking
+        # call) -- retrieve_and_answer (chat/LongMemEval/benchmark) is a
+        # fully separate call path and is never affected by this flag.
+        # Skipping Phase 0 (temporal resolver + query rewriter) and the
+        # reranker cuts 2-3 real LLM round trips per query; verified safe
+        # for this caller's query shape (game-action text, never a
+        # real-world date phrase) since the resolver's own "no anchor"
+        # fallback -- what it already returns for every query this endpoint
+        # has ever sent it -- is reproduced exactly below, not approximated.
         ranked, graph_data, top_k = self._retrieve_ranked(
-            context_id, query_text, question_date, top_k, operation_name="retrieval.retrieve_facts"
+            context_id, query_text, question_date, top_k,
+            operation_name="retrieval.retrieve_facts", skip_llm_stages=True,
         )
         if ranked is None:
             return RetrievedFacts(facts=[], abstained=True, resolved_time_point=None)
@@ -235,29 +246,31 @@ class HybridRetrievalEngine:
         if not numeric_id_by_fact_id:
             return {}
         try:
-            with self._pg.cursor() as cursor:
-                cursor.execute(
-                    "SELECT fact_id, checkpoint, when_active, visible_to_participant_id, hidden "
-                    "FROM pre_authored_fact_metadata WHERE context_id = %s AND fact_id = ANY(%s)",
-                    (context_id, list(numeric_id_by_fact_id.keys())),
-                )
-                return {
-                    numeric_id_by_fact_id[row[0]]: (row[1], row[2], row[3], bool(row[4]))
-                    for row in cursor.fetchall() if row[0] in numeric_id_by_fact_id
-                }
+            with self._pool.connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT fact_id, checkpoint, when_active, visible_to_participant_id, hidden "
+                        "FROM pre_authored_fact_metadata WHERE context_id = %s AND fact_id = ANY(%s)",
+                        (context_id, list(numeric_id_by_fact_id.keys())),
+                    )
+                    return {
+                        numeric_id_by_fact_id[row[0]]: (row[1], row[2], row[3], bool(row[4]))
+                        for row in cursor.fetchall() if row[0] in numeric_id_by_fact_id
+                    }
         except Exception as e:
             logger.warning("pre_authored_fact_metadata lookup skipped: %s", e)
             return {}
 
     def _fetch_checkpoint_order(self, template_context_id: str) -> list[str] | None:
         try:
-            with self._pg.cursor() as cursor:
-                cursor.execute(
-                    "SELECT checkpoints FROM scenario_template_checkpoints WHERE context_id = %s",
-                    (template_context_id,),
-                )
-                row = cursor.fetchone()
-                return row[0] if row else None
+            with self._pool.connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT checkpoints FROM scenario_template_checkpoints WHERE context_id = %s",
+                        (template_context_id,),
+                    )
+                    row = cursor.fetchone()
+                    return row[0] if row else None
         except Exception as e:
             logger.warning("scenario_template_checkpoints lookup skipped: %s", e)
             return None
@@ -307,7 +320,8 @@ class HybridRetrievalEngine:
         )
 
     def _retrieve_ranked(
-        self, context_id: str, question: str, question_date: datetime, top_k: int | None, operation_name: str
+        self, context_id: str, question: str, question_date: datetime, top_k: int | None, operation_name: str,
+        skip_llm_stages: bool = False,
     ) -> tuple[list[ScoredFact] | None, dict, int]:
         """Phases 0-3, shared by `retrieve_and_answer` and `retrieve_facts`:
         temporal resolution, query rewriting, seeding, graph expansion, and
@@ -315,7 +329,12 @@ class HybridRetrievalEngine:
         decide what that means for their own response shape. `operation_name`
         keeps each public method's own timed_operation span name (existing
         tests/dashboards key off `retrieval.retrieve_and_answer` specifically)
-        even though both now share this one implementation."""
+        even though both now share this one implementation.
+
+        `skip_llm_stages` (AI-DND memory-layer contract, Bug 3): only ever
+        `True` from `retrieve_facts`. Skips Phase 0's two LLM calls, using
+        each one's own "no anchor / no expansion" fallback directly, and
+        skips the reranker in `fuse()` (RRF order stands as final)."""
         # Widen only when the caller left top_k unset -- an explicit override
         # (tests, API callers) is never second-guessed by the heuristic.
         is_count_query = top_k is None and looks_like_count_query(question)
@@ -330,21 +349,30 @@ class HybridRetrievalEngine:
             # resolver doesn't use expanded_query -- run concurrently rather
             # than one after the other; each is a real network round trip, so
             # this halves Phase 0's wall time for free.
-            resolver = TemporalQueryResolver(self._temporal_resolver_client, self._config)
-            rewriter = QueryRewriter(self._query_rewriter_client, self._config, cache=self._rewrite_cache)
-            # `ThreadPoolExecutor` doesn't propagate `ContextVar`s to its
-            # workers (that's asyncio-only) -- without this, both calls'
-            # journal rows (Phase 5) lose the request's correlation_id/
-            # context_id, each minting its own instead of sharing this
-            # request's. A `Context` can only be `.run()` by one thread at a
-            # time, so each concurrent task needs its own copy, not one
-            # shared snapshot -- two calls is cheap, both still see the same
-            # ambient values since neither has diverged from this point yet.
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                temporal_future = pool.submit(contextvars.copy_context().run, resolver.resolve, question, question_date)
-                rewriter_future = pool.submit(contextvars.copy_context().run, rewriter.rewrite, question)
-                temporal_bounds = temporal_future.result()
-                expanded_query = rewriter_future.result()
+            if skip_llm_stages:
+                # Exactly TemporalQueryResolver.resolve/QueryRewriter.rewrite's
+                # own exception fallbacks -- not new sentinel values -- and,
+                # per this endpoint's own resolver prompt, what the LLM call
+                # already returns for AI-DND's query shape in practice
+                # (verified: no temporal-phrase, no-anchor case, every time).
+                temporal_bounds = DateRange()
+                expanded_query = QueryRewriterOutput(decomposed_queries=[question], synonyms=[])
+            else:
+                resolver = TemporalQueryResolver(self._temporal_resolver_client, self._config)
+                rewriter = QueryRewriter(self._query_rewriter_client, self._config, cache=self._rewrite_cache)
+                # `ThreadPoolExecutor` doesn't propagate `ContextVar`s to its
+                # workers (that's asyncio-only) -- without this, both calls'
+                # journal rows (Phase 5) lose the request's correlation_id/
+                # context_id, each minting its own instead of sharing this
+                # request's. A `Context` can only be `.run()` by one thread at a
+                # time, so each concurrent task needs its own copy, not one
+                # shared snapshot -- two calls is cheap, both still see the same
+                # ambient values since neither has diverged from this point yet.
+                with ThreadPoolExecutor(max_workers=2) as thread_pool:
+                    temporal_future = thread_pool.submit(contextvars.copy_context().run, resolver.resolve, question, question_date)
+                    rewriter_future = thread_pool.submit(contextvars.copy_context().run, rewriter.rewrite, question)
+                    temporal_bounds = temporal_future.result()
+                    expanded_query = rewriter_future.result()
 
             # Phase 1: Semantic + Keyword Seeding
             seed_facts = self._seeder.seed(context_id, question, expanded_query, top_k)
@@ -358,19 +386,22 @@ class HybridRetrievalEngine:
             missing_text_fids = [fid for fid, fact in seed_facts.items() if not fact.text]
             if missing_text_fids:
                 try:
-                    with self._pg.cursor() as cursor:
-                        cursor.execute(
-                            "SELECT fact_id, raw_text FROM fact_search_index WHERE context_id = %s AND fact_id = ANY(%s)",
-                            (context_id, missing_text_fids)
-                        )
-                        for r_fid, r_text in cursor.fetchall():
-                            if str(r_fid) in seed_facts:
-                                seed_facts[str(r_fid)].text = r_text
+                    with self._pool.connection() as conn:
+                        with conn.cursor() as cursor:
+                            cursor.execute(
+                                "SELECT fact_id, raw_text FROM fact_search_index WHERE context_id = %s AND fact_id = ANY(%s)",
+                                (context_id, missing_text_fids)
+                            )
+                            for r_fid, r_text in cursor.fetchall():
+                                if str(r_fid) in seed_facts:
+                                    seed_facts[str(r_fid)].text = r_text
                 except Exception as e:
                     logger.debug("PostgreSQL fallback fact_search_index query skipped: %s", e)
 
             # Phase 3: 4-Factor Composite Scoring (Reader Synthesis is the
             # caller's job now -- retrieve_and_answer's, not this method's).
-            ranked = self._fuser.fuse(question, seed_facts, graph_data, top_k, expanded_query)
+            ranked = self._fuser.fuse(
+                question, seed_facts, graph_data, top_k, expanded_query, skip_reranker=skip_llm_stages
+            )
             ctx["ranked_count"] = 0 if ranked is None else len(ranked)
             return ranked, graph_data, top_k

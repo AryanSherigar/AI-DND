@@ -37,11 +37,11 @@ class FakeOrchestrator:
 
 def _engine(orchestrator) -> MemoryEngine:
     # §3 fix: `batch_store` is now a real dependency (defaults to
-    # `PostgresBatchStore(pg_connection)`) -- `InMemoryBatchStore` here keeps
-    # `pg_connection=object()` a safe placeholder these tests never actually
+    # `PostgresBatchStore(pool)`) -- `InMemoryBatchStore` here keeps
+    # `pool=object()` a safe placeholder these tests never actually
     # touch, same as before this fix.
     return MemoryEngine(
-        orchestrator, retrieval_engine=None, llm_client=None, pg_connection=object(),
+        orchestrator, retrieval_engine=None, llm_client=None, pool=object(),
         batch_store=InMemoryBatchStore(),
     )
 

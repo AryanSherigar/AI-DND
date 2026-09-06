@@ -45,6 +45,31 @@ class FactMetadataStore(Protocol):
         visible_to_participant_id: str | None = None, hidden: bool = False,
     ) -> None: ...
 
+
+class FactProjector(Protocol):
+    """Duck-typed to `ingestion.fact_projection.FactProjectionWriter` -- see
+    `FactMetadataStore` above for why this stays a locally-declared Protocol
+    rather than an import of fact_projection.py's concrete class."""
+
+    def project_copy(
+        self, source_context_id: str, source_subject_id: str, target_context_id: str,
+        new_fact_graph_id: int, text: str,
+    ) -> None: ...
+
+
+# mem1 gap #46 fix: a cloned fact's SOURCE-context identity in
+# memory_embeddings/fact_search_index differs by what originally wrote it --
+# direct authoring's own logical_key is a content hash that never encodes a
+# graph_id (ingestion.direct_authoring._fact_logical_key), so
+# FactProjectionWriter.project stores it under the fact's own graph_id
+# instead; extraction's logical_key IS `fact:<candidate_id>`, and that
+# candidate_id is exactly what orchestrator.py already projects under. This
+# prefix is how those two cases are told apart when reading the OLD row back
+# to copy it forward -- see ingestion.fact_projection's module docstring for
+# why the NEW (cloned) row always uses the new graph_id regardless of which
+# case this was.
+_DIRECT_AUTHORING_LOGICAL_KEY_PREFIX = "fact:direct:"
+
 # Every property graph_plan_builder.py / direct_authoring.py ever write onto
 # an Entity or Fact node. Read explicitly, not wildcarded (HydraDB doesn't
 # support that) -- a property this build doesn't recognize is simply
@@ -81,6 +106,7 @@ def clone(
     graph_writer: GraphWriter,
     hydra_transport: GraphTransport,
     fact_metadata_store: FactMetadataStore | None = None,
+    fact_projector: FactProjector | None = None,
 ) -> CloneResult:
     """Copies every Entity/Fact node and Fact->Entity edge under
     `source_context_id` into a fresh `target_context_id`. Idempotent per
@@ -93,6 +119,11 @@ def clone(
     `checkpoint`) onto its newly-allocated fact_id -- that table is keyed by
     (context_id, fact_id), so without this step a cloned playthrough's facts
     would carry ids the template's metadata rows never heard of.
+
+    `fact_projector`, when given, also projects each cloned fact into the
+    TARGET context's `memory_embeddings`/`fact_search_index` (mem1 gap #46) --
+    reusing the source fact's already-computed embedding vector where one
+    exists, rather than re-embedding identical text on every clone.
     """
     with timed_operation(
         logger, "template_clone.clone", {"source_context_id": source_context_id, "target_context_id": target_context_id}
@@ -127,6 +158,14 @@ def clone(
         if fact_metadata_store is not None and old_to_new_fact_id:
             _clone_fact_metadata(fact_metadata_store, source_context_id, target_context_id, old_to_new_fact_id)
 
+        # mem1 gap #46 fix: without this, every cloned fact is durable in the
+        # PLAYTHROUGH's HydraDB but CandidateSeeder.seed() -- which starts
+        # retrieval only from memory_embeddings/fact_search_index -- can
+        # never find it there, regardless of whether it was ever indexed in
+        # the template context.
+        if fact_projector is not None and old_to_new_fact_id:
+            _project_cloned_facts(fact_rows, old_to_new_fact_id, source_context_id, target_context_id, fact_projector)
+
         result = CloneResult(
             entities_cloned=len(entity_nodes), facts_cloned=len(fact_nodes), relationships_cloned=len(relationships)
         )
@@ -153,6 +192,34 @@ def _clone_fact_metadata(
         fact_metadata_store.put(
             target_context_id, new_fact_id, checkpoint, when_active, visible_to_participant_id, hidden,
         )
+
+
+def _project_cloned_facts(
+    fact_rows: list[dict[str, object]], old_to_new_fact_id: dict[int, int],
+    source_context_id: str, target_context_id: str, fact_projector: FactProjector,
+) -> None:
+    for row in fact_rows:
+        old_id = int(row["id"])
+        new_id = old_to_new_fact_id.get(old_id)
+        text = row.get("text")
+        if new_id is None or not text:
+            # new_id is None: this row's own clone was skipped (see
+            # _clone_nodes, missing logical_key) -- nothing to project it
+            # under. Missing text: matches _drop_nulls' existing handling of
+            # a property the source node never set; nothing meaningful to
+            # embed/index.
+            continue
+        source_identity = _source_projection_identity(str(row.get("logical_key") or ""), old_id)
+        fact_projector.project_copy(source_context_id, source_identity, target_context_id, new_id, str(text))
+
+
+def _source_projection_identity(logical_key: str, old_graph_id: int) -> str:
+    """Reconstructs the identity this fact's memory_embeddings/
+    fact_search_index rows are stored under in the SOURCE context -- see
+    this module's `_DIRECT_AUTHORING_LOGICAL_KEY_PREFIX` comment above."""
+    if logical_key.startswith(_DIRECT_AUTHORING_LOGICAL_KEY_PREFIX):
+        return str(old_graph_id)
+    return logical_key.removeprefix("fact:")
 
 
 def _read_labeled(

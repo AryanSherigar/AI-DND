@@ -25,85 +25,87 @@ from context_memory.ingestion.batch_models import BatchStatus
 
 
 class PostgresChunkStore:
-    def __init__(self, connection: object) -> None:
-        self._connection = connection
+    def __init__(self, pool: object) -> None:
+        self._pool = pool
 
     def put(self, chunk: Chunk) -> Chunk:
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT context_id, source_type, source_external_id, source_record_id,
+                               session_id, actor_id, actor_role, raw_text, content_hash,
+                               occurred_at, metadata
+                        FROM evidence_chunks WHERE chunk_id = %s AND context_id = %s FOR UPDATE
+                        """,
+                        (chunk.chunk_id, chunk.context_id),
+                    )
+                    existing = cursor.fetchone()
+                    if existing is not None:
+                        expected = (
+                            chunk.context_id,
+                            chunk.source.source_type,
+                            chunk.source.source_external_id,
+                            chunk.source_record_id,
+                            chunk.session_id,
+                            chunk.actor_id,
+                            chunk.actor_role,
+                            chunk.raw_text,
+                            chunk.content_hash,
+                            chunk.occurred_at,
+                            dict(chunk.metadata),
+                        )
+                        if existing != expected:
+                            raise ImmutableRecordConflictError(
+                                f"chunk_id {chunk.chunk_id} has different immutable content"
+                            )
+                        return chunk
+                    cursor.execute(
+                        """
+                        INSERT INTO evidence_chunks (
+                            chunk_id, context_id, source_type, source_external_id,
+                            source_record_id, session_id, actor_id, actor_role,
+                            raw_text, content_hash, occurred_at, metadata
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                        """,
+                        (
+                            chunk.chunk_id,
+                            chunk.context_id,
+                            chunk.source.source_type,
+                            chunk.source.source_external_id,
+                            chunk.source_record_id,
+                            chunk.session_id,
+                            chunk.actor_id,
+                            chunk.actor_role,
+                            chunk.raw_text,
+                            chunk.content_hash,
+                            chunk.occurred_at,
+                            json.dumps(dict(chunk.metadata), sort_keys=True),
+                        ),
+                    )
+                    cursor.execute(
+                        """
+                        INSERT INTO ingestion_jobs (job_id, chunk_id, context_id, state)
+                        VALUES (%s, %s, %s, 'pending_graph')
+                        """,
+                        (f"job:{chunk.chunk_id}", chunk.chunk_id, chunk.context_id),
+                    )
+        return chunk
+
+    def get(self, context_id: str, chunk_id: str) -> Chunk | None:
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
                 cursor.execute(
                     """
                     SELECT context_id, source_type, source_external_id, source_record_id,
                            session_id, actor_id, actor_role, raw_text, content_hash,
                            occurred_at, metadata
-                    FROM evidence_chunks WHERE chunk_id = %s AND context_id = %s FOR UPDATE
+                    FROM evidence_chunks WHERE chunk_id = %s AND context_id = %s
                     """,
-                    (chunk.chunk_id, chunk.context_id),
+                    (chunk_id, context_id),
                 )
-                existing = cursor.fetchone()
-                if existing is not None:
-                    expected = (
-                        chunk.context_id,
-                        chunk.source.source_type,
-                        chunk.source.source_external_id,
-                        chunk.source_record_id,
-                        chunk.session_id,
-                        chunk.actor_id,
-                        chunk.actor_role,
-                        chunk.raw_text,
-                        chunk.content_hash,
-                        chunk.occurred_at,
-                        dict(chunk.metadata),
-                    )
-                    if existing != expected:
-                        raise ImmutableRecordConflictError(
-                            f"chunk_id {chunk.chunk_id} has different immutable content"
-                        )
-                    return chunk
-                cursor.execute(
-                    """
-                    INSERT INTO evidence_chunks (
-                        chunk_id, context_id, source_type, source_external_id,
-                        source_record_id, session_id, actor_id, actor_role,
-                        raw_text, content_hash, occurred_at, metadata
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-                    """,
-                    (
-                        chunk.chunk_id,
-                        chunk.context_id,
-                        chunk.source.source_type,
-                        chunk.source.source_external_id,
-                        chunk.source_record_id,
-                        chunk.session_id,
-                        chunk.actor_id,
-                        chunk.actor_role,
-                        chunk.raw_text,
-                        chunk.content_hash,
-                        chunk.occurred_at,
-                        json.dumps(dict(chunk.metadata), sort_keys=True),
-                    ),
-                )
-                cursor.execute(
-                    """
-                    INSERT INTO ingestion_jobs (job_id, chunk_id, context_id, state)
-                    VALUES (%s, %s, %s, 'pending_graph')
-                    """,
-                    (f"job:{chunk.chunk_id}", chunk.chunk_id, chunk.context_id),
-                )
-        return chunk
-
-    def get(self, context_id: str, chunk_id: str) -> Chunk | None:
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT context_id, source_type, source_external_id, source_record_id,
-                       session_id, actor_id, actor_role, raw_text, content_hash,
-                       occurred_at, metadata
-                FROM evidence_chunks WHERE chunk_id = %s AND context_id = %s
-                """,
-                (chunk_id, context_id),
-            )
-            row = cursor.fetchone()
+                row = cursor.fetchone()
         if row is None:
             return None
         return Chunk(
@@ -121,19 +123,20 @@ class PostgresChunkStore:
         )
 
     def allocate_graph_id(self, node_kind: str, context_id: str, logical_key: str) -> int:
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO graph_id_registry (node_kind, context_id, logical_key)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (node_kind, context_id, logical_key)
-                    DO UPDATE SET logical_key = EXCLUDED.logical_key
-                    RETURNING graph_id
-                    """,
-                    (node_kind, context_id, logical_key),
-                )
-                row = cursor.fetchone()
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO graph_id_registry (node_kind, context_id, logical_key)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (node_kind, context_id, logical_key)
+                        DO UPDATE SET logical_key = EXCLUDED.logical_key
+                        RETURNING graph_id
+                        """,
+                        (node_kind, context_id, logical_key),
+                    )
+                    row = cursor.fetchone()
         if row is None:
             raise RuntimeError("graph ID allocation returned no row")
         return int(row[0])
@@ -142,8 +145,8 @@ class PostgresChunkStore:
 class PostgresExtractionStore:
     """Append-only SQL audit trail for the deterministic M4 baseline."""
 
-    def __init__(self, connection: object) -> None:
-        self._connection = connection
+    def __init__(self, pool: object) -> None:
+        self._pool = pool
 
     def record(
         self,
@@ -157,63 +160,64 @@ class PostgresExtractionStore:
     ) -> None:
         accepted_items = tuple(accepted)  # type: ignore[arg-type]
         rejected_items = tuple(rejected)  # type: ignore[arg-type]
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO extraction_attempts (
-                        attempt_id, chunk_id, context_id, extractor_name, extractor_version,
-                        extractor_kind, quality_status, input_content_hash, accepted_count, rejected_count
-                    ) VALUES (%s, %s, %s, %s, %s, 'deterministic_fixture', 'baseline_only', %s, %s, %s)
-                    ON CONFLICT (attempt_id) DO NOTHING
-                    """,
-                    (attempt_id, chunk.chunk_id, chunk.context_id, extractor_name, extractor_version,
-                     chunk.content_hash, len(accepted_items), len(rejected_items)),
-                )
-                for candidate in accepted_items:
-                    assert isinstance(candidate, ExtractedMemoryCandidate)
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO extracted_memory_candidates (
-                            attempt_id, candidate_id, memory_text, memory_type, scope_type, scope_id,
-                            source_record_id, source_start, source_end, confidence, observed_at,
-                            valid_from, valid_to, entities
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-                        ON CONFLICT (attempt_id, candidate_id) DO NOTHING
+                        INSERT INTO extraction_attempts (
+                            attempt_id, chunk_id, context_id, extractor_name, extractor_version,
+                            extractor_kind, quality_status, input_content_hash, accepted_count, rejected_count
+                        ) VALUES (%s, %s, %s, %s, %s, 'deterministic_fixture', 'baseline_only', %s, %s, %s)
+                        ON CONFLICT (attempt_id) DO NOTHING
                         """,
-                        (
-                            attempt_id, candidate.candidate_id, candidate.text, candidate.memory_type.value,
-                            candidate.scope_type.value, candidate.scope_id, candidate.source_span.source_record_id,
-                            candidate.source_span.source_start, candidate.source_span.source_end, candidate.confidence,
-                            candidate.temporal.observed_at, candidate.temporal.valid_from, candidate.temporal.valid_to,
-                            json.dumps([
-                                {"surface": entity.surface, "entity_type": entity.entity_type}
-                                for entity in candidate.entities
-                            ], sort_keys=True),
-                        ),
+                        (attempt_id, chunk.chunk_id, chunk.context_id, extractor_name, extractor_version,
+                         chunk.content_hash, len(accepted_items), len(rejected_items)),
                     )
+                    for candidate in accepted_items:
+                        assert isinstance(candidate, ExtractedMemoryCandidate)
+                        cursor.execute(
+                            """
+                            INSERT INTO extracted_memory_candidates (
+                                attempt_id, candidate_id, memory_text, memory_type, scope_type, scope_id,
+                                source_record_id, source_start, source_end, confidence, observed_at,
+                                valid_from, valid_to, entities
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                            ON CONFLICT (attempt_id, candidate_id) DO NOTHING
+                            """,
+                            (
+                                attempt_id, candidate.candidate_id, candidate.text, candidate.memory_type.value,
+                                candidate.scope_type.value, candidate.scope_id, candidate.source_span.source_record_id,
+                                candidate.source_span.source_start, candidate.source_span.source_end, candidate.confidence,
+                                candidate.temporal.observed_at, candidate.temporal.valid_from, candidate.temporal.valid_to,
+                                json.dumps([
+                                    {"surface": entity.surface, "entity_type": entity.entity_type}
+                                    for entity in candidate.entities
+                                ], sort_keys=True),
+                            ),
+                        )
 
-                for ordinal, item in enumerate(rejected_items):
-                    draft = item.draft
-                    cursor.execute(
-                        """
-                        INSERT INTO rejected_extraction_candidates (
-                            attempt_id, ordinal, candidate_id, rejection_reason, draft
-                        ) VALUES (%s, %s, %s, %s, %s::jsonb)
-                        ON CONFLICT (attempt_id, ordinal) DO NOTHING
-                        """,
-                        (
-                            attempt_id, ordinal, item.candidate_id, item.reason,
-                            json.dumps({
-                                "candidate_id": draft.candidate_id, "text": draft.text,
-                                "source_start": draft.source_start, "source_end": draft.source_end,
-                                "confidence": draft.confidence,
-                                "memory_type": draft.memory_type.value if draft.memory_type else None,
-                                "scope_type": draft.scope_type.value if draft.scope_type else None,
-                                "scope_id": draft.scope_id,
-                            }, sort_keys=True),
-                        ),
-                    )
+                    for ordinal, item in enumerate(rejected_items):
+                        draft = item.draft
+                        cursor.execute(
+                            """
+                            INSERT INTO rejected_extraction_candidates (
+                                attempt_id, ordinal, candidate_id, rejection_reason, draft
+                            ) VALUES (%s, %s, %s, %s, %s::jsonb)
+                            ON CONFLICT (attempt_id, ordinal) DO NOTHING
+                            """,
+                            (
+                                attempt_id, ordinal, item.candidate_id, item.reason,
+                                json.dumps({
+                                    "candidate_id": draft.candidate_id, "text": draft.text,
+                                    "source_start": draft.source_start, "source_end": draft.source_end,
+                                    "confidence": draft.confidence,
+                                    "memory_type": draft.memory_type.value if draft.memory_type else None,
+                                    "scope_type": draft.scope_type.value if draft.scope_type else None,
+                                    "scope_id": draft.scope_id,
+                                }, sort_keys=True),
+                            ),
+                        )
 
 
 class PostgresGraphManifestStore:
@@ -242,40 +246,41 @@ class PostgresGraphManifestStore:
 
     NODE_MUTABLE_PROPERTIES = frozenset({"is_current", "superseded_at", "valid_to", "archived"})
 
-    def __init__(self, connection: object) -> None:
-        self._connection = connection
+    def __init__(self, pool: object) -> None:
+        self._pool = pool
 
     def register(self, plan: GraphWritePlan) -> None:
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                for record in plan.records():
-                    kind = "node" if isinstance(record, GraphNode) else "relationship"
-                    payload_hash = plan.payload_hash(record)
-                    cursor.execute(
-                        "SELECT graph_id, payload_hash, payload FROM graph_write_manifests WHERE record_kind = %s AND context_id = %s AND logical_key = %s FOR UPDATE",
-                        (kind, plan.context_id, record.logical_key),
-                    )
-                    existing = cursor.fetchone()
-                    if existing is not None:
-                        existing_graph_id, existing_hash, existing_payload = existing
-                        if (existing_graph_id, existing_hash) == (record.graph_id, payload_hash):
-                            continue
-                        merged_payload = None
-                        if kind == "node" and existing_graph_id == record.graph_id:
-                            merged_payload = self._merge_mutable_only(existing_payload, self._payload(record))
-                        if merged_payload is None:
-                            raise GraphPayloadConflictError(f"{kind} {record.logical_key} has a different immutable graph payload")
-                        merged_hash = self._hash(merged_payload)
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    for record in plan.records():
+                        kind = "node" if isinstance(record, GraphNode) else "relationship"
+                        payload_hash = plan.payload_hash(record)
                         cursor.execute(
-                            "UPDATE graph_write_manifests SET payload_hash = %s, payload = %s::jsonb "
-                            "WHERE record_kind = %s AND context_id = %s AND logical_key = %s",
-                            (merged_hash, json.dumps(merged_payload, sort_keys=True), kind, plan.context_id, record.logical_key),
+                            "SELECT graph_id, payload_hash, payload FROM graph_write_manifests WHERE record_kind = %s AND context_id = %s AND logical_key = %s FOR UPDATE",
+                            (kind, plan.context_id, record.logical_key),
                         )
-                        continue
-                    cursor.execute(
-                        "INSERT INTO graph_write_manifests (record_kind, context_id, logical_key, graph_id, payload_hash, payload) VALUES (%s, %s, %s, %s, %s, %s::jsonb)",
-                        (kind, plan.context_id, record.logical_key, record.graph_id, payload_hash, json.dumps(self._payload(record), sort_keys=True)),
-                    )
+                        existing = cursor.fetchone()
+                        if existing is not None:
+                            existing_graph_id, existing_hash, existing_payload = existing
+                            if (existing_graph_id, existing_hash) == (record.graph_id, payload_hash):
+                                continue
+                            merged_payload = None
+                            if kind == "node" and existing_graph_id == record.graph_id:
+                                merged_payload = self._merge_mutable_only(existing_payload, self._payload(record))
+                            if merged_payload is None:
+                                raise GraphPayloadConflictError(f"{kind} {record.logical_key} has a different immutable graph payload")
+                            merged_hash = self._hash(merged_payload)
+                            cursor.execute(
+                                "UPDATE graph_write_manifests SET payload_hash = %s, payload = %s::jsonb "
+                                "WHERE record_kind = %s AND context_id = %s AND logical_key = %s",
+                                (merged_hash, json.dumps(merged_payload, sort_keys=True), kind, plan.context_id, record.logical_key),
+                            )
+                            continue
+                        cursor.execute(
+                            "INSERT INTO graph_write_manifests (record_kind, context_id, logical_key, graph_id, payload_hash, payload) VALUES (%s, %s, %s, %s, %s, %s::jsonb)",
+                            (kind, plan.context_id, record.logical_key, record.graph_id, payload_hash, json.dumps(self._payload(record), sort_keys=True)),
+                        )
 
     @classmethod
     def _merge_mutable_only(cls, existing_payload: dict[str, object], new_payload: dict[str, object]) -> dict[str, object] | None:
@@ -307,31 +312,33 @@ class PostgresGraphManifestStore:
 class PostgresSearchIndexStore:
     """PostgreSQL `tsvector`/`ts_rank_cd` full-text index for keyword retrieval."""
 
-    def __init__(self, connection: object) -> None:
-        self._connection = connection
+    def __init__(self, pool: object) -> None:
+        self._pool = pool
 
     def put(self, context_id: str, fact_id: str, raw_text: str) -> None:
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO fact_search_index (fact_id, context_id, raw_text, is_active)
-                    VALUES (%s, %s, %s, true)
-                    ON CONFLICT (fact_id) DO UPDATE
-                    SET raw_text = EXCLUDED.raw_text, is_active = true
-                    """,
-                    (fact_id, context_id, raw_text)
-                )
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO fact_search_index (fact_id, context_id, raw_text, is_active)
+                        VALUES (%s, %s, %s, true)
+                        ON CONFLICT (fact_id) DO UPDATE
+                        SET raw_text = EXCLUDED.raw_text, is_active = true
+                        """,
+                        (fact_id, context_id, raw_text)
+                    )
 
     def contains(self, context_id: str, fact_id: str) -> bool:
         """§8 fix: independent post-write confirmation for completion
         verification (orchestrator._verify)."""
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT 1 FROM fact_search_index WHERE context_id = %s AND fact_id = %s AND is_active LIMIT 1",
-                (context_id, fact_id),
-            )
-            return cursor.fetchone() is not None
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT 1 FROM fact_search_index WHERE context_id = %s AND fact_id = %s AND is_active LIMIT 1",
+                    (context_id, fact_id),
+                )
+                return cursor.fetchone() is not None
 
     def put_batch(self, items: Sequence[tuple[str, str, str]]) -> None:
         """One multi-row upsert for a whole chunk's accepted facts instead of
@@ -347,72 +354,74 @@ class PostgresSearchIndexStore:
         """
         if not items:
             return
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                values_sql = ", ".join(["(%s, %s, %s, true)"] * len(items))
-                params: list[object] = []
-                for context_id, fact_id, raw_text in items:
-                    params.extend((fact_id, context_id, raw_text))
-                cursor.execute(
-                    f"""
-                    INSERT INTO fact_search_index (fact_id, context_id, raw_text, is_active)
-                    VALUES {values_sql}
-                    ON CONFLICT (fact_id) DO UPDATE
-                    SET raw_text = EXCLUDED.raw_text, is_active = true
-                    """,
-                    params,
-                )
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    values_sql = ", ".join(["(%s, %s, %s, true)"] * len(items))
+                    params: list[object] = []
+                    for context_id, fact_id, raw_text in items:
+                        params.extend((fact_id, context_id, raw_text))
+                    cursor.execute(
+                        f"""
+                        INSERT INTO fact_search_index (fact_id, context_id, raw_text, is_active)
+                        VALUES {values_sql}
+                        ON CONFLICT (fact_id) DO UPDATE
+                        SET raw_text = EXCLUDED.raw_text, is_active = true
+                        """,
+                        params,
+                    )
 
 
 class PostgresEmbeddingStore:
     """Versioned fact/chunk embedding persistence against `memory_embeddings` (Milestone 7)."""
 
-    def __init__(self, connection: object) -> None:
-        self._connection = connection
+    def __init__(self, pool: object) -> None:
+        self._pool = pool
 
     def put(self, embedding: Embedding) -> Embedding:
         """Insert once per (context, subject, model, version); replay with the same
         content hash is a no-op, a changed hash under the same version is rejected
         (re-embedding the same version must not silently rewrite a prior vector)."""
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT embedded_content_hash FROM memory_embeddings
-                    WHERE context_id = %s AND subject_kind = %s AND subject_id = %s
-                      AND model_name = %s AND model_version = %s
-                    FOR UPDATE
-                    """,
-                    (
-                        embedding.context_id, embedding.subject_kind, embedding.subject_id,
-                        embedding.model_name, embedding.model_version,
-                    ),
-                )
-                existing = cursor.fetchone()
-                if existing is not None:
-                    if existing[0] != embedding.embedded_content_hash:
-                        raise ImmutableRecordConflictError(
-                            f"embedding for {embedding.subject_kind}:{embedding.subject_id} "
-                            f"model {embedding.model_name}/{embedding.model_version} "
-                            "has a different embedded_content_hash"
-                        )
-                    return embedding
-                vector_literal = "[" + ",".join(repr(float(value)) for value in embedding.values) + "]"
-                cursor.execute(
-                    """
-                    INSERT INTO memory_embeddings (
-                        context_id, subject_kind, subject_id, source_chunk_id,
-                        model_name, model_version, dimensions, embedding,
-                        embedded_content_hash, is_active
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s)
-                    """,
-                    (
-                        embedding.context_id, embedding.subject_kind, embedding.subject_id,
-                        embedding.source_chunk_id, embedding.model_name, embedding.model_version,
-                        len(embedding.values), vector_literal, embedding.embedded_content_hash,
-                        embedding.is_active,
-                    ),
-                )
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT embedded_content_hash FROM memory_embeddings
+                        WHERE context_id = %s AND subject_kind = %s AND subject_id = %s
+                          AND model_name = %s AND model_version = %s
+                        FOR UPDATE
+                        """,
+                        (
+                            embedding.context_id, embedding.subject_kind, embedding.subject_id,
+                            embedding.model_name, embedding.model_version,
+                        ),
+                    )
+                    existing = cursor.fetchone()
+                    if existing is not None:
+                        if existing[0] != embedding.embedded_content_hash:
+                            raise ImmutableRecordConflictError(
+                                f"embedding for {embedding.subject_kind}:{embedding.subject_id} "
+                                f"model {embedding.model_name}/{embedding.model_version} "
+                                "has a different embedded_content_hash"
+                            )
+                        return embedding
+                    vector_literal = "[" + ",".join(repr(float(value)) for value in embedding.values) + "]"
+                    cursor.execute(
+                        """
+                        INSERT INTO memory_embeddings (
+                            context_id, subject_kind, subject_id, source_chunk_id,
+                            model_name, model_version, dimensions, embedding,
+                            embedded_content_hash, is_active
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s)
+                        """,
+                        (
+                            embedding.context_id, embedding.subject_kind, embedding.subject_id,
+                            embedding.source_chunk_id, embedding.model_name, embedding.model_version,
+                            len(embedding.values), vector_literal, embedding.embedded_content_hash,
+                            embedding.is_active,
+                        ),
+                    )
         return embedding
 
     def put_batch(self, embeddings: Sequence[Embedding]) -> list[Embedding]:
@@ -429,103 +438,134 @@ class PostgresEmbeddingStore:
         """
         if not embeddings:
             return []
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                keys = [
-                    (e.context_id, e.subject_kind, e.subject_id, e.model_name, e.model_version)
-                    for e in embeddings
-                ]
-                key_values_sql = ", ".join(["(%s, %s, %s, %s, %s)"] * len(keys))
-                key_params = [item for key in keys for item in key]
-                cursor.execute(
-                    f"""
-                    SELECT context_id, subject_kind, subject_id, model_name, model_version, embedded_content_hash
-                    FROM memory_embeddings
-                    WHERE (context_id, subject_kind, subject_id, model_name, model_version) IN ({key_values_sql})
-                    FOR UPDATE
-                    """,
-                    key_params,
-                )
-                existing_hash_by_key = {
-                    (row[0], row[1], row[2], row[3], row[4]): row[5] for row in cursor.fetchall()
-                }
-
-                to_insert: list[Embedding] = []
-                for embedding, key in zip(embeddings, keys):
-                    existing_hash = existing_hash_by_key.get(key)
-                    if existing_hash is not None:
-                        if existing_hash != embedding.embedded_content_hash:
-                            raise ImmutableRecordConflictError(
-                                f"embedding for {embedding.subject_kind}:{embedding.subject_id} "
-                                f"model {embedding.model_name}/{embedding.model_version} "
-                                "has a different embedded_content_hash"
-                            )
-                        continue
-                    to_insert.append(embedding)
-
-                if to_insert:
-                    row_values_sql = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s)"] * len(to_insert))
-                    row_params: list[object] = []
-                    for embedding in to_insert:
-                        vector_literal = "[" + ",".join(repr(float(value)) for value in embedding.values) + "]"
-                        row_params.extend((
-                            embedding.context_id, embedding.subject_kind, embedding.subject_id,
-                            embedding.source_chunk_id, embedding.model_name, embedding.model_version,
-                            len(embedding.values), vector_literal, embedding.embedded_content_hash,
-                            embedding.is_active,
-                        ))
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    keys = [
+                        (e.context_id, e.subject_kind, e.subject_id, e.model_name, e.model_version)
+                        for e in embeddings
+                    ]
+                    key_values_sql = ", ".join(["(%s, %s, %s, %s, %s)"] * len(keys))
+                    key_params = [item for key in keys for item in key]
                     cursor.execute(
                         f"""
-                        INSERT INTO memory_embeddings (
-                            context_id, subject_kind, subject_id, source_chunk_id,
-                            model_name, model_version, dimensions, embedding,
-                            embedded_content_hash, is_active
-                        ) VALUES {row_values_sql}
+                        SELECT context_id, subject_kind, subject_id, model_name, model_version, embedded_content_hash
+                        FROM memory_embeddings
+                        WHERE (context_id, subject_kind, subject_id, model_name, model_version) IN ({key_values_sql})
+                        FOR UPDATE
                         """,
-                        row_params,
+                        key_params,
                     )
+                    existing_hash_by_key = {
+                        (row[0], row[1], row[2], row[3], row[4]): row[5] for row in cursor.fetchall()
+                    }
+
+                    to_insert: list[Embedding] = []
+                    for embedding, key in zip(embeddings, keys):
+                        existing_hash = existing_hash_by_key.get(key)
+                        if existing_hash is not None:
+                            if existing_hash != embedding.embedded_content_hash:
+                                raise ImmutableRecordConflictError(
+                                    f"embedding for {embedding.subject_kind}:{embedding.subject_id} "
+                                    f"model {embedding.model_name}/{embedding.model_version} "
+                                    "has a different embedded_content_hash"
+                                )
+                            continue
+                        to_insert.append(embedding)
+
+                    if to_insert:
+                        row_values_sql = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s)"] * len(to_insert))
+                        row_params: list[object] = []
+                        for embedding in to_insert:
+                            vector_literal = "[" + ",".join(repr(float(value)) for value in embedding.values) + "]"
+                            row_params.extend((
+                                embedding.context_id, embedding.subject_kind, embedding.subject_id,
+                                embedding.source_chunk_id, embedding.model_name, embedding.model_version,
+                                len(embedding.values), vector_literal, embedding.embedded_content_hash,
+                                embedding.is_active,
+                            ))
+                        cursor.execute(
+                            f"""
+                            INSERT INTO memory_embeddings (
+                                context_id, subject_kind, subject_id, source_chunk_id,
+                                model_name, model_version, dimensions, embedding,
+                                embedded_content_hash, is_active
+                            ) VALUES {row_values_sql}
+                            """,
+                            row_params,
+                        )
         return list(embeddings)
 
     def contains(self, context_id: str, subject_kind: str, subject_id: str) -> bool:
         """§8 fix: independent post-write confirmation for completion
         verification (orchestrator._verify) -- a real read, not a re-read of
         whatever `put`/`put_batch` already believed happened."""
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT 1 FROM memory_embeddings WHERE context_id = %s AND subject_kind = %s AND subject_id = %s LIMIT 1",
-                (context_id, subject_kind, subject_id),
-            )
-            return cursor.fetchone() is not None
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT 1 FROM memory_embeddings WHERE context_id = %s AND subject_kind = %s AND subject_id = %s LIMIT 1",
+                    (context_id, subject_kind, subject_id),
+                )
+                return cursor.fetchone() is not None
+
+    def get_active(
+        self, context_id: str, subject_kind: str, subject_id: str, model_name: str, model_version: str
+    ) -> tuple[float, ...] | None:
+        """Reads back one active embedding's vector for an EXACT
+        (model_name, model_version) match -- used by
+        `ingestion.fact_projection.FactProjectionWriter.project_copy` to reuse
+        an already-computed vector instead of re-embedding identical text on
+        every clone, never returning a vector from an incompatible embedding
+        space. `::text` cast: no pgvector Python type is registered on this
+        connection, so this reads back the same bracketed literal format
+        `put`/`put_batch` write, parsed the same way."""
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT embedding::text FROM memory_embeddings
+                    WHERE context_id = %s AND subject_kind = %s AND subject_id = %s
+                      AND model_name = %s AND model_version = %s AND is_active = true
+                    LIMIT 1
+                    """,
+                    (context_id, subject_kind, subject_id, model_name, model_version),
+                )
+                row = cursor.fetchone()
+        if row is None:
+            return None
+        return tuple(float(value) for value in row[0].strip("[]").split(","))
 
     def deactivate(self, context_id: str, subject_kind: str, subject_id: str) -> None:
         """Mark all model versions of one subject inactive (e.g. superseded fact)."""
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE memory_embeddings SET is_active = false
-                    WHERE context_id = %s AND subject_kind = %s AND subject_id = %s
-                    """,
-                    (context_id, subject_kind, subject_id),
-                )
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE memory_embeddings SET is_active = false
+                        WHERE context_id = %s AND subject_kind = %s AND subject_id = %s
+                        """,
+                        (context_id, subject_kind, subject_id),
+                    )
 
 
 class PostgresJobStore:
     """Milestone 8 recovery state machine over `ingestion_jobs` (docs/decisions.md ADR-031)."""
 
-    def __init__(self, connection: object) -> None:
-        self._connection = connection
+    def __init__(self, pool: object) -> None:
+        self._pool = pool
 
     def get(self, chunk_id: str) -> IngestionJob | None:
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT job_id, chunk_id, context_id, state, attempt_count, last_verified_state, last_error
-                FROM ingestion_jobs WHERE chunk_id = %s
-                """,
-                (chunk_id,),
-            )
-            row = cursor.fetchone()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT job_id, chunk_id, context_id, state, attempt_count, last_verified_state, last_error
+                    FROM ingestion_jobs WHERE chunk_id = %s
+                    """,
+                    (chunk_id,),
+                )
+                row = cursor.fetchone()
         if row is None:
             return None
         return IngestionJob(
@@ -537,54 +577,56 @@ class PostgresJobStore:
     def seed(self, chunk_id: str, context_id: str) -> IngestionJob:
         """Idempotent: PostgresChunkStore.put already inserts this row (ADR-014); this
         is a defensive fallback, safe to call even when that row already exists."""
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO ingestion_jobs (job_id, chunk_id, context_id, state)
-                    VALUES (%s, %s, %s, 'pending_graph')
-                    ON CONFLICT (chunk_id) DO NOTHING
-                    """,
-                    (f"job:{chunk_id}", chunk_id, context_id),
-                )
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO ingestion_jobs (job_id, chunk_id, context_id, state)
+                        VALUES (%s, %s, %s, 'pending_graph')
+                        ON CONFLICT (chunk_id) DO NOTHING
+                        """,
+                        (f"job:{chunk_id}", chunk_id, context_id),
+                    )
         job = self.get(chunk_id)
         if job is None:
             raise RuntimeError(f"job seed for chunk_id {chunk_id} did not produce a row")
         return job
 
     def transition(self, chunk_id: str, new_state: IngestionJobState, *, error: str | None = None) -> IngestionJob:
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT job_id, context_id, state, attempt_count, last_verified_state
-                    FROM ingestion_jobs WHERE chunk_id = %s FOR UPDATE
-                    """,
-                    (chunk_id,),
-                )
-                row = cursor.fetchone()
-                if row is None:
-                    raise IllegalJobTransitionError(f"no ingestion job for chunk_id {chunk_id}")
-                job_id, context_id, current_raw, attempt_count, last_verified_raw = row
-                current = IngestionJobState(current_raw)
-                last_verified = IngestionJobState(last_verified_raw) if last_verified_raw else None
-                if not is_legal_job_transition(current, new_state, last_verified):
-                    raise IllegalJobTransitionError(
-                        f"chunk {chunk_id}: {current.value} -> {new_state.value} is not a legal transition"
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT job_id, context_id, state, attempt_count, last_verified_state
+                        FROM ingestion_jobs WHERE chunk_id = %s FOR UPDATE
+                        """,
+                        (chunk_id,),
                     )
-                next_attempt_count = attempt_count + 1 if new_state == IngestionJobState.RETRYABLE_FAILED else attempt_count
-                next_last_verified = current.value if current.value not in (
-                    IngestionJobState.RETRYABLE_FAILED.value, IngestionJobState.TERMINAL_FAILED.value,
-                    IngestionJobState.MANUAL_REPAIR.value,
-                ) else last_verified_raw
-                cursor.execute(
-                    """
-                    UPDATE ingestion_jobs
-                    SET state = %s, attempt_count = %s, last_verified_state = %s, last_error = %s, updated_at = now()
-                    WHERE chunk_id = %s
-                    """,
-                    (new_state.value, next_attempt_count, next_last_verified, error, chunk_id),
-                )
+                    row = cursor.fetchone()
+                    if row is None:
+                        raise IllegalJobTransitionError(f"no ingestion job for chunk_id {chunk_id}")
+                    job_id, context_id, current_raw, attempt_count, last_verified_raw = row
+                    current = IngestionJobState(current_raw)
+                    last_verified = IngestionJobState(last_verified_raw) if last_verified_raw else None
+                    if not is_legal_job_transition(current, new_state, last_verified):
+                        raise IllegalJobTransitionError(
+                            f"chunk {chunk_id}: {current.value} -> {new_state.value} is not a legal transition"
+                        )
+                    next_attempt_count = attempt_count + 1 if new_state == IngestionJobState.RETRYABLE_FAILED else attempt_count
+                    next_last_verified = current.value if current.value not in (
+                        IngestionJobState.RETRYABLE_FAILED.value, IngestionJobState.TERMINAL_FAILED.value,
+                        IngestionJobState.MANUAL_REPAIR.value,
+                    ) else last_verified_raw
+                    cursor.execute(
+                        """
+                        UPDATE ingestion_jobs
+                        SET state = %s, attempt_count = %s, last_verified_state = %s, last_error = %s, updated_at = now()
+                        WHERE chunk_id = %s
+                        """,
+                        (new_state.value, next_attempt_count, next_last_verified, error, chunk_id),
+                    )
         return IngestionJob(
             job_id=job_id, chunk_id=chunk_id, context_id=context_id, state=new_state,
             attempt_count=next_attempt_count,
@@ -600,8 +642,8 @@ class PostgresFactMetadataStore:
     Postgres rather than on the Fact node itself -- same split this codebase
     already made once."""
 
-    def __init__(self, connection: object) -> None:
-        self._connection = connection
+    def __init__(self, pool: object) -> None:
+        self._pool = pool
 
     def put(
         self, context_id: str, fact_id: int, checkpoint: str | None, when_active: dict | None,
@@ -609,22 +651,23 @@ class PostgresFactMetadataStore:
     ) -> None:
         if checkpoint is None and when_active is None and visible_to_participant_id is None and not hidden:
             return
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO pre_authored_fact_metadata (fact_id, context_id, checkpoint, when_active, visible_to_participant_id, hidden)
-                    VALUES (%s, %s, %s, %s::jsonb, %s, %s)
-                    ON CONFLICT (fact_id) DO UPDATE
-                    SET context_id = EXCLUDED.context_id, checkpoint = EXCLUDED.checkpoint, when_active = EXCLUDED.when_active,
-                        visible_to_participant_id = EXCLUDED.visible_to_participant_id, hidden = EXCLUDED.hidden
-                    """,
-                    (
-                        fact_id, context_id, checkpoint,
-                        json.dumps(when_active) if when_active is not None else None,
-                        visible_to_participant_id, hidden,
-                    ),
-                )
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO pre_authored_fact_metadata (fact_id, context_id, checkpoint, when_active, visible_to_participant_id, hidden)
+                        VALUES (%s, %s, %s, %s::jsonb, %s, %s)
+                        ON CONFLICT (fact_id) DO UPDATE
+                        SET context_id = EXCLUDED.context_id, checkpoint = EXCLUDED.checkpoint, when_active = EXCLUDED.when_active,
+                            visible_to_participant_id = EXCLUDED.visible_to_participant_id, hidden = EXCLUDED.hidden
+                        """,
+                        (
+                            fact_id, context_id, checkpoint,
+                            json.dumps(when_active) if when_active is not None else None,
+                            visible_to_participant_id, hidden,
+                        ),
+                    )
 
     def get_many(
         self, context_id: str, fact_ids: Sequence[int]
@@ -635,13 +678,14 @@ class PostgresFactMetadataStore:
         result rather than represented as an explicit all-`None` entry."""
         if not fact_ids:
             return {}
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT fact_id, checkpoint, when_active, visible_to_participant_id, hidden FROM pre_authored_fact_metadata "
-                "WHERE context_id = %s AND fact_id = ANY(%s)",
-                (context_id, list(fact_ids)),
-            )
-            return {row[0]: (row[1], row[2], row[3], row[4]) for row in cursor.fetchall()}
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT fact_id, checkpoint, when_active, visible_to_participant_id, hidden FROM pre_authored_fact_metadata "
+                    "WHERE context_id = %s AND fact_id = ANY(%s)",
+                    (context_id, list(fact_ids)),
+                )
+                return {row[0]: (row[1], row[2], row[3], row[4]) for row in cursor.fetchall()}
 
 
 class PostgresExternalFactIdStore:
@@ -650,30 +694,32 @@ class PostgresExternalFactIdStore:
     `ingestion.direct_authoring.ExternalFactIdStore`'s docstring for why
     this is needed (`superseded_fact_id` on a direct-authored fact)."""
 
-    def __init__(self, connection: object) -> None:
-        self._connection = connection
+    def __init__(self, pool: object) -> None:
+        self._pool = pool
 
     def get(self, context_id: str, external_fact_id: str) -> tuple[int, str] | None:
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT graph_id, logical_key FROM external_fact_ids WHERE context_id = %s AND external_fact_id = %s",
-                (context_id, external_fact_id),
-            )
-            row = cursor.fetchone()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT graph_id, logical_key FROM external_fact_ids WHERE context_id = %s AND external_fact_id = %s",
+                    (context_id, external_fact_id),
+                )
+                row = cursor.fetchone()
         return (int(row[0]), row[1]) if row else None
 
     def put(self, context_id: str, external_fact_id: str, graph_id: int, logical_key: str) -> None:
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO external_fact_ids (context_id, external_fact_id, graph_id, logical_key)
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (context_id, external_fact_id) DO UPDATE
-                    SET graph_id = EXCLUDED.graph_id, logical_key = EXCLUDED.logical_key
-                    """,
-                    (context_id, external_fact_id, graph_id, logical_key),
-                )
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO external_fact_ids (context_id, external_fact_id, graph_id, logical_key)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (context_id, external_fact_id) DO UPDATE
+                        SET graph_id = EXCLUDED.graph_id, logical_key = EXCLUDED.logical_key
+                        """,
+                        (context_id, external_fact_id, graph_id, logical_key),
+                    )
 
 
 class PostgresCheckpointStore:
@@ -683,27 +729,29 @@ class PostgresCheckpointStore:
     ordinal position. Without this, `MemoryQueryRequest.checkpoint` is just
     an opaque label mem1 has no ordering for."""
 
-    def __init__(self, connection: object) -> None:
-        self._connection = connection
+    def __init__(self, pool: object) -> None:
+        self._pool = pool
 
     def put(self, context_id: str, checkpoints: Sequence[str]) -> None:
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO scenario_template_checkpoints (context_id, checkpoints)
-                    VALUES (%s, %s::jsonb)
-                    ON CONFLICT (context_id) DO UPDATE SET checkpoints = EXCLUDED.checkpoints
-                    """,
-                    (context_id, json.dumps(list(checkpoints))),
-                )
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO scenario_template_checkpoints (context_id, checkpoints)
+                        VALUES (%s, %s::jsonb)
+                        ON CONFLICT (context_id) DO UPDATE SET checkpoints = EXCLUDED.checkpoints
+                        """,
+                        (context_id, json.dumps(list(checkpoints))),
+                    )
 
     def get(self, context_id: str) -> list[str] | None:
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT checkpoints FROM scenario_template_checkpoints WHERE context_id = %s", (context_id,)
-            )
-            row = cursor.fetchone()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT checkpoints FROM scenario_template_checkpoints WHERE context_id = %s", (context_id,)
+                )
+                row = cursor.fetchone()
         return row[0] if row else None
 
 
@@ -773,47 +821,49 @@ class PostgresBatchStore:
     real state rather than duplicated into a second, driftable copy of it).
     """
 
-    def __init__(self, connection: object) -> None:
-        self._connection = connection
+    def __init__(self, pool: object) -> None:
+        self._pool = pool
 
     def create(self, batch: ContextBatch, chunk_ids: Sequence[tuple[str, int | None]]) -> None:
         """Idempotent: a retry re-submitting the identical `batch_id` (never
         happens today -- `retry_batch` reuses the row instead -- but kept
         idempotent defensively) is a no-op, not a conflict."""
         payload = _serialize_context_batch(batch)
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO ingestion_batches (batch_id, context_id, submitted_payload)
-                    VALUES (%s, %s, %s::jsonb)
-                    ON CONFLICT (batch_id) DO NOTHING
-                    """,
-                    (batch.ingestion_id, batch.context_id, json.dumps(payload)),
-                )
-                if chunk_ids:
-                    values_sql = ", ".join(["(%s, %s, %s)"] * len(chunk_ids))
-                    params: list[object] = []
-                    for chunk_id, turn_number in chunk_ids:
-                        params.extend((batch.ingestion_id, chunk_id, turn_number))
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
                     cursor.execute(
-                        f"""
-                        INSERT INTO ingestion_batch_chunks (batch_id, chunk_id, turn_number)
-                        VALUES {values_sql}
-                        ON CONFLICT (batch_id, chunk_id) DO NOTHING
+                        """
+                        INSERT INTO ingestion_batches (batch_id, context_id, submitted_payload)
+                        VALUES (%s, %s, %s::jsonb)
+                        ON CONFLICT (batch_id) DO NOTHING
                         """,
-                        params,
+                        (batch.ingestion_id, batch.context_id, json.dumps(payload)),
                     )
+                    if chunk_ids:
+                        values_sql = ", ".join(["(%s, %s, %s)"] * len(chunk_ids))
+                        params: list[object] = []
+                        for chunk_id, turn_number in chunk_ids:
+                            params.extend((batch.ingestion_id, chunk_id, turn_number))
+                        cursor.execute(
+                            f"""
+                            INSERT INTO ingestion_batch_chunks (batch_id, chunk_id, turn_number)
+                            VALUES {values_sql}
+                            ON CONFLICT (batch_id, chunk_id) DO NOTHING
+                            """,
+                            params,
+                        )
 
     def get_context_batch(self, batch_id: str) -> ContextBatch | None:
         """Reconstructs the exact `ContextBatch` `submit_batch` built, for
         `retry_batch` to re-submit after a process restart (when the
         in-memory copy, if any, is long gone)."""
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT submitted_payload FROM ingestion_batches WHERE batch_id = %s", (batch_id,)
-            )
-            row = cursor.fetchone()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT submitted_payload FROM ingestion_batches WHERE batch_id = %s", (batch_id,)
+                )
+                row = cursor.fetchone()
         return _deserialize_context_batch(row[0]) if row else None
 
     def mark_run_error(self, batch_id: str, error: str) -> None:
@@ -821,23 +871,25 @@ class PostgresBatchStore:
         per-chunk result (distinct from a per-chunk failure, which
         `ingestion_jobs` already records) -- e.g. HydraDB/Postgres were
         unreachable for the entire call."""
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE ingestion_batches SET run_error = %s, completed_at = now() WHERE batch_id = %s",
-                    (error, batch_id),
-                )
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE ingestion_batches SET run_error = %s, completed_at = now() WHERE batch_id = %s",
+                        (error, batch_id),
+                    )
 
     def clear_run_error(self, batch_id: str) -> None:
         """Called at retry time so a stale whole-run error doesn't keep
         reporting `failed` once the retry starts producing real per-chunk
         state again."""
-        with self._connection.transaction():
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE ingestion_batches SET run_error = NULL, completed_at = NULL WHERE batch_id = %s",
-                    (batch_id,),
-                )
+        with self._pool.connection() as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE ingestion_batches SET run_error = NULL, completed_at = NULL WHERE batch_id = %s",
+                        (batch_id,),
+                    )
 
     def get_status(self, batch_id: str) -> BatchStatus | None:
         """Returns `None` for an unknown batch_id -- callers (MemoryEngine)
@@ -846,43 +898,44 @@ class PostgresBatchStore:
         from `ingestion_jobs` the same way `engine._batch_status_from_result`
         already buckets a same-process `BatchRunResult`, just read back from
         Postgres instead of held in memory."""
-        with self._connection.cursor() as cursor:
-            cursor.execute("SELECT run_error FROM ingestion_batches WHERE batch_id = %s", (batch_id,))
-            row = cursor.fetchone()
-            if row is None:
-                return None
-            run_error = row[0]
-            if run_error is not None:
-                return BatchStatus(batch_id=batch_id, status="failed", facts_created=0, error=run_error, retryable=True)
+        with self._pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT run_error FROM ingestion_batches WHERE batch_id = %s", (batch_id,))
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                run_error = row[0]
+                if run_error is not None:
+                    return BatchStatus(batch_id=batch_id, status="failed", facts_created=0, error=run_error, retryable=True)
 
-            cursor.execute(
-                "SELECT chunk_id FROM ingestion_batch_chunks WHERE batch_id = %s ORDER BY chunk_id", (batch_id,)
-            )
-            chunk_ids = [r[0] for r in cursor.fetchall()]
-            if not chunk_ids:
-                # Row exists (submit_batch already wrote it) but the
-                # background run hasn't reached chunk_store.put for even one
-                # chunk yet -- genuinely still pending, not unknown.
-                return BatchStatus(batch_id=batch_id, status="pending", facts_created=0, retryable=False)
+                cursor.execute(
+                    "SELECT chunk_id FROM ingestion_batch_chunks WHERE batch_id = %s ORDER BY chunk_id", (batch_id,)
+                )
+                chunk_ids = [r[0] for r in cursor.fetchall()]
+                if not chunk_ids:
+                    # Row exists (submit_batch already wrote it) but the
+                    # background run hasn't reached chunk_store.put for even one
+                    # chunk yet -- genuinely still pending, not unknown.
+                    return BatchStatus(batch_id=batch_id, status="pending", facts_created=0, retryable=False)
 
-            cursor.execute(
-                "SELECT chunk_id, state, last_error FROM ingestion_jobs WHERE chunk_id = ANY(%s)", (chunk_ids,)
-            )
-            job_by_chunk = {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
+                cursor.execute(
+                    "SELECT chunk_id, state, last_error FROM ingestion_jobs WHERE chunk_id = ANY(%s)", (chunk_ids,)
+                )
+                job_by_chunk = {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
 
-            cursor.execute(
-                """
-                SELECT chunk_id, accepted_count FROM extraction_attempts
-                WHERE chunk_id = ANY(%s) ORDER BY created_at DESC
-                """,
-                (chunk_ids,),
-            )
-            facts_by_chunk: dict[str, int] = {}
-            for chunk_id, accepted_count in cursor.fetchall():
-                # First row per chunk_id wins (ORDER BY created_at DESC) --
-                # the latest attempt, in the rare case content/extractor
-                # version produced more than one row for the same chunk.
-                facts_by_chunk.setdefault(chunk_id, accepted_count)
+                cursor.execute(
+                    """
+                    SELECT chunk_id, accepted_count FROM extraction_attempts
+                    WHERE chunk_id = ANY(%s) ORDER BY created_at DESC
+                    """,
+                    (chunk_ids,),
+                )
+                facts_by_chunk: dict[str, int] = {}
+                for chunk_id, accepted_count in cursor.fetchall():
+                    # First row per chunk_id wins (ORDER BY created_at DESC) --
+                    # the latest attempt, in the rare case content/extractor
+                    # version produced more than one row for the same chunk.
+                    facts_by_chunk.setdefault(chunk_id, accepted_count)
 
         states: list[str | None] = []
         errors: list[str] = []

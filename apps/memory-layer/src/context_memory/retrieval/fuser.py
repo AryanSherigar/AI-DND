@@ -34,7 +34,7 @@ class CandidateFuser:
 
     def fuse(
         self, question: str, facts: dict[str, ScoredFact], graph_data: dict, top_k: int,
-        expanded_query: QueryRewriterOutput | None = None,
+        expanded_query: QueryRewriterOutput | None = None, skip_reranker: bool = False,
     ) -> list[ScoredFact] | None:
         """Returns the deduped, reranked candidate list (reader slices to
         `[:top_k]`), or `None` on abstention -- caller substitutes
@@ -163,7 +163,10 @@ class CandidateFuser:
             ctx["duplicate_facts_dropped"] = len(ranked) - len(deduped)
             ranked = deduped
 
-            ranked = self._reranker.rerank(question, ranked, top_k)
+            # AI-DND memory-layer contract (Bug 3): call-local skip, mirroring
+            # Reranker.rerank()'s own config-gated no-op shape -- RRF order
+            # stands as final for retrieve_facts's lean path.
+            ranked = ranked if skip_reranker else self._reranker.rerank(question, ranked, top_k)
 
             top_facts = ranked[:top_k]
             excluded = ranked[top_k:]

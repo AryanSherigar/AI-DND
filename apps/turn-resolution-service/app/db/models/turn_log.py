@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import ForeignKey, Index, Text, text
+from sqlalchemy import ForeignKey, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,7 +15,9 @@ class TurnLog(Base, CreatedAtMixin):
     __tablename__ = "turn_logs"
 
     __table_args__ = (
-        Index("idx_turn_logs_playthrough_turn", "playthrough_id", "turn_number"),
+        UniqueConstraint(
+            "playthrough_id", "turn_number", name="uq_turn_logs_playthrough_turn"
+        ),
     )
 
     turn_id: Mapped[uuid.UUID] = mapped_column(
