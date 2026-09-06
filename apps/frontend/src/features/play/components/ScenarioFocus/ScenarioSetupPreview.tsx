@@ -1,85 +1,83 @@
 import React from "react";
 import { SetupInputField } from "@/features/studio/stores/studio.store";
+import { SectionHeading } from "./SectionHeading";
 
 interface ScenarioSetupPreviewProps {
   setupSchema?: SetupInputField[];
 }
+
+const optionText = (opt: unknown): string => {
+  if (typeof opt === "string") return opt;
+  if (opt && typeof opt === "object") {
+    const record = opt as { label?: string; value?: string };
+    return record.label || record.value || "";
+  }
+  return "";
+};
 
 export const ScenarioSetupPreview: React.FC<ScenarioSetupPreviewProps> = ({
   setupSchema = [],
 }) => {
   if (!setupSchema || setupSchema.length === 0) {
     return (
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 md:p-8 shadow-xl space-y-4">
-        <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
-          <span className="text-xl">⚙️</span>
-          <h2 className="font-display text-2xl font-bold text-amber-200/90">
-            Setup Preview
-          </h2>
-        </div>
-        <p className="text-sm font-mono text-zinc-400">
-          Standard character setup schema. Custom choices are assigned
-          dynamically at start.
+      <section>
+        <SectionHeading label="Before you start" />
+        <p className="font-sans text-sm text-content-faint">
+          Standard character setup. Your choices are assigned when the
+          playthrough begins.
         </p>
-      </div>
+      </section>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 md:p-8 shadow-xl space-y-4">
-      <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">⚙️</span>
-          <h2 className="font-display text-2xl font-bold text-amber-200/90">
-            Setup Options Preview
-          </h2>
-        </div>
-        <span className="font-mono text-xs text-zinc-400 bg-zinc-950 border border-zinc-800 px-2.5 py-1 rounded-md">
-          {setupSchema.length} Input Field{setupSchema.length > 1 ? "s" : ""}
-        </span>
-      </div>
+    <section>
+      <SectionHeading
+        label="Before you start"
+        trailing={
+          <span className="font-mono text-xs text-content-faint">
+            {setupSchema.length} question
+            {setupSchema.length > 1 ? "s" : ""}
+          </span>
+        }
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+      <dl className="divide-y divide-border-subtle">
         {setupSchema.map((field, idx) => (
-          <div
-            key={field.id || idx}
-            className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 p-4 space-y-1.5"
-          >
-            <div className="flex items-center justify-between font-mono text-xs">
-              <span className="font-bold text-zinc-200">{field.label}</span>
-              <span className="text-amber-400/80 bg-amber-500/10 px-2 py-0.5 rounded uppercase">
+          <div key={field.id || idx} className="py-4 first:pt-0">
+            <dt className="flex items-center gap-2">
+              <span className="font-sans text-sm font-medium text-content">
+                {field.label}
+              </span>
+              <span className="rounded-full bg-surface px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-content-faint">
                 {field.type}
               </span>
-            </div>
+            </dt>
             {field.description && (
-              <p className="text-xs text-zinc-400 leading-snug">
+              <dd className="mt-1 font-sans text-sm text-content-muted">
                 {field.description}
-              </p>
+              </dd>
             )}
             {field.options && field.options.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {field.options.slice(0, 4).map((opt, optIdx) => {
-                  const optText =
-                    typeof opt === "string" ? opt : opt.label || opt.value;
-                  return (
-                    <span
-                      key={optIdx}
-                      className="text-[11px] font-mono text-zinc-300 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded"
-                    >
-                      {optText}
-                    </span>
-                  );
-                })}
-                {field.options.length > 4 && (
-                  <span className="text-[11px] font-mono text-zinc-500 py-0.5">
-                    +{field.options.length - 4} more
+              <dd className="mt-2 flex flex-wrap gap-1.5">
+                {field.options.slice(0, 5).map((opt, optIdx) => (
+                  <span
+                    key={optIdx}
+                    className="rounded-full border border-border-subtle bg-surface px-2.5 py-0.5 font-sans text-xs text-content-muted"
+                  >
+                    {optionText(opt)}
+                  </span>
+                ))}
+                {field.options.length > 5 && (
+                  <span className="py-0.5 font-mono text-xs text-content-faint">
+                    +{field.options.length - 5}
                   </span>
                 )}
-              </div>
+              </dd>
             )}
           </div>
         ))}
-      </div>
-    </div>
+      </dl>
+    </section>
   );
 };

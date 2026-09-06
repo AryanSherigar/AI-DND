@@ -1,5 +1,6 @@
 import React from "react";
 import { PublicPlaythroughSummary } from "../../types/scenario";
+import { SectionHeading } from "./SectionHeading";
 
 interface ScenarioPublicPlaythroughsProps {
   playthroughs: PublicPlaythroughSummary[];
@@ -9,55 +10,47 @@ export const ScenarioPublicPlaythroughs: React.FC<
   ScenarioPublicPlaythroughsProps
 > = ({ playthroughs }) => {
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 md:p-8 shadow-xl space-y-4">
-      <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">🗡️</span>
-          <h2 className="font-display text-2xl font-bold text-amber-200/90">
-            Active & Completed Playthroughs
-          </h2>
-        </div>
-        <span className="font-mono text-xs text-zinc-400 bg-zinc-950 border border-zinc-800 px-2.5 py-1 rounded-md">
-          {playthroughs.length} Public Runs
-        </span>
-      </div>
+    <section>
+      <SectionHeading
+        label="Playthroughs"
+        trailing={
+          <span className="font-mono text-xs text-content-faint">
+            {playthroughs.length} public
+          </span>
+        }
+      />
 
       {playthroughs.length === 0 ? (
-        <div className="p-6 text-center font-mono text-sm text-zinc-500">
-          No public playthroughs recorded for this scenario yet.
-        </div>
+        <p className="font-sans text-sm text-content-faint">
+          No public playthroughs yet.
+        </p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+        <ul className="divide-y divide-border-subtle">
           {playthroughs.map((pt) => (
-            <div
+            <li
               key={pt.playthrough_id}
-              className="flex items-center justify-between rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3.5 font-mono text-xs"
+              className="flex items-center justify-between gap-3 py-3 first:pt-0"
             >
-              <div className="space-y-1">
-                <div className="font-bold text-zinc-200">
-                  {pt.character_name || "Unknown Adventurer"}
-                </div>
-                <div className="text-zinc-500">Player: {pt.player_name}</div>
+              <div className="min-w-0">
+                <p className="truncate font-sans text-sm text-content">
+                  {pt.character_name || "Unknown adventurer"}
+                </p>
+                <p className="truncate font-mono text-xs text-content-faint">
+                  {pt.player_name} · turn {pt.turn_count}
+                </p>
               </div>
-
-              <div className="flex flex-col items-end gap-1">
-                <span className="rounded bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-zinc-300">
-                  Turn {pt.turn_count}
-                </span>
-                <span
-                  className={`capitalize ${
-                    pt.status === "completed"
-                      ? "text-emerald-400 font-semibold"
-                      : "text-amber-400"
-                  }`}
-                >
-                  {pt.status}
-                </span>
-              </div>
-            </div>
+              <span
+                className={`flex shrink-0 items-center gap-1.5 font-mono text-xs capitalize ${
+                  pt.status === "completed" ? "text-success" : "text-accent"
+                }`}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                {pt.status}
+              </span>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
-    </div>
+    </section>
   );
 };

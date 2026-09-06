@@ -1,5 +1,6 @@
 import React from "react";
 import { ScenarioDetailResponse } from "../../types/scenario";
+import { SectionHeading } from "./SectionHeading";
 
 interface ScenarioLoreSectionProps {
   scenario: ScenarioDetailResponse;
@@ -14,39 +15,40 @@ export const ScenarioLoreSection: React.FC<ScenarioLoreSectionProps> = ({
       ? worldData.lore
       : typeof worldData.description === "string"
         ? worldData.description
-        : scenario.logline ||
-          "No detailed backstory has been recorded for this scenario yet. Embark on your playthrough to uncover its mysteries!";
+        : scenario.logline || "";
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 md:p-8 shadow-xl backdrop-blur-sm space-y-4">
-      <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
-        <span className="text-xl">📜</span>
-        <h2 className="font-display text-2xl font-bold text-amber-200/90 drop-shadow-sm">
-          World Lore & Setting
-        </h2>
-      </div>
+    <section>
+      <SectionHeading label="About" />
 
-      {/* Logline Quote */}
       {scenario.logline && (
-        <div className="rounded-xl border-l-4 border-amber-500/80 bg-zinc-950/80 p-4 italic text-zinc-300 font-sans text-base leading-relaxed">
-          "{scenario.logline}"
-        </div>
+        <p className="font-display text-xl leading-relaxed text-content md:text-2xl">
+          {scenario.logline}
+        </p>
       )}
 
-      {/* Longform Lore Body */}
-      <div className="text-zinc-300 font-sans text-base leading-relaxed whitespace-pre-line space-y-3">
-        {loreText}
-      </div>
+      {loreText && loreText !== scenario.logline && (
+        <p className="mt-4 whitespace-pre-line font-sans text-[15px] leading-relaxed text-content-muted">
+          {loreText}
+        </p>
+      )}
 
-      {/* Narrator Persona note if present */}
+      {!scenario.logline && !loreText && (
+        <p className="font-sans text-sm text-content-faint">
+          No backstory recorded yet — start a playthrough to uncover it.
+        </p>
+      )}
+
       {scenario.narrator_persona && (
-        <div className="mt-4 pt-4 border-t border-zinc-800/80 flex items-start gap-3 text-xs font-mono text-zinc-400">
-          <span className="text-emerald-400">🎭 Narrator Tone:</span>
-          <span className="text-zinc-300 italic">
+        <div className="mt-6 border-l-2 border-accent/60 pl-4">
+          <p className="font-mono text-[11px] uppercase tracking-wider text-content-faint">
+            Narrator tone
+          </p>
+          <p className="mt-1 font-sans text-sm italic text-content-muted">
             {scenario.narrator_persona}
-          </span>
+          </p>
         </div>
       )}
-    </div>
+    </section>
   );
 };

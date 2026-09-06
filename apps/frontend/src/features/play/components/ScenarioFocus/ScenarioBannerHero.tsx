@@ -1,11 +1,17 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { ScenarioDetailResponse, GENRE_COLORS } from "../../types/scenario";
 import {
-  HeartIcon,
-  PlayersIcon,
-  QuillIcon,
-} from "../../../../shared/components/icons/CleanIcons";
+  IconStarFilled,
+  IconUsers,
+  IconClock,
+  IconBookmark,
+  IconBookmarkFilled,
+  IconShare2,
+  IconPlayerPlayFilled,
+  IconPencil,
+  IconAlertTriangle,
+} from "@tabler/icons-react";
+import { ScenarioDetailResponse } from "../../types/scenario";
 
 interface ScenarioBannerHeroProps {
   scenario: ScenarioDetailResponse;
@@ -14,6 +20,12 @@ interface ScenarioBannerHeroProps {
   isTogglingBookmark: boolean;
   currentUserId?: string;
 }
+
+const playerSupportLabel = (support: string): string => {
+  if (support === "both") return "Solo or co-op";
+  if (support === "multiplayer") return "Multiplayer";
+  return "Solo";
+};
 
 export const ScenarioBannerHero: React.FC<ScenarioBannerHeroProps> = ({
   scenario,
@@ -26,174 +38,128 @@ export const ScenarioBannerHero: React.FC<ScenarioBannerHeroProps> = ({
 
   const scenarioId = scenario.scenario_id;
   const genre = scenario.genre_tags[0] || "High Fantasy";
-  const accentColor = GENRE_COLORS[genre] || "#D4AF6A";
   const coverImage = scenario.cover_image_url || "/images/hero.png";
-
   const isCreator = Boolean(
     currentUserId && scenario.creator_id === currentUserId,
   );
+  const rating = parseFloat(scenario.rating_avg || "0.0").toFixed(1);
 
-  const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href);
+  const handleShare = (): void => {
+    void navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const ratingVal = parseFloat(scenario.rating_avg || "0.0").toFixed(1);
-
   return (
-    <div className="relative w-full overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl">
-      {/* Banner Cover Image */}
-      <div className="relative aspect-[21/9] w-full overflow-hidden md:aspect-[24/9]">
-        <img
-          src={coverImage}
-          alt={scenario.title}
-          className="h-full w-full object-cover opacity-85 transition-scale duration-700 hover:scale-105"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/80 via-transparent to-zinc-950/80" />
+    <section className="relative isolate overflow-hidden rounded-2xl border border-border-strong">
+      <img
+        src={coverImage}
+        alt=""
+        aria-hidden="true"
+        className="absolute inset-0 -z-10 h-full w-full object-cover"
+      />
+      <div className="absolute inset-0 -z-10 bg-gradient-to-t from-surface-raised via-surface-raised/85 to-surface-raised/40" />
+      <div className="absolute inset-0 -z-10 bg-gradient-to-r from-surface-raised/90 to-transparent" />
 
-        {/* Top-Right Advisory Tag */}
-        {scenario.content_tag && (
-          <div className="absolute top-4 right-4 z-10 rounded-md border border-amber-500/30 bg-zinc-950/80 px-3 py-1 font-mono text-xs font-bold text-amber-400 backdrop-blur-md shadow-lg">
-            ⚠️ {scenario.content_tag}
-          </div>
-        )}
-      </div>
+      <div className="flex flex-col gap-6 p-6 pt-40 md:p-10 md:pt-56">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            {scenario.content_tag && (
+              <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-1 font-mono text-[11px] font-medium uppercase tracking-wide text-warning">
+                <IconAlertTriangle size={12} />
+                {scenario.content_tag}
+              </span>
+            )}
 
-      {/* Main Metadata Content Area */}
-      <div className="relative z-10 -mt-16 px-6 pb-8 md:-mt-24 md:px-10">
-        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-          <div className="space-y-3 max-w-3xl">
-            {/* Genre & Mode Badges */}
-            <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-              <span
-                className="rounded-md px-2.5 py-1 font-bold text-zinc-950 shadow-sm"
-                style={{ backgroundColor: accentColor }}
-              >
-                {genre}
-              </span>
-              <span className="rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-zinc-300 capitalize">
-                {scenario.mode} Mode
-              </span>
-              <span className="rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-zinc-300 capitalize">
-                {scenario.player_count_support === "both"
-                  ? "Solo / Co-op"
-                  : scenario.player_count_support}
-              </span>
-              {scenario.estimated_playtime && (
-                <span className="rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-zinc-400">
-                  ⏱️ {scenario.estimated_playtime}
-                </span>
-              )}
-            </div>
-
-            {/* Scenario Title */}
-            <h1 className="font-display text-3xl font-extrabold text-white md:text-5xl drop-shadow-md leading-tight">
+            <h1 className="font-display text-4xl font-bold leading-[1.05] text-content md:text-6xl">
               {scenario.title}
             </h1>
 
-            {/* Creator info & Quick stats */}
-            <div className="flex flex-wrap items-center gap-4 text-sm text-zinc-400 font-mono">
+            <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-sm text-content-muted">
+              <span className="flex items-center gap-1 text-accent">
+                <IconStarFilled size={14} />
+                {rating}
+              </span>
+              <span className="text-content-faint">·</span>
+              <span>{genre}</span>
+              <span className="text-content-faint">·</span>
+              <span className="capitalize">{scenario.mode} mode</span>
+              <span className="text-content-faint">·</span>
+              <span className="flex items-center gap-1">
+                <IconUsers size={14} />
+                {playerSupportLabel(scenario.player_count_support)}
+              </span>
+              {scenario.estimated_playtime && (
+                <>
+                  <span className="text-content-faint">·</span>
+                  <span className="flex items-center gap-1">
+                    <IconClock size={14} />
+                    {scenario.estimated_playtime}
+                  </span>
+                </>
+              )}
+            </div>
+
+            <p className="mt-3 font-sans text-sm text-content-muted">
+              by{" "}
               <Link
                 to={`/profile/${scenario.creator_id}`}
-                className="flex items-center gap-1.5 text-zinc-200 hover:text-amber-300 transition-colors group"
-                title="View Creator Chronicle"
+                className="text-content underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-accent"
               >
-                <QuillIcon className="h-4 w-4 text-emerald-400 group-hover:text-amber-300 transition-colors" />
-                <span className="underline decoration-zinc-700 underline-offset-4 group-hover:decoration-amber-400">
-                  {scenario.creator_display_name || "Anonymous Creator"}
-                </span>
+                {scenario.creator_display_name || "Anonymous"}
               </Link>
-              <span className="text-zinc-700">•</span>
-              <span className="flex items-center gap-1 text-yellow-500">
-                <HeartIcon className="h-4 w-4" />
-                <span className="font-bold">{ratingVal}</span>
-              </span>
-              <span className="text-zinc-700">•</span>
-              <span className="flex items-center gap-1.5 text-zinc-300">
-                <PlayersIcon className="h-4 w-4 text-zinc-400" />
-                <span>{scenario.play_count.toLocaleString()} plays</span>
-              </span>
-            </div>
+              <span className="mx-2 text-content-faint">·</span>
+              {scenario.play_count.toLocaleString()} plays
+            </p>
           </div>
 
-          {/* Action Button Bar */}
-          <div className="flex flex-wrap items-center gap-3 pt-2 md:pt-0 shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5">
             <Link
               to={`/setup/${scenarioId}`}
-              className="flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-3.5 font-sans font-bold text-zinc-950 shadow-lg shadow-emerald-500/20 transition-all hover:bg-emerald-400 hover:scale-105 active:scale-95"
+              className="inline-flex items-center gap-2 rounded-full bg-content px-6 py-3 font-sans text-sm font-semibold text-surface transition hover:bg-white active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-raised"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <polygon points="5 3 19 12 5 21 5 3"></polygon>
-              </svg>
-              <span>Begin Adventure</span>
+              <IconPlayerPlayFilled size={16} />
+              Play now
             </Link>
 
             {isCreator && (
               <Link
                 to={`/studio/${scenarioId}`}
-                className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-5 py-3.5 font-sans font-semibold text-amber-300 hover:bg-amber-500/20 transition-colors"
+                className="inline-flex items-center gap-2 rounded-full border border-border-strong bg-surface/60 px-4 py-3 font-sans text-sm font-medium text-content-muted backdrop-blur-sm transition hover:text-content"
               >
-                ✏️ Edit in Studio
+                <IconPencil size={16} />
+                Edit
               </Link>
             )}
 
             <button
               onClick={onToggleBookmark}
               disabled={isTogglingBookmark}
-              className={`flex items-center justify-center rounded-xl border p-3.5 transition-colors ${
+              aria-label={isBookmarked ? "Remove bookmark" : "Bookmark"}
+              className={`flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-sm transition ${
                 isBookmarked
-                  ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-400"
-                  : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white"
+                  ? "border-accent/50 bg-accent/15 text-accent"
+                  : "border-border-strong bg-surface/60 text-content-muted hover:text-content"
               }`}
-              title={isBookmarked ? "Remove Bookmark" : "Bookmark Scenario"}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill={isBookmarked ? "currentColor" : "none"}
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
-              </svg>
+              {isBookmarked ? (
+                <IconBookmarkFilled size={18} />
+              ) : (
+                <IconBookmark size={18} />
+              )}
             </button>
 
             <button
               onClick={handleShare}
-              className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3.5 font-mono text-sm text-zinc-300 hover:bg-zinc-800 transition-colors relative"
+              aria-label="Copy link"
+              className="flex h-11 items-center gap-2 rounded-full border border-border-strong bg-surface/60 px-4 font-mono text-xs text-content-muted backdrop-blur-sm transition hover:text-content"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="18" cy="5" r="3"></circle>
-                <circle cx="6" cy="12" r="3"></circle>
-                <circle cx="18" cy="19" r="3"></circle>
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-              </svg>
-              <span>{copied ? "Copied!" : "Share"}</span>
+              <IconShare2 size={16} />
+              {copied ? "Copied" : "Share"}
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 };

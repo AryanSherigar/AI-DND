@@ -1,6 +1,8 @@
 import React from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import { IconArrowLeft } from "@tabler/icons-react";
 import { useScenarioFocus } from "../hooks/useScenarioFocus";
+import { Loader } from "@/shared/components/feedback/Loader";
 import { ScenarioBannerHero } from "../components/ScenarioFocus/ScenarioBannerHero";
 import { ScenarioLoreSection } from "../components/ScenarioFocus/ScenarioLoreSection";
 import { ScenarioSetupPreview } from "../components/ScenarioFocus/ScenarioSetupPreview";
@@ -29,46 +31,40 @@ export const ScenarioFocusPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 pt-14 font-mono text-content-faint">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
-        <span>Consulting the Ancient Archives...</span>
+      <div className="flex flex-1 items-center justify-center pt-14">
+        <Loader size="lg" label="Loading scenario" />
       </div>
     );
   }
 
   if (isError || !scenario) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center space-y-4 p-6 pt-14 text-center text-content">
-        <div className="text-4xl">📜</div>
-        <h1 className="font-display text-3xl font-bold text-white">
-          Scenario Not Found
-        </h1>
-        <p className="font-mono text-sm text-content-muted max-w-md">
-          The requested chronicle could not be located in the realm archives or
-          has been archived by its author.
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 pt-14 text-center">
+        <h1 className="font-display text-2xl text-content">Scenario not found</h1>
+        <p className="max-w-sm font-sans text-sm text-content-faint">
+          It may have been unpublished, or the link is wrong.
         </p>
-        <button
-          onClick={() => navigate("/discover")}
-          className="rounded-xl bg-surface border border-border-subtle px-6 py-3 font-mono text-sm text-accent hover:bg-surface-overlay transition-colors"
+        <Link
+          to="/discover"
+          className="mt-2 rounded-full border border-border-subtle bg-surface px-4 py-2 font-sans text-sm text-content-muted transition hover:text-content"
         >
-          ← Return to Discovery Feed
-        </button>
+          Back to discover
+        </Link>
       </div>
     );
   }
 
   return (
-    <div className="custom-scrollbar flex-1 overflow-y-auto pb-20 text-content selection:bg-accent/30">
-      {/* Main Focus Container */}
-      <main className="mx-auto max-w-7xl space-y-8 px-4 pt-16 md:px-8">
+    <div className="custom-scrollbar flex-1 overflow-y-auto pb-24 text-content selection:bg-accent/30">
+      <div className="mx-auto max-w-6xl px-4 pt-16 md:px-10">
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-1.5 font-mono text-xs text-content-faint transition-colors hover:text-content"
+          className="mb-4 flex items-center gap-1.5 font-mono text-xs text-content-faint transition-colors hover:text-content"
         >
-          ← Back
+          <IconArrowLeft size={14} />
+          Back
         </button>
 
-        {/* Banner Hero */}
         <ScenarioBannerHero
           scenario={scenario}
           isBookmarked={isBookmarked}
@@ -77,10 +73,8 @@ export const ScenarioFocusPage: React.FC = () => {
           currentUserId={currentUser?.user_id}
         />
 
-        {/* Continuous Scroll Content Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Column: Lore & Setup */}
-          <div className="lg:col-span-2 space-y-8">
+        <div className="mt-12 grid grid-cols-1 gap-x-12 gap-y-12 lg:grid-cols-[1fr_20rem]">
+          <div className="space-y-12">
             <ScenarioLoreSection scenario={scenario} />
             <ScenarioSetupPreview setupSchema={scenario.setup_schema} />
             <ScenarioReviewsSection
@@ -93,12 +87,11 @@ export const ScenarioFocusPage: React.FC = () => {
             />
           </div>
 
-          {/* Sidebar Column: Public Playthroughs & Info */}
-          <div className="space-y-8">
+          <aside className="lg:border-l lg:border-border-subtle lg:pl-8">
             <ScenarioPublicPlaythroughs playthroughs={publicPlaythroughs} />
-          </div>
+          </aside>
         </div>
-      </main>
+      </div>
     </div>
   );
 };
