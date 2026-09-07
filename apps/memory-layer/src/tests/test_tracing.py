@@ -37,7 +37,9 @@ class CorrelationScopeSpanTests(unittest.TestCase):
     def test_opens_root_span_with_correlation_and_context_attributes(self) -> None:
         tracer, exporter = _local_tracer()
         with patch("context_memory.core.journal.get_tracer", return_value=tracer):
-            with correlation_scope(JournalContext(context_id="ctx-1", session_id="sess-1")) as correlation_id:
+            with correlation_scope(
+                JournalContext(context_id="ctx-1", session_id="sess-1")
+            ) as correlation_id:
                 pass
         spans = exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
@@ -77,15 +79,33 @@ class FakeConnection:
         return nullcontext()
 
 
+class FakePool:
+    """`StepJournal` acquires a connection per call via `pool.connection()`
+    -- this just yields the same fake connection every time."""
+
+    def __init__(self, connection: object) -> None:
+        self._connection = connection
+
+    def connection(self):
+        from contextlib import nullcontext
+
+        return nullcontext(self._connection)
+
+
 class StepJournalSpanTests(unittest.TestCase):
     def test_llm_step_emits_chat_span_with_gen_ai_attributes(self) -> None:
         tracer, exporter = _local_tracer()
-        journal = StepJournal(FakeConnection())
+        journal = StepJournal(FakePool(FakeConnection()))
         with patch("context_memory.core.journal.get_tracer", return_value=tracer):
             journal.record(
-                step_type="llm.text_completion", call_role="reader", idempotency_key="key-1",
-                request_payload={}, response_payload={"text": "hi"}, outcome="ok",
-                elapsed_ms=42.0, model_name="qwen.qwen3-32b",
+                step_type="llm.text_completion",
+                call_role="reader",
+                idempotency_key="key-1",
+                request_payload={},
+                response_payload={"text": "hi"},
+                outcome="ok",
+                elapsed_ms=42.0,
+                model_name="qwen.qwen3-32b",
                 context=JournalContext(context_id="ctx-1"),
             )
         spans = exporter.get_finished_spans()
@@ -100,12 +120,17 @@ class StepJournalSpanTests(unittest.TestCase):
 
     def test_error_outcome_sets_error_status(self) -> None:
         tracer, exporter = _local_tracer()
-        journal = StepJournal(FakeConnection())
+        journal = StepJournal(FakePool(FakeConnection()))
         with patch("context_memory.core.journal.get_tracer", return_value=tracer):
             journal.record(
-                step_type="llm.text_completion", call_role="reader", idempotency_key="key-1",
-                request_payload={}, response_payload=None, outcome="error",
-                elapsed_ms=5.0, error_message="provider down",
+                step_type="llm.text_completion",
+                call_role="reader",
+                idempotency_key="key-1",
+                request_payload={},
+                response_payload=None,
+                outcome="error",
+                elapsed_ms=5.0,
+                error_message="provider down",
             )
         span = exporter.get_finished_spans()[0]
         self.assertEqual(span.status.status_code, StatusCode.ERROR)
@@ -113,24 +138,39 @@ class StepJournalSpanTests(unittest.TestCase):
 
     def test_non_llm_step_omits_gen_ai_attributes(self) -> None:
         tracer, exporter = _local_tracer()
-        journal = StepJournal(FakeConnection())
+        journal = StepJournal(FakePool(FakeConnection()))
         with patch("context_memory.core.journal.get_tracer", return_value=tracer):
             journal.record(
-                step_type="rollback.apply", call_role="rollback", idempotency_key="key-1",
-                request_payload={}, response_payload=None, outcome="ok", elapsed_ms=1.0,
+                step_type="rollback.apply",
+                call_role="rollback",
+                idempotency_key="key-1",
+                request_payload={},
+                response_payload=None,
+                outcome="ok",
+                elapsed_ms=1.0,
             )
         span = exporter.get_finished_spans()[0]
         self.assertEqual(span.name, "rollback.apply")
         self.assertNotIn("gen_ai.operation.name", span.attributes)
 
     def test_span_emission_failure_never_raises(self) -> None:
-        journal = StepJournal(FakeConnection())
-        with patch("context_memory.core.journal.get_tracer", side_effect=RuntimeError("exporter down")):
+        journal = StepJournal(FakePool(FakeConnection()))
+        with patch(
+            "context_memory.core.journal.get_tracer",
+            side_effect=RuntimeError("exporter down"),
+        ):
             step_id = journal.record(
-                step_type="llm.text_completion", call_role="reader", idempotency_key="key-1",
-                request_payload={}, response_payload={"text": "hi"}, outcome="ok", elapsed_ms=1.0,
+                step_type="llm.text_completion",
+                call_role="reader",
+                idempotency_key="key-1",
+                request_payload={},
+                response_payload={"text": "hi"},
+                outcome="ok",
+                elapsed_ms=1.0,
             )
-        self.assertIsNotNone(step_id)  # journaling still succeeded despite tracing failing
+        self.assertIsNotNone(
+            step_id
+        )  # journaling still succeeded despite tracing failing
 
 
 if __name__ == "__main__":

@@ -40,8 +40,13 @@ class FactMetadataStore(Protocol):
     locally-declared Protocol rather than an import from `persistence`."""
 
     def put(
-        self, context_id: str, fact_id: int, checkpoint: str | None, when_active: dict | None,
-        visible_to_participant_id: str | None = None, hidden: bool = False,
+        self,
+        context_id: str,
+        fact_id: int,
+        checkpoint: str | None,
+        when_active: dict | None,
+        visible_to_participant_id: str | None = None,
+        hidden: bool = False,
     ) -> None: ...
 
 
@@ -58,7 +63,9 @@ class ExternalFactIdStore(Protocol):
         """Returns `(graph_id, logical_key)`, or `None` if never registered."""
         ...
 
-    def put(self, context_id: str, external_fact_id: str, graph_id: int, logical_key: str) -> None: ...
+    def put(
+        self, context_id: str, external_fact_id: str, graph_id: int, logical_key: str
+    ) -> None: ...
 
 
 class FactProjector(Protocol):
@@ -115,33 +122,48 @@ class DirectFactInput:
 
     def __post_init__(self) -> None:
         if not self.object_canonical_name and self.object_literal is None:
-            raise ValueError("DirectFactInput requires object_canonical_name or object_literal")
+            raise ValueError(
+                "DirectFactInput requires object_canonical_name or object_literal"
+            )
 
 
 def write_entity(
-    context_id: str, entity: DirectEntityInput, allocator: GraphIdAllocator, graph_writer: GraphWriter
+    context_id: str,
+    entity: DirectEntityInput,
+    allocator: GraphIdAllocator,
+    graph_writer: GraphWriter,
 ) -> int:
     """Direct-writes one Entity node. Returns its graph_id."""
     logical_key = f"entity:{entity.canonical_name}"
     graph_id = allocator.allocate_graph_id("entity", context_id, logical_key)
     node = GraphNode(
-        graph_id, "Entity", logical_key,
+        graph_id,
+        "Entity",
+        logical_key,
         _properties(
-            context_id, logical_key=logical_key, canonical_name=entity.canonical_name,
-            entity_type=entity.entity_type, description=entity.description,
+            context_id,
+            logical_key=logical_key,
+            canonical_name=entity.canonical_name,
+            entity_type=entity.entity_type,
+            description=entity.description,
             aliases=", ".join(entity.aliases) if entity.aliases else None,
         ),
     )
     plan = GraphWritePlan(
-        context_id=context_id, plan_key=f"plan:direct-entity:{logical_key}",
-        nodes=(node,), relationships=(),
+        context_id=context_id,
+        plan_key=f"plan:direct-entity:{logical_key}",
+        nodes=(node,),
+        relationships=(),
     )
     graph_writer.write(plan)
     return graph_id
 
 
 def write_fact(
-    context_id: str, fact: DirectFactInput, allocator: GraphIdAllocator, graph_writer: GraphWriter,
+    context_id: str,
+    fact: DirectFactInput,
+    allocator: GraphIdAllocator,
+    graph_writer: GraphWriter,
     fact_metadata_store: FactMetadataStore | None = None,
     external_fact_id_store: ExternalFactIdStore | None = None,
     fact_projector: FactProjector | None = None,
@@ -149,10 +171,20 @@ def write_fact(
     """Direct-writes one Fact node plus its ABOUT edge to the subject entity
     (and a RELATES_TO edge to the object entity, when the object is a
     reference rather than a literal). The intended calling order creates both
-    subject and object entities first (`write_entity`). This function allocates
-    their stable registry IDs but does not independently verify that matching
-    HydraDB Entity nodes already exist; strict reference validation remains a
-    caller/authoring-service responsibility.
+    subject and object entities first (`write_entity`), but this function
+    does not depend on that order: it also puts a same-`plan` stub Entity
+    node (`logical_key`/`canonical_name`/`context_id` only) into `plan.nodes`
+    for each reference. `GraphWriter.write()` writes every node bucket before
+    any relationship bucket, so the ABOUT/RELATES_TO edge's `MATCH` always
+    has an `(Entity {id: ...})` to find -- HIGH-10 fix: without this, a fact
+    authored before its entity (or a typo'd `canonical_name`) hit HydraDB's
+    `UNWIND ... MATCH ... MERGE` silently producing zero rows for that
+    edge, since a failed `MATCH` short-circuits `MERGE` with no error. A
+    stub for an entity that was already `write_entity`'d is a harmless
+    no-op: `MERGE (n {id: row.id})` matches the existing node by id, and the
+    stub's `SET` only ever touches `logical_key`/`canonical_name`/
+    `context_id`, never `entity_type`/`description`/`aliases`, so a real
+    entity's own fields are never clobbered back to stub values.
 
     `fact_metadata_store`, when given, persists `fact.when_active`/
     `fact.checkpoint`/`fact.visible_to_participant_id`/`fact.hidden` --
@@ -176,59 +208,124 @@ def write_fact(
     subject_graph_id = allocator.allocate_graph_id("entity", context_id, subject_key)
 
     display_text = f"{fact.subject_canonical_name} {fact.predicate} {fact.object_canonical_name or fact.object_literal}"
-    v_from = int(fact.valid_from.timestamp()) if fact.valid_from else _NO_LOWER_BOUND_VALID_FROM
+    v_from = (
+        int(fact.valid_from.timestamp())
+        if fact.valid_from
+        else _NO_LOWER_BOUND_VALID_FROM
+    )
 
     fact_node = GraphNode(
-        fact_graph_id, "Fact", fact_key,
+        fact_graph_id,
+        "Fact",
+        fact_key,
         _properties(
-            context_id, logical_key=fact_key, text=display_text, predicate_key=fact.predicate,
-            confidence=_DIRECT_AUTHORING_CONFIDENCE, valid_from=v_from, valid_to=_OPEN_ENDED_VALID_TO,
-            observed_at=v_from, superseded_at=_OPEN_ENDED_VALID_TO, is_current=True,
+            context_id,
+            logical_key=fact_key,
+            text=display_text,
+            predicate_key=fact.predicate,
+            confidence=_DIRECT_AUTHORING_CONFIDENCE,
+            valid_from=v_from,
+            valid_to=_OPEN_ENDED_VALID_TO,
+            observed_at=v_from,
+            superseded_at=_OPEN_ENDED_VALID_TO,
+            is_current=True,
             object_literal=fact.object_literal,
         ),
     )
     about_edge = GraphRelationship(
-        allocator.allocate_graph_id("about", context_id, f"about:{fact_key}"), "ABOUT",
-        f"about:{fact_key}", fact_graph_id, subject_graph_id, "Fact", "Entity", _properties(context_id),
+        allocator.allocate_graph_id("about", context_id, f"about:{fact_key}"),
+        "ABOUT",
+        f"about:{fact_key}",
+        fact_graph_id,
+        subject_graph_id,
+        "Fact",
+        "Entity",
+        _properties(context_id),
     )
-    nodes = [fact_node]
+    nodes = [
+        fact_node,
+        _stub_entity_node(
+            context_id, subject_key, subject_graph_id, fact.subject_canonical_name
+        ),
+    ]
     relationships = [about_edge]
     if fact.object_canonical_name:
         object_key = f"entity:{fact.object_canonical_name}"
         object_graph_id = allocator.allocate_graph_id("entity", context_id, object_key)
-        relationships.append(GraphRelationship(
-            allocator.allocate_graph_id("relates_to", context_id, f"relates_to:{fact_key}"), "RELATES_TO",
-            f"relates_to:{fact_key}", fact_graph_id, object_graph_id, "Fact", "Entity", _properties(context_id),
-        ))
+        nodes.append(
+            _stub_entity_node(
+                context_id, object_key, object_graph_id, fact.object_canonical_name
+            )
+        )
+        relationships.append(
+            GraphRelationship(
+                allocator.allocate_graph_id(
+                    "relates_to", context_id, f"relates_to:{fact_key}"
+                ),
+                "RELATES_TO",
+                f"relates_to:{fact_key}",
+                fact_graph_id,
+                object_graph_id,
+                "Fact",
+                "Entity",
+                _properties(context_id),
+            )
+        )
 
     if fact.superseded_fact_id is not None:
         if external_fact_id_store is None:
-            raise ValueError("superseded_fact_id given but no external_fact_id_store configured")
+            raise ValueError(
+                "superseded_fact_id given but no external_fact_id_store configured"
+            )
         prior = external_fact_id_store.get(context_id, fact.superseded_fact_id)
         if prior is None:
-            raise ValueError(f"superseded_fact_id {fact.superseded_fact_id!r} does not resolve to a known fact")
+            raise ValueError(
+                f"superseded_fact_id {fact.superseded_fact_id!r} does not resolve to a known fact"
+            )
         prior_graph_id, prior_logical_key = prior
+        if prior_graph_id == fact_graph_id:
+            raise ValueError(
+                f"fact {fact_key!r} resolves to same graph_id as the fact it "
+                f"supersedes ({fact.superseded_fact_id!r}) -- refusing to self-supersede"
+            )
         supersedes_key = f"supersedes:{fact_key}:{prior_graph_id}"
-        relationships.append(GraphRelationship(
-            allocator.allocate_graph_id("supersedes", context_id, supersedes_key), "SUPERSEDES",
-            supersedes_key, fact_graph_id, prior_graph_id, "Fact", "Fact", _properties(context_id),
-        ))
+        relationships.append(
+            GraphRelationship(
+                allocator.allocate_graph_id("supersedes", context_id, supersedes_key),
+                "SUPERSEDES",
+                supersedes_key,
+                fact_graph_id,
+                prior_graph_id,
+                "Fact",
+                "Fact",
+                _properties(context_id),
+            )
+        )
         # Precedence rule from the AI-DND handoff doc: supersession is
         # authoritative over currency -- closing the prior fact's validity
         # at this fact's own valid_from, same as extraction's own
         # supersession closing (graph_plan_builder.py), regardless of
         # whatever `when_active` the prior fact may still carry.
-        nodes.append(GraphNode(
-            prior_graph_id, "Fact", prior_logical_key,
-            _properties(
-                context_id, logical_key=prior_logical_key, is_current=False,
-                superseded_at=v_from, valid_to=v_from,
-            ),
-        ))
+        nodes.append(
+            GraphNode(
+                prior_graph_id,
+                "Fact",
+                prior_logical_key,
+                _properties(
+                    context_id,
+                    logical_key=prior_logical_key,
+                    is_current=False,
+                    superseded_at=v_from,
+                    valid_to=v_from,
+                ),
+            )
+        )
 
     plan = GraphWritePlan(
-        context_id=context_id, plan_key=f"plan:direct-fact:{fact_key}",
-        nodes=tuple(nodes), relationships=tuple(relationships),
+        context_id=context_id,
+        plan_key=f"plan:direct-fact:{fact_key}",
+        nodes=tuple(nodes),
+        relationships=tuple(relationships),
     )
     graph_writer.write(plan)
 
@@ -241,15 +338,23 @@ def write_fact(
         fact_projector.project(context_id, fact_graph_id, display_text)
 
     if external_fact_id_store is not None and fact.external_fact_id is not None:
-        external_fact_id_store.put(context_id, fact.external_fact_id, fact_graph_id, fact_key)
+        external_fact_id_store.put(
+            context_id, fact.external_fact_id, fact_graph_id, fact_key
+        )
 
     has_metadata = (
-        fact.when_active is not None or fact.checkpoint is not None
-        or fact.visible_to_participant_id is not None or fact.hidden
+        fact.when_active is not None
+        or fact.checkpoint is not None
+        or fact.visible_to_participant_id is not None
+        or fact.hidden
     )
     if fact_metadata_store is not None and has_metadata:
         fact_metadata_store.put(
-            context_id, fact_graph_id, fact.checkpoint, fact.when_active, fact.visible_to_participant_id,
+            context_id,
+            fact_graph_id,
+            fact.checkpoint,
+            fact.when_active,
+            fact.visible_to_participant_id,
             fact.hidden,
         )
 
@@ -260,9 +365,36 @@ def _fact_logical_key(context_id: str, fact: DirectFactInput) -> str:
     # Deterministic, not caller-supplied -- two authoring calls describing the
     # identical triple collapse onto the same fact instead of duplicating it,
     # the same MERGE-by-logical-key idempotency extraction's facts already get.
+    #
+    # NOTE: a fact that supersedes a prior one salts the hash with
+    # `superseded_fact_id`. Without this, a correction that keeps the same
+    # (subject, predicate, object) triple -- only `valid_from`, `checkpoint`,
+    # or visibility changed -- would hash to the SAME fact_key/graph_id as
+    # the fact it's replacing. That collapses the new SUPERSEDES edge and the
+    # prior-fact close-out onto one node: the new fact overwrites itself with
+    # `is_current=False` and vanishes from active memory (HIGH-09).
     object_part = fact.object_canonical_name or fact.object_literal
     raw = f"{fact.subject_canonical_name}\x00{fact.predicate}\x00{object_part}"
+    if fact.superseded_fact_id is not None:
+        raw = f"{raw}\x00supersedes\x00{fact.superseded_fact_id}"
     return f"fact:direct:{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:24]}"
+
+
+def _stub_entity_node(
+    context_id: str, logical_key: str, graph_id: int, canonical_name: str
+) -> GraphNode:
+    """HIGH-10 fix: a minimal Entity node so `write_fact`'s ABOUT/RELATES_TO
+    edges always have a match target in the same write, even when the real
+    `write_entity` call for this name hasn't happened yet (or never will,
+    e.g. a typo). Deliberately omits `entity_type`/`description`/`aliases`
+    so it never overwrites those fields on an already-authored entity --
+    see `write_fact`'s docstring."""
+    return GraphNode(
+        graph_id,
+        "Entity",
+        logical_key,
+        _properties(context_id, logical_key=logical_key, canonical_name=canonical_name),
+    )
 
 
 def _properties(context_id: str, **fields: object) -> dict[str, object]:

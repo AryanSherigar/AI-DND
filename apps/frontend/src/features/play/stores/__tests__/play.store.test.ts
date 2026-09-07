@@ -3,6 +3,7 @@ import { usePlayStore } from "../play.store";
 import { PlaythroughData } from "../../types/play.types";
 import { SSEHandlers } from "@/shared/lib/sse-client";
 import { MinigameEventPayload } from "@/shared/types/minigame.types";
+import { queryClient } from "@/shared/lib/query-client";
 
 let capturedHandlers: SSEHandlers | null = null;
 let capturedBody: unknown = null;
@@ -44,6 +45,9 @@ function buildPlaythrough(): PlaythroughData {
     player_stats: [],
     player_inventory: [],
     pending_minigame: null,
+    ended_outcome_tag: null,
+    ended_outcome_title: null,
+    ended_outcome_text: null,
   };
 }
 
@@ -170,5 +174,95 @@ describe("play.store — minigame trigger/result handling", () => {
 
     usePlayStore.getState().setReaderFontOverride(null);
     expect(usePlayStore.getState().reader_font_override).toBeNull();
+  });
+});
+
+describe("play.store — playthrough_ended handling", () => {
+  beforeEach(() => {
+    capturedHandlers = null;
+    usePlayStore.setState({
+      playthrough: buildPlaythrough(),
+      pending_playthrough_ended: null,
+      streaming_text: "",
+      is_narrating: false,
+    });
+  });
+
+  const endedPayload = {
+    outcome_tag: "win" as const,
+    outcome_title: "The Ashen Ending",
+    outcome_text: "The Warden kneels.",
+  };
+
+  it("buffers playthrough_ended and only applies it to the committed playthrough on done", () => {
+    usePlayStore.getState().submitTurn("I strike the killing blow.");
+    expect(capturedHandlers).not.toBeNull();
+
+    capturedHandlers!.onEvent(
+      "playthrough_ended",
+      JSON.stringify(endedPayload),
+    );
+
+    // Buffered only — the ending must not apply mid-stream.
+    expect(usePlayStore.getState().playthrough?.ended_outcome_tag).toBeNull();
+    expect(usePlayStore.getState().pending_playthrough_ended).toEqual(
+      endedPayload,
+    );
+
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    capturedHandlers!.onEvent("done", "");
+
+    const playthrough = usePlayStore.getState().playthrough;
+    expect(playthrough?.ended_outcome_tag).toBe("win");
+    expect(playthrough?.ended_outcome_title).toBe("The Ashen Ending");
+    expect(playthrough?.ended_outcome_text).toBe("The Warden kneels.");
+    expect(usePlayStore.getState().pending_playthrough_ended).toBeNull();
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["playthrough", "pt-1"],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["playthrough-turns", "pt-1"],
+    });
+
+    invalidateSpy.mockRestore();
+  });
+
+  it("also invalidates the playthrough query on an ordinary turn with no ending", () => {
+    // Guards against HIGH-01: PlayPage rebuilds its store snapshot from
+    // serverPlaythrough + turnsData on every change, so leaving
+    // ["playthrough", id] stale on a normal turn reverts locally-applied
+    // fields (e.g. active_conditions) back to the pre-turn server state.
+    usePlayStore.getState().submitTurn("I look around.");
+    expect(capturedHandlers).not.toBeNull();
+
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    capturedHandlers!.onEvent("done", "");
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["playthrough", "pt-1"],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["playthrough-turns", "pt-1"],
+    });
+    expect(usePlayStore.getState().playthrough?.ended_outcome_tag).toBeNull();
+
+    invalidateSpy.mockRestore();
+  });
+
+  it("blocks further submission once the playthrough has ended", () => {
+    usePlayStore.setState({
+      playthrough: {
+        ...buildPlaythrough(),
+        ended_outcome_tag: "win",
+        ended_outcome_title: "The Ashen Ending",
+        ended_outcome_text: "The Warden kneels.",
+      },
+    });
+
+    usePlayStore.getState().submitTurn("One more action.");
+    expect(capturedHandlers).toBeNull();
+
+    usePlayStore.getState().continueTurn();
+    expect(capturedHandlers).toBeNull();
   });
 });

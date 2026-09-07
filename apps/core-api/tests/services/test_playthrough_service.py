@@ -3,9 +3,9 @@
 import uuid
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.db.models.participant import Participant
 from app.db.models.scenario import Scenario
+from app.db.models.share import PlaythroughShare
 from app.exceptions.playthrough_exceptions import (
     InvalidSetupValuesError,
     PlaythroughMemoryCloneError,
@@ -28,6 +28,8 @@ from app.repositories.share_repo import ShareRepo
 from app.repositories.turn_log_repo import TurnLogRepo
 from app.repositories.user_repo import UserRepo
 from app.services.playthrough_service import PlaythroughService
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def _make_service(db_session: AsyncSession) -> PlaythroughService:
@@ -314,7 +316,6 @@ async def test_create_playthrough_master_mode_snapshot_includes_entities_and_rul
     (master-mode-turn-pipeline.spec.md) — TRS never reads Scenario or its
     sub-resource tables directly during a turn."""
     import httpx
-
     from app.models.condition import ConditionCreate
     from app.models.end_condition import EndConditionCreate
     from app.models.entity import EntityCreate
@@ -482,3 +483,115 @@ async def test_create_playthrough_master_mode_snapshot_includes_entities_and_rul
         "Rune Trial",
         "Warden's Onslaught",
     ]
+
+
+@pytest.mark.asyncio
+async def test_participant_unique_user_constraint_enforced(
+    db_session: AsyncSession,
+) -> None:
+    service = await _make_service(db_session)
+    user = await _make_user(db_session)
+    scenario = await _make_scenario(db_session, user.user_id)
+    playthrough_resp = await service.create_playthrough(
+        user_id=user.user_id,
+        data=PlaythroughCreate(scenario_id=scenario.scenario_id, setup_values={}),
+    )
+
+    duplicate_participant = Participant(
+        playthrough_id=playthrough_resp.playthrough_id,
+        user_id=user.user_id,
+        role="joined",
+        turn_order_position=2,
+    )
+    participant_repo = ParticipantRepo(db_session)
+    with pytest.raises(IntegrityError):
+        await participant_repo.create(duplicate_participant)
+
+
+@pytest.mark.asyncio
+async def test_participant_unique_turn_order_constraint_enforced(
+    db_session: AsyncSession,
+) -> None:
+    service = await _make_service(db_session)
+    user1 = await _make_user(db_session)
+    user2 = await _make_user(db_session)
+    scenario = await _make_scenario(db_session, user1.user_id)
+    playthrough_resp = await service.create_playthrough(
+        user_id=user1.user_id,
+        data=PlaythroughCreate(scenario_id=scenario.scenario_id, setup_values={}),
+    )
+
+    duplicate_position_participant = Participant(
+        playthrough_id=playthrough_resp.playthrough_id,
+        user_id=user2.user_id,
+        role="joined",
+        turn_order_position=1,
+    )
+    participant_repo = ParticipantRepo(db_session)
+    with pytest.raises(IntegrityError):
+        await participant_repo.create(duplicate_position_participant)
+
+
+@pytest.mark.asyncio
+async def test_join_playthrough_idempotent_for_same_user(
+    db_session: AsyncSession,
+) -> None:
+    service = await _make_service(db_session)
+    owner = await _make_user(db_session)
+    scenario = await _make_scenario(
+        db_session, owner.user_id, player_count_support="both"
+    )
+    playthrough_resp = await service.create_playthrough(
+        user_id=owner.user_id,
+        data=PlaythroughCreate(scenario_id=scenario.scenario_id, setup_values={}),
+    )
+
+    share = PlaythroughShare(
+        playthrough_id=playthrough_resp.playthrough_id,
+        share_token="join-token-123",
+        mode="join",
+    )
+    db_session.add(share)
+    await db_session.flush()
+
+    joiner = await _make_user(db_session)
+    first_join = await service.join_playthrough("join-token-123", joiner.user_id)
+    second_join = await service.join_playthrough("join-token-123", joiner.user_id)
+
+    assert first_join.participant_id == second_join.participant_id
+    assert len(first_join.participants) == 2
+    assert len(second_join.participants) == 2
+
+
+@pytest.mark.asyncio
+async def test_join_playthrough_sequential_turn_order_positions(
+    db_session: AsyncSession,
+) -> None:
+    service = await _make_service(db_session)
+    owner = await _make_user(db_session)
+    scenario = await _make_scenario(
+        db_session, owner.user_id, player_count_support="both"
+    )
+    playthrough_resp = await service.create_playthrough(
+        user_id=owner.user_id,
+        data=PlaythroughCreate(scenario_id=scenario.scenario_id, setup_values={}),
+    )
+
+    share = PlaythroughShare(
+        playthrough_id=playthrough_resp.playthrough_id,
+        share_token="multi-join-token",
+        mode="join",
+    )
+    db_session.add(share)
+    await db_session.flush()
+
+    user2 = await _make_user(db_session)
+    user3 = await _make_user(db_session)
+
+    await service.join_playthrough("multi-join-token", user2.user_id)
+    resp3 = await service.join_playthrough("multi-join-token", user3.user_id)
+
+    positions = {p.user_id: p.turn_order_position for p in resp3.participants}
+    assert positions[owner.user_id] == 1
+    assert positions[user2.user_id] == 2
+    assert positions[user3.user_id] == 3

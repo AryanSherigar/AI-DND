@@ -100,6 +100,16 @@ async def test_refresh_token_invalid(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_logout_expires_refresh_token_cookie(async_client: AsyncClient):
+    response = await async_client.post("/v1/auth/logout")
+
+    assert response.status_code == 204
+    set_cookie_header = response.headers.get("set-cookie", "")
+    assert "refresh_token=" in set_cookie_header
+    assert "Max-Age=0" in set_cookie_header or "max-age=0" in set_cookie_header.lower()
+
+
+@pytest.mark.asyncio
 async def test_protected_route_without_auth(async_client: AsyncClient):
     response = await async_client.get("/protected")
     assert response.status_code == 401

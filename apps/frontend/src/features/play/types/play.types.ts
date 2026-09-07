@@ -25,6 +25,15 @@ export interface MasterEntity {
   attributes: Record<string, unknown>;
 }
 
+// Shape of the `playthrough_ended` SSE event payload (TRS's
+// response_streamer.playthrough_ended_event), emitted once when a turn
+// matches a scenario end condition.
+export interface PlaythroughEndedPayload {
+  outcome_tag: "win" | "lose";
+  outcome_title: string;
+  outcome_text: string;
+}
+
 export interface Objective {
   outcome_title: string;
   outcome_tag: "win" | "lose";
@@ -135,4 +144,10 @@ export interface PlaythroughData {
   // player left mid-resolution resumes on mount, without waiting for a new
   // SSE "minigame" event (see MinigameOverlay's reload-resume behaviour).
   pending_minigame: MinigameEventPayload | null;
+  // Master-mode-only; populated once an end condition matches, either from a
+  // live "playthrough_ended" SSE event or from PlaythroughResponse on
+  // load/reload. null for newbie and for an in-progress master playthrough.
+  ended_outcome_tag: "win" | "lose" | null;
+  ended_outcome_title: string | null;
+  ended_outcome_text: string | null;
 }

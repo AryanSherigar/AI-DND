@@ -1,20 +1,26 @@
-import os
-import time
 import asyncio
 import json
+import os
+import time
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import health_check, require_api_key, router
+from fastapi.responses import StreamingResponse
+
+from api.routes import require_api_key, router
+from api.stream import streamer
+from context_memory.composition import build_memory_engine
 from context_memory.core.logging import get_logger, setup_logging
 from context_memory.ingestion.graph_writer import GraphWriter
-from api.stream import streamer
 
 setup_logging()
 logger = get_logger("api.server")
 
 # Monkey Patch GraphWriter to intercept writes
 original_write = GraphWriter.write
+
+
 def patched_write(self, plan):
     res = original_write(self, plan)
     try:
@@ -22,9 +28,21 @@ def patched_write(self, plan):
     except Exception as e:
         logger.error(f"Error in broadcast: {e}")
     return res
+
+
 GraphWriter.write = patched_write
 
-app = FastAPI(title="Context Memory API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # NOTE: builds the MemoryEngine once, before any request is served, so
+    # concurrent requests never race each other into building duplicate
+    # connection pools / embedding models via routes.py's lazy fallback.
+    app.state.engine = await asyncio.to_thread(build_memory_engine)
+    yield
+
+
+app = FastAPI(title="Context Memory API", lifespan=lifespan)
 
 # §12 fix: was `allow_origins=["*"]` + `allow_credentials=True` -- Starlette's
 # CORSMiddleware reflects the request's own Origin header back (rather than
@@ -36,7 +54,11 @@ app = FastAPI(title="Context Memory API")
 # Non-browser server-to-server callers (AI-DND's own backend services) are
 # unaffected either way -- CORS only restricts browser-issued cross-origin
 # requests, never direct API calls.
-_allowed_origins = [o.strip() for o in os.environ.get("CONTEXT_MEMORY_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+_allowed_origins = [
+    o.strip()
+    for o in os.environ.get("CONTEXT_MEMORY_ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,6 +67,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -60,25 +83,27 @@ async def log_requests(request: Request, call_next):
     )
     return response
 
+
 app.include_router(router, dependencies=[Depends(require_api_key)])
 
-# §12 fix: was `return {"status": "ok"}` unconditionally, no checks at all
-# -- a liveness probe that could never report anything but healthy.
-# Delegates to the same real Postgres/HydraDB checks `/v1/health` runs
-# (routes.py's `health_check`) instead of a second, parallel "always ok"
-# implementation. Deliberately NOT behind `require_api_key` -- infra
-# liveness/readiness probes hitting this bare, conventional path shouldn't
-# need a credential, even when one is configured for the rest of the API.
+
+# Liveness probe for orchestrators and container healthchecks.
+# Deliberately NOT behind `require_api_key` -- infra liveness probes
+# hitting this bare path shouldn't need credentials.
+# Deep readiness checks (Postgres/HydraDB) live at `/v1/health`.
 @app.get("/health")
-def read_health():
-    return health_check()
+async def read_health() -> dict[str, str]:
+    """Lightweight liveness probe."""
+    return {"status": "ok"}
+
 
 @app.get("/v1/memory/stream")
 async def stream_graph(request: Request):
     if streamer.loop is None:
         streamer.loop = asyncio.get_running_loop()
-        
+
     q = streamer.add_queue()
+
     async def event_generator():
         try:
             while True:
@@ -87,9 +112,9 @@ async def stream_graph(request: Request):
                 try:
                     data = await asyncio.wait_for(q.get(), timeout=1.0)
                     yield f"data: {json.dumps(data)}\n\n"
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield ": keepalive\n\n"
         finally:
             streamer.remove_queue(q)
-            
+
     return StreamingResponse(event_generator(), media_type="text/event-stream")

@@ -9,7 +9,7 @@
   - `apps/turn-resolution-service/Dockerfile` created using `python:3.11-slim` running uvicorn (`uvicorn app.main:app --host 0.0.0.0 --port 8001`).
   - `apps/frontend/Dockerfile` created using multi-stage Node 20 build -> Nginx alpine static host on port 80.
   - `.env.example` created in the root directory detailing all container environment variables.
-  - `docker-compose.yml` created defining services: `postgres`, `core-api`, `turn-resolution-service`, and `frontend` with network bridge `aidnd-net` and volume `postgres_data`.
+  - `docker-compose.yml` created defining services: `postgres`, `core-api`, `turn-resolution-service`, and `frontend` with segregated bridge networks `frontend-net` and `backend-net`, and volume `postgres_data`.
   - `docker-compose.dev.yml` created supplying hot-reloading overrides (bind mounts for `/app`, host ports `5173`, `8000`, `8001`, `5432`).
   - Full compliance with `AGENTS.md` and monorepo boundaries.
 
@@ -20,7 +20,7 @@
   - **`turn-resolution-service` Service:** FastAPI app on port 8001, connects to `postgres:5432`, depends on `postgres` being healthy.
   - **`frontend` Service:** React Vite SPA. Prod: Nginx on port 80; Dev: Node container on port 5173 with Vite dev server and HMR.
 - **Network & Volumes:**
-  - Bridge network: `aidnd-net`
+  - Segregated bridge networks: `frontend-net` (ingress tier) and `backend-net` (private data/internal service tier)
   - Named persistent volume: `postgres_data`
 
 ## 3. The Six Core Engineering Dimensions

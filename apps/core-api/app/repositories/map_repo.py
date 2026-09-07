@@ -67,6 +67,11 @@ class MapRepo:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_pins_by_scenario(self, scenario_id: uuid.UUID) -> list[MapPin]:
+        stmt = select(MapPin).where(MapPin.scenario_id == scenario_id)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_start_pin_by_scenario(self, scenario_id: uuid.UUID) -> MapPin | None:
         stmt = select(MapPin).where(
             MapPin.scenario_id == scenario_id, MapPin.is_start_location.is_(True)

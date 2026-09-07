@@ -15,7 +15,9 @@ function buildMasterEntityHighlights(
         value: String(entity.attributes[key] ?? "—"),
       }),
     );
-    const names = [entity.canonical_name, ...entity.aliases];
+    const names = [entity.canonical_name, ...entity.aliases].filter(
+      (name) => name.trim().length > 0,
+    );
     return names.map((name) => ({
       id: entity.entity_id,
       name,
@@ -32,12 +34,14 @@ export function useEntityHighlighter(
   masterEntities: MasterEntity[] = [],
 ): EntityHighlightItem[] {
   return useMemo(() => {
-    const cardEntities: EntityHighlightItem[] = storyCards.map((card) => ({
-      id: card.id,
-      name: card.title,
-      category: card.category || "lore",
-      summary: card.content,
-    }));
+    const cardEntities: EntityHighlightItem[] = storyCards
+      .filter((card) => card.title.trim().length > 0)
+      .map((card) => ({
+        id: card.id,
+        name: card.title,
+        category: card.category || "lore",
+        summary: card.content,
+      }));
 
     const factEntities: EntityHighlightItem[] = keyFacts
       .filter((fact) => fact.includes(":") || fact.length > 5)
@@ -52,7 +56,8 @@ export function useEntityHighlighter(
           category: "fact",
           summary: fact,
         };
-      });
+      })
+      .filter((entity) => entity.name.length > 0);
 
     const masterEntityHighlights = buildMasterEntityHighlights(masterEntities);
 

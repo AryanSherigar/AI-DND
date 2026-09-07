@@ -5,9 +5,14 @@ import uuid
 from app.db.models.end_condition import EndCondition
 from app.db.models.entity import Entity
 from app.db.models.fact import Fact
+from app.db.models.map_connection import MapConnection
+from app.db.models.map_pin import MapPin
 from app.db.models.rule_invariant import RuleInvariant
 from app.db.models.scenario import Scenario
 from app.db.models.scenario_condition import ScenarioCondition
+from app.db.models.scenario_entity_type import ScenarioEntityType
+from app.db.models.scenario_map import ScenarioMap
+from app.db.models.scenario_minigame import ScenarioMinigame
 from app.exceptions.scenario_exceptions import (
     ScenarioAccessDeniedError,
     ScenarioAlreadyPublishingError,
@@ -31,6 +36,9 @@ from app.repositories.end_condition_repo import EndConditionRepo
 from app.repositories.entity_repo import EntityRepo
 from app.repositories.fact_repo import FactRepo
 from app.repositories.invariant_repo import InvariantRepo
+from app.repositories.map_repo import MapRepo
+from app.repositories.minigame_repo import MinigameRepo
+from app.repositories.scenario_entity_type_repo import ScenarioEntityTypeRepo
 from app.repositories.scenario_repo import ScenarioRepo
 
 STORY_SCHEMA_FIELDS: set[str] = {
@@ -59,6 +67,9 @@ class ScenarioService:
         condition_repo: ConditionRepo | None = None,
         end_condition_repo: EndConditionRepo | None = None,
         invariant_repo: InvariantRepo | None = None,
+        entity_type_repo: ScenarioEntityTypeRepo | None = None,
+        map_repo: MapRepo | None = None,
+        minigame_repo: MinigameRepo | None = None,
     ) -> None:
         self.scenario_repo = scenario_repo
         # Sub-resource repos are optional constructor args (rather than
@@ -73,6 +84,9 @@ class ScenarioService:
         self.condition_repo = condition_repo or ConditionRepo(session)
         self.end_condition_repo = end_condition_repo or EndConditionRepo(session)
         self.invariant_repo = invariant_repo or InvariantRepo(session)
+        self.entity_type_repo = entity_type_repo or ScenarioEntityTypeRepo(session)
+        self.map_repo = map_repo or MapRepo(session)
+        self.minigame_repo = minigame_repo or MinigameRepo(session)
 
     async def create_scenario(
         self, user_id: uuid.UUID, data: ScenarioCreate
@@ -354,19 +368,35 @@ class ScenarioService:
             _build_scenario_copy(source, user_id)
         )
         if source.mode == "master":
-            entity_id_map = await self._copy_entities(
+            await self._duplicate_master_resources(
                 source.scenario_id, new_scenario.scenario_id
             )
-            await self._copy_facts(
-                source.scenario_id, new_scenario.scenario_id, entity_id_map
-            )
-            await self._copy_conditions(source.scenario_id, new_scenario.scenario_id)
-            await self._copy_end_conditions(
-                source.scenario_id, new_scenario.scenario_id
-            )
-            await self._copy_invariants(source.scenario_id, new_scenario.scenario_id)
 
         return ScenarioResponse.model_validate(new_scenario)
+
+    async def _duplicate_master_resources(
+        self, source_scenario_id: uuid.UUID, new_scenario_id: uuid.UUID
+    ) -> None:
+        """Deep-copy all master-mode sub-resources in topological order."""
+        await self._copy_entity_types(source_scenario_id, new_scenario_id)
+        entity_id_map = await self._copy_entities(source_scenario_id, new_scenario_id)
+        await self._copy_facts(source_scenario_id, new_scenario_id, entity_id_map)
+        await self._copy_conditions(source_scenario_id, new_scenario_id)
+        await self._copy_end_conditions(source_scenario_id, new_scenario_id)
+        await self._copy_invariants(source_scenario_id, new_scenario_id)
+        await self._copy_maps_and_pins(
+            source_scenario_id, new_scenario_id, entity_id_map
+        )
+        await self._copy_minigames(source_scenario_id, new_scenario_id)
+
+    async def _copy_entity_types(
+        self, source_scenario_id: uuid.UUID, new_scenario_id: uuid.UUID
+    ) -> None:
+        """Deep-copy custom entity type templates for a scenario."""
+        source_types = await self.entity_type_repo.list_by_scenario(source_scenario_id)
+        for entity_type in source_types:
+            copy = _build_entity_type_copy(entity_type, new_scenario_id)
+            await self.entity_type_repo.create(copy)
 
     async def _copy_entities(
         self, source_scenario_id: uuid.UUID, new_scenario_id: uuid.UUID
@@ -447,6 +477,75 @@ class ScenarioService:
             await self.invariant_repo.create(
                 _build_invariant_copy(invariant, new_scenario_id)
             )
+
+    async def _copy_maps_and_pins(
+        self,
+        source_scenario_id: uuid.UUID,
+        new_scenario_id: uuid.UUID,
+        entity_id_map: dict[uuid.UUID, uuid.UUID],
+    ) -> None:
+        """Deep-copy maps, pins, and map connections for a scenario."""
+        map_id_map = await self._copy_maps(source_scenario_id, new_scenario_id)
+        await self._copy_pins(
+            source_scenario_id, new_scenario_id, map_id_map, entity_id_map
+        )
+        await self._copy_connections(source_scenario_id, new_scenario_id, entity_id_map)
+
+    async def _copy_maps(
+        self, source_scenario_id: uuid.UUID, new_scenario_id: uuid.UUID
+    ) -> dict[uuid.UUID, uuid.UUID]:
+        """Deep-copy scenario maps. Returns old->new map ID map."""
+        source_maps = await self.map_repo.list_maps_by_scenario(source_scenario_id)
+        map_id_map: dict[uuid.UUID, uuid.UUID] = {}
+        for scenario_map in source_maps:
+            copy = _build_map_copy(scenario_map, new_scenario_id)
+            map_id_map[scenario_map.map_id] = copy.map_id
+            await self.map_repo.create_map(copy)
+        return map_id_map
+
+    async def _copy_pins(
+        self,
+        source_scenario_id: uuid.UUID,
+        new_scenario_id: uuid.UUID,
+        map_id_map: dict[uuid.UUID, uuid.UUID],
+        entity_id_map: dict[uuid.UUID, uuid.UUID],
+    ) -> None:
+        """Deep-copy map pins, remapping map_id and entity_id."""
+        source_pins = await self.map_repo.list_pins_by_scenario(source_scenario_id)
+        for pin in source_pins:
+            new_map_id = map_id_map.get(pin.map_id)
+            new_entity_id = entity_id_map.get(pin.entity_id)
+            if not new_map_id or not new_entity_id:
+                continue
+            copy = _build_pin_copy(pin, new_scenario_id, new_map_id, new_entity_id)
+            await self.map_repo.create_pin(copy)
+
+    async def _copy_connections(
+        self,
+        source_scenario_id: uuid.UUID,
+        new_scenario_id: uuid.UUID,
+        entity_id_map: dict[uuid.UUID, uuid.UUID],
+    ) -> None:
+        """Deep-copy map connections, remapping and sorting entity IDs."""
+        source_connections = await self.map_repo.list_connections_by_scenario(
+            source_scenario_id
+        )
+        for conn in source_connections:
+            new_a = entity_id_map.get(conn.entity_id_a)
+            new_b = entity_id_map.get(conn.entity_id_b)
+            if not new_a or not new_b:
+                continue
+            copy = _build_connection_copy(conn, new_scenario_id, new_a, new_b)
+            await self.map_repo.create_connection(copy)
+
+    async def _copy_minigames(
+        self, source_scenario_id: uuid.UUID, new_scenario_id: uuid.UUID
+    ) -> None:
+        """Deep-copy minigames for a scenario."""
+        source_minigames = await self.minigame_repo.list_by_scenario(source_scenario_id)
+        for minigame in source_minigames:
+            copy = _build_minigame_copy(minigame, new_scenario_id)
+            await self.minigame_repo.create(copy)
 
     def _ensure_creator_access(
         self,
@@ -575,4 +674,87 @@ def _build_invariant_copy(
         invariant_expression=invariant.invariant_expression,
         applies_to=invariant.applies_to,
         narrator_text=invariant.narrator_text,
+    )
+
+
+def _build_entity_type_copy(
+    entity_type: ScenarioEntityType, new_scenario_id: uuid.UUID
+) -> ScenarioEntityType:
+    """Build a copied ScenarioEntityType row under new_scenario_id."""
+    return ScenarioEntityType(
+        scenario_entity_type_id=uuid.uuid4(),
+        scenario_id=new_scenario_id,
+        type_key=entity_type.type_key,
+        display_label=entity_type.display_label,
+        attributes_schema=dict(entity_type.attributes_schema),
+    )
+
+
+def _build_map_copy(
+    scenario_map: ScenarioMap, new_scenario_id: uuid.UUID
+) -> ScenarioMap:
+    """Build a copied ScenarioMap row under new_scenario_id."""
+    return ScenarioMap(
+        map_id=uuid.uuid4(),
+        scenario_id=new_scenario_id,
+        name=scenario_map.name,
+        image_url=scenario_map.image_url,
+        display_order=scenario_map.display_order,
+    )
+
+
+def _build_pin_copy(
+    pin: MapPin,
+    new_scenario_id: uuid.UUID,
+    new_map_id: uuid.UUID,
+    new_entity_id: uuid.UUID,
+) -> MapPin:
+    """Build a copied MapPin row with remapped map and entity FKs."""
+    return MapPin(
+        pin_id=uuid.uuid4(),
+        scenario_id=new_scenario_id,
+        map_id=new_map_id,
+        entity_id=new_entity_id,
+        x=pin.x,
+        y=pin.y,
+        is_start_location=pin.is_start_location,
+    )
+
+
+def _build_connection_copy(
+    conn: MapConnection,
+    new_scenario_id: uuid.UUID,
+    new_a: uuid.UUID,
+    new_b: uuid.UUID,
+) -> MapConnection:
+    """Build a copied MapConnection row with sorted remapped entity FKs."""
+    sorted_a, sorted_b = min(new_a, new_b), max(new_a, new_b)
+    return MapConnection(
+        connection_id=uuid.uuid4(),
+        scenario_id=new_scenario_id,
+        entity_id_a=sorted_a,
+        entity_id_b=sorted_b,
+        label=conn.label,
+    )
+
+
+def _build_minigame_copy(
+    minigame: ScenarioMinigame, new_scenario_id: uuid.UUID
+) -> ScenarioMinigame:
+    """Build a copied ScenarioMinigame row under new_scenario_id."""
+    return ScenarioMinigame(
+        minigame_id=uuid.uuid4(),
+        scenario_id=new_scenario_id,
+        label=minigame.label,
+        minigame_type=minigame.minigame_type,
+        trigger_condition_expression=minigame.trigger_condition_expression,
+        priority=minigame.priority,
+        outcome_mode=minigame.outcome_mode,
+        win_mutation=minigame.win_mutation,
+        lose_mutation=minigame.lose_mutation,
+        tiered_outcomes=list(minigame.tiered_outcomes),
+        timeout_mutation=minigame.timeout_mutation,
+        narrator_instruction_template=minigame.narrator_instruction_template,
+        dodge_config=minigame.dodge_config,
+        replit_embed_url=minigame.replit_embed_url,
     )

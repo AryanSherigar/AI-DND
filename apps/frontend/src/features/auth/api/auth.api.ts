@@ -14,3 +14,7 @@ export const refreshAccessToken = async (): Promise<TokenResponse> => {
   const response = await apiClient.post<TokenResponse>("/v1/auth/refresh");
   return response.data;
 };
+
+export const logoutUser = async (): Promise<void> => {
+  await apiClient.post("/v1/auth/logout");
+};

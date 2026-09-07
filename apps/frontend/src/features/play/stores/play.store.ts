@@ -4,6 +4,7 @@ import {
   ChapterDelta,
   EBookTheme,
   PlaythroughData,
+  PlaythroughEndedPayload,
   TurnLogItem,
 } from "../types/play.types";
 import { TurnSummaryEventPayload } from "../types/turnSummary.types";
@@ -57,6 +58,10 @@ interface PlayStoreState {
   // in-flight turn commits — mirrors pending_chapter_delta exactly — so the
   // overlay only ever appears once the triggering turn is fully committed.
   pending_minigame_trigger: MinigameEventPayload | null;
+  // Master mode: set when a `playthrough_ended` SSE event arrives, held
+  // until the in-flight turn commits — mirrors pending_chapter_delta exactly
+  // — so the ending only ever renders once the triggering turn is committed.
+  pending_playthrough_ended: PlaythroughEndedPayload | null;
   // The minigame currently taking over the play surface full-screen, or one
   // resumed on reload from PlaythroughData.pending_minigame. Null renders
   // nothing (MinigameOverlay is an unconditional, guarded no-op mount).
@@ -116,6 +121,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   cancel_stream_fn: null,
   pending_chapter_delta: null,
   pending_minigame_trigger: null,
+  pending_playthrough_ended: null,
   active_minigame: null,
   reader_font_override:
     typeof window !== "undefined"
@@ -190,6 +196,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   continueTurn: () => {
     const { playthrough, is_narrating, submitTurn } = get();
     if (!playthrough || is_narrating || playthrough.is_spectator) return;
+    if (playthrough.ended_outcome_tag) return;
     submitTurn("Continue the story.");
   },
 
@@ -197,6 +204,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     const { playthrough } = get();
     if (!playthrough || !actionText.trim() || playthrough.is_spectator) return;
     if (!playthrough.participant_id) return;
+    if (playthrough.ended_outcome_tag) return;
 
     get()._startTurnStream(
       {
@@ -239,6 +247,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       cancel_stream_fn: null,
       pending_chapter_delta: null,
       pending_minigame_trigger: null,
+      pending_playthrough_ended: null,
     });
   },
 
@@ -316,6 +325,11 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
           // reachedTerminalEvent, since "done" still follows normally.
           const payload = JSON.parse(data) as MinigameEventPayload;
           set({ pending_minigame_trigger: payload });
+        } else if (eventName === "playthrough_ended") {
+          // Buffered like pending_chapter_delta — does NOT set
+          // reachedTerminalEvent, since "done" still follows normally.
+          const payload = JSON.parse(data) as PlaythroughEndedPayload;
+          set({ pending_playthrough_ended: payload });
         } else if (eventName === "done") {
           reachedTerminalEvent = true;
           get()._commitStreamedTurn(actionTextForLog);
@@ -361,6 +375,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       active_mode,
       pending_chapter_delta,
       pending_minigame_trigger,
+      pending_playthrough_ended,
     } = get();
     if (!playthrough) return;
 
@@ -378,12 +393,26 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       playthrough: {
         ...playthrough,
         turns: [...playthrough.turns, newTurn],
+        // Promote the buffered ending onto the committed playthrough — mirrors
+        // pending_chapter_delta being attached to newTurn above. Falls back to
+        // whatever was already there (null for an in-progress playthrough) when
+        // nothing ended this turn.
+        ended_outcome_tag:
+          pending_playthrough_ended?.outcome_tag ??
+          playthrough.ended_outcome_tag,
+        ended_outcome_title:
+          pending_playthrough_ended?.outcome_title ??
+          playthrough.ended_outcome_title,
+        ended_outcome_text:
+          pending_playthrough_ended?.outcome_text ??
+          playthrough.ended_outcome_text,
       },
       is_narrating: false,
       streaming_text: "",
       cancel_stream_fn: null,
       pending_chapter_delta: null,
       pending_minigame_trigger: null,
+      pending_playthrough_ended: null,
       // Promote the buffered trigger into the overlay-driving field now that
       // the triggering turn is fully committed — mirrors pending_chapter_delta
       // being attached to newTurn above. When nothing triggered this turn,
@@ -397,6 +426,9 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     void queryClient.invalidateQueries({
       queryKey: ["playthrough-turns", playthrough.playthrough_id],
     });
+    void queryClient.invalidateQueries({
+      queryKey: ["playthrough", playthrough.playthrough_id],
+    });
   },
 
   _degradeCurrentTurn: (message: string) => {
@@ -406,6 +438,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       cancel_stream_fn: null,
       pending_chapter_delta: null,
       pending_minigame_trigger: null,
+      pending_playthrough_ended: null,
       degraded_message: message,
     });
   },

@@ -34,6 +34,12 @@ const normalizeTarget = (raw: string): ActionTarget => {
 };
 
 export const parseMessageSegments = (content: string): MessageSegment[] => {
+  // NOTE: ACTION_BLOCK_REGEX is module-scoped with the /g flag, so exec()
+  // carries lastIndex across calls. The loop below always runs to
+  // exhaustion, which resets lastIndex to 0 on its own — this reset guards
+  // against a future refactor (an early return/break in the loop) silently
+  // reintroducing cross-call statefulness.
+  ACTION_BLOCK_REGEX.lastIndex = 0;
   const segments: MessageSegment[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;

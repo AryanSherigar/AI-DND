@@ -23,6 +23,7 @@ from context_memory.core.llm_client import LLMClient
 from context_memory.core.tracing import configure_tracing
 from context_memory.engine import MemoryEngine
 from context_memory.ingestion.embedding import SentenceTransformerEmbedder
+from context_memory.ingestion.entity_hydration import HydraEntityHydrator
 from context_memory.ingestion.entity_name_index import EntityNameIndex
 from context_memory.ingestion.entity_registry import EntityRegistry
 from context_memory.ingestion.extraction import ExtractionService
@@ -127,11 +128,18 @@ def build_ingestion_and_retrieval(
     # this process's lifetime is safe -- different contexts never see each
     # other's candidates. See docs/fixes_and_evaluation_findings.md §4.
     entity_name_index = EntityNameIndex()
+    entity_hydrator = (
+        HydraEntityHydrator(hydra_transport)
+        if config.entity_hydration_enabled
+        else None
+    )
     entity_registry = EntityRegistry(
         allocator=chunk_store,
         name_index=entity_name_index,
         model=entity_resolution_model,
         batch_enabled=config.entity_resolution_batch_enabled,
+        hydrator=entity_hydrator,
+        max_hydrated_contexts=config.entity_hydration_max_contexts,
     )
     plan_builder = GraphPlanBuilder(allocator=chunk_store)
     graph_writer = GraphWriter(manifest_store=manifest_store, transport=hydra_transport)
@@ -230,19 +238,7 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
         timeout_seconds=config.hydradb_request_timeout_seconds,
     )
     embedder = SentenceTransformerEmbedder(model_name=config.embedding_model_name)
-    # StepJournal keeps its own dedicated, non-pooled connection -- it
-    # already serializes access with its own internal lock (a different
-    # concurrency shape than the pool's per-call acquisition), so folding it
-    # into the shared pool would add nothing and would complicate its
-    # single-connection design for no benefit.
-    journal_connection = (
-        psycopg.connect(config.database_url, autocommit=True)
-        if config.step_journal_enabled
-        else None
-    )
-    journal = (
-        StepJournal(journal_connection) if journal_connection is not None else None
-    )
+    journal = StepJournal(pool) if config.step_journal_enabled else None
 
     orchestrator, retrieval_engine, _extractor = build_ingestion_and_retrieval(
         pool=pool,

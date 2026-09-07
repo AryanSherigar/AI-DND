@@ -69,6 +69,9 @@ export interface EBookBottomBarProps {
   canAct?: boolean;
   // Display name of whoever acts next, shown when canAct is false.
   waitingOnLabel?: string | null;
+  // Master mode only — true once an end condition has matched. Blocks
+  // further action submission the same way isSpectator does.
+  isEnded?: boolean;
 }
 
 export interface EBookActionDrawerProps {

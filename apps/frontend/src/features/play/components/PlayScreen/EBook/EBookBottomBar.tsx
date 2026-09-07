@@ -13,6 +13,7 @@ export function EBookBottomBar({
   onOpenCharacterSheet,
   canAct = true,
   waitingOnLabel,
+  isEnded = false,
 }: EBookBottomBarProps) {
   const theme = usePlayStore((s) => s.ebook_theme);
   const isSepia = theme === "antique-sepia";
@@ -32,6 +33,18 @@ export function EBookBottomBar({
           className={`p-3 rounded-full border text-center font-mono text-xs backdrop-blur-md ${barStyle}`}
         >
           You are currently spectating this chronicle (Read-Only)
+        </div>
+      </footer>
+    );
+  }
+
+  if (isEnded) {
+    return (
+      <footer className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 px-4 w-full max-w-lg opacity-60 hover:opacity-100 transition-opacity duration-300">
+        <div
+          className={`p-3 rounded-full border text-center font-mono text-xs backdrop-blur-md ${barStyle}`}
+        >
+          This chronicle has ended
         </div>
       </footer>
     );

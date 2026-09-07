@@ -14,6 +14,7 @@ Usage:
     PYTHONPATH=src .venv/bin/python3 scripts/eval_retrieval_oracle.py \
         --instances <run30b.json> [--limit N] [--k 10]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,11 +22,11 @@ import json
 import os
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 sys.path.insert(0, "src")
 
-import psycopg
+from psycopg_pool import ConnectionPool
 
 from context_memory.client.hydradb_http import HydraHttpTransport
 from context_memory.core.config import Config
@@ -69,11 +70,17 @@ def main() -> int:
     ap.add_argument("--instances", required=True)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--k", type=int, default=10)
-    ap.add_argument("--database-url", default=os.getenv(
-        "CONTEXT_MEMORY_DATABASE_URL",
-        "postgresql://context_memory@127.0.0.1:54329/context_memory"))
-    ap.add_argument("--hydradb-url", default=os.getenv(
-        "CONTEXT_MEMORY_HYDRADB_URL", "http://127.0.0.1:8080"))
+    ap.add_argument(
+        "--database-url",
+        default=os.getenv(
+            "CONTEXT_MEMORY_DATABASE_URL",
+            "postgresql://context_memory@127.0.0.1:54329/context_memory",
+        ),
+    )
+    ap.add_argument(
+        "--hydradb-url",
+        default=os.getenv("CONTEXT_MEMORY_HYDRADB_URL", "http://127.0.0.1:8080"),
+    )
     args = ap.parse_args()
 
     instances = json.load(open(args.instances))
@@ -81,9 +88,9 @@ def main() -> int:
         instances = instances[: args.limit]
 
     config = Config()
-    # autocommit=True, matching composition.py's own connection -- StepJournal.record's
-    # `with self._connection.transaction():` becomes a SAVEPOINT (not a real commit)
-    # on a connection already sitting in an open implicit transaction from an earlier,
+    # autocommit=True, matching composition.py's own pool -- StepJournal.record's
+    # `with conn.transaction():` becomes a SAVEPOINT (not a real commit) on a
+    # connection already sitting in an open implicit transaction from an earlier,
     # untransacted query on the same connection (seeder/graph_expander's plain SELECTs
     # do exactly this), and that outer transaction only reaches disk if something later
     # explicitly commits it. Nothing here ever did -- confirmed live: journal.record()
@@ -91,16 +98,29 @@ def main() -> int:
     # 1-2 of a fresh 30-instance run's ~90 expected rows survived to a later, separate
     # connection's read. Non-autocommit here was always latent (every other query this
     # script issues is a read), until wiring in the journal made it a real bug.
-    conn = psycopg.connect(args.database_url, autocommit=True)
+    pool = ConnectionPool(
+        args.database_url,
+        min_size=1,
+        max_size=4,
+        kwargs={"autocommit": True},
+        open=True,
+    )
+    pool.wait()
     transport = HydraHttpTransport(
         base_url=args.hydradb_url,
         bearer_token=os.getenv("CONTEXT_MEMORY_HYDRADB_TOKEN"),
         timeout_seconds=config.hydradb_request_timeout_seconds,
     )
     embedder = SentenceTransformerEmbedder(model_name=config.embedding_model_name)
-    journal = StepJournal(conn) if config.step_journal_enabled else None
+    journal = StepJournal(pool) if config.step_journal_enabled else None
     _, engine, _ = create_pipeline(
-        conn, transport, config.get_extractor_client(), embedder, config=config, journal=journal)
+        pool,
+        transport,
+        config.get_extractor_client(),
+        embedder,
+        config=config,
+        journal=journal,
+    )
 
     print(f"harness_config: {json.dumps(config.harness_snapshot())}")
 
@@ -114,8 +134,11 @@ def main() -> int:
         context_id = f"longmemeval:{qid}"
         gold = {str(s) for s in inst.get("answer_session_ids", [])}
         raw_date = inst.get("question_date")
-        qdate = (parse_longmemeval_timestamp(raw_date, "question_date")
-                 if raw_date else datetime.now(timezone.utc))
+        qdate = (
+            parse_longmemeval_timestamp(raw_date, "question_date")
+            if raw_date
+            else datetime.now(UTC)
+        )
 
         drain_metrics()
         try:
@@ -129,9 +152,12 @@ def main() -> int:
             if rec.get("reader_fact_ids"):
                 fact_ids = list(rec["reader_fact_ids"])
         if not fact_ids:
-            print(f"[{i}/{len(instances)}] {qid[:34]} no reader_fact_ids", file=sys.stderr)
+            print(
+                f"[{i}/{len(instances)}] {qid[:34]} no reader_fact_ids", file=sys.stderr
+            )
 
-        fact_to_session = load_fact_sessions(conn, context_id)
+        with pool.connection() as conn:
+            fact_to_session = load_fact_sessions(conn, context_id)
         # dedupe to session order-of-first-appearance; ranking is over sessions
         seen: set[str] = set()
         ranked: list[str] = []
@@ -146,10 +172,19 @@ def main() -> int:
         for key, val in m.items():
             totals[key] += val
         by_type[qtype].append(m["hit_at_k"])
-        rows.append({"question_id": qid, "question_type": qtype,
-                     "gold": sorted(gold), "ranked": ranked[: args.k], **m})
-        print(f"[{i}/{len(instances)}] {qid[:34]:34s} hit={m['hit_at_k']:.0f} "
-              f"recall={m['recall_at_k']:.2f} mrr={m['mrr']:.2f}")
+        rows.append(
+            {
+                "question_id": qid,
+                "question_type": qtype,
+                "gold": sorted(gold),
+                "ranked": ranked[: args.k],
+                **m,
+            }
+        )
+        print(
+            f"[{i}/{len(instances)}] {qid[:34]:34s} hit={m['hit_at_k']:.0f} "
+            f"recall={m['recall_at_k']:.2f} mrr={m['mrr']:.2f}"
+        )
 
     n = len(rows)
     if not n:
@@ -162,9 +197,11 @@ def main() -> int:
     print(f"  {'k':>3} {'hit@k':>8} {'recall@k':>9} {'prec@k':>8}")
     for k in (1, 3, 5, args.k):
         agg = [score(r["ranked"], set(r["gold"]), k) for r in rows]
-        print(f"  {k:>3} {sum(a['hit_at_k'] for a in agg) / n:>8.3f} "
-              f"{sum(a['recall_at_k'] for a in agg) / n:>9.3f} "
-              f"{sum(a['precision_at_k'] for a in agg) / n:>8.3f}")
+        print(
+            f"  {k:>3} {sum(a['hit_at_k'] for a in agg) / n:>8.3f} "
+            f"{sum(a['recall_at_k'] for a in agg) / n:>9.3f} "
+            f"{sum(a['precision_at_k'] for a in agg) / n:>8.3f}"
+        )
     print(f"\n  MRR {totals['mrr'] / n:.4f}")
     print(f"\n  by question_type (hit@{args.k}):")
     for qtype in sorted(by_type):
@@ -173,11 +210,20 @@ def main() -> int:
 
     out = os.path.splitext(args.instances)[0] + f".oracle-k{args.k}.json"
     with open(out, "w") as fh:
-        json.dump({"k": args.k, "n": n,
-                   "harness_config": config.harness_snapshot(),
-                   "summary": {k: totals[k] / n for k in
-                               ("hit_at_k", "recall_at_k", "precision_at_k", "mrr")},
-                   "rows": rows}, fh, indent=2)
+        json.dump(
+            {
+                "k": args.k,
+                "n": n,
+                "harness_config": config.harness_snapshot(),
+                "summary": {
+                    k: totals[k] / n
+                    for k in ("hit_at_k", "recall_at_k", "precision_at_k", "mrr")
+                },
+                "rows": rows,
+            },
+            fh,
+            indent=2,
+        )
     print(f"\nwrote {out}")
     return 0
 

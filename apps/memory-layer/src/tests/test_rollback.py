@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import unittest
 from contextlib import nullcontext
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from context_memory.core.graph import GraphWritePlan
-from context_memory.ingestion.rollback import RollbackService, SavePoint, SavePointStore, walk_restore_targets
+from context_memory.ingestion.rollback import (
+    RollbackService,
+    SavePoint,
+    SavePointStore,
+    walk_restore_targets,
+)
 
 
 class WalkRestoreTargetsTests(unittest.TestCase):
@@ -32,12 +37,14 @@ class WalkRestoreTargetsTests(unittest.TestCase):
         superseded_by = {"x": "p", "y": "q"}
         self.assertEqual(walk_restore_targets(["x", "y"], superseded_by), {"p", "q"})
 
-    def test_archived_fact_with_no_supersession_restores_nothing_for_itself(self) -> None:
+    def test_archived_fact_with_no_supersession_restores_nothing_for_itself(
+        self,
+    ) -> None:
         self.assertEqual(walk_restore_targets(["a", "b"], {"b": "z"}), {"z"})
 
 
 class FakeCursor:
-    def __init__(self, connection: "FakeConnection") -> None:
+    def __init__(self, connection: FakeConnection) -> None:
         self._conn = connection
         self._result: list[tuple] | None = None
 
@@ -47,20 +54,41 @@ class FakeCursor:
         if "FROM extracted_memory_candidates c JOIN extraction_attempts" in q:
             context_id, cutoff = params
             self._result = [
-                (cid,) for cid, ctx, observed_at in self._conn.candidates
+                (cid,)
+                for cid, ctx, observed_at in self._conn.candidates
                 if ctx == context_id and observed_at > cutoff
             ]
-        elif "FROM graph_write_manifests" in q:
+        elif "FROM graph_write_manifests" in q and "record_kind = 'node'" in q:
+            context_id, cutoff = params
+            self._result = [
+                (lk,)
+                for lk, ctx, created_at in self._conn.node_manifests
+                if ctx == context_id
+                and created_at > cutoff
+                and lk.startswith("fact:direct:")
+            ]
+        elif "FROM graph_write_manifests" in q and "record_kind = 'relationship'" in q:
             self._result = [(lk,) for lk in self._conn.supersedes_logical_keys]
         elif "SELECT candidate_id, valid_to FROM extracted_memory_candidates" in q:
             (ids,) = params
             self._result = [
-                (cid, valid_to) for cid, valid_to in self._conn.valid_to_by_id.items() if cid in ids
+                (cid, valid_to)
+                for cid, valid_to in self._conn.valid_to_by_id.items()
+                if cid in ids
             ]
-        elif "FROM graph_id_registry" in q:
+        elif "SELECT logical_key, graph_id FROM graph_id_registry" in q:
             context_id, logical_keys = params
             self._result = [
-                (lk, gid) for lk, gid in self._conn.graph_ids.items() if lk in logical_keys
+                (lk, gid)
+                for lk, gid in self._conn.graph_ids.items()
+                if lk in logical_keys
+            ]
+        elif "SELECT graph_id, logical_key FROM graph_id_registry" in q:
+            context_id, graph_ids = params
+            self._result = [
+                (gid, lk)
+                for lk, gid in self._conn.graph_ids.items()
+                if gid in graph_ids
             ]
         elif query.startswith("INSERT INTO save_points"):
             self._conn.save_points[params[0]] = params
@@ -69,7 +97,11 @@ class FakeCursor:
                 row = self._conn.save_points.get(params[0])
                 self._result = [row] if row else []
             else:
-                self._result = [row for row in self._conn.save_points.values() if row[1] == params[0]]
+                self._result = [
+                    row
+                    for row in self._conn.save_points.values()
+                    if row[1] == params[0]
+                ]
         else:
             self._result = []
 
@@ -79,7 +111,7 @@ class FakeCursor:
     def fetchall(self):
         return self._result or []
 
-    def __enter__(self) -> "FakeCursor":
+    def __enter__(self) -> FakeCursor:
         return self
 
     def __exit__(self, *exc) -> None:
@@ -89,7 +121,12 @@ class FakeCursor:
 class FakeConnection:
     def __init__(self) -> None:
         self.executed: list[tuple[str, tuple]] = []
-        self.candidates: list[tuple[str, str, datetime]] = []  # (candidate_id, context_id, observed_at)
+        self.candidates: list[
+            tuple[str, str, datetime]
+        ] = []  # (candidate_id, context_id, observed_at)
+        self.node_manifests: list[
+            tuple[str, str, datetime]
+        ] = []  # (logical_key, context_id, created_at)
         self.supersedes_logical_keys: list[str] = []
         self.valid_to_by_id: dict[str, datetime | None] = {}
         self.graph_ids: dict[str, int] = {}
@@ -108,7 +145,7 @@ class FakePool:
     every time, so existing tests can keep asserting against one shared
     `FakeConnection`'s recorded state."""
 
-    def __init__(self, connection: "FakeConnection") -> None:
+    def __init__(self, connection: FakeConnection) -> None:
         self._connection = connection
 
     def connection(self):
@@ -136,15 +173,14 @@ class SavePointStoreTests(unittest.TestCase):
         self.assertIsNone(SavePointStore(FakePool(FakeConnection())).get("nope"))
 
 
-UTC = timezone.utc
-
-
 class RollbackServiceTests(unittest.TestCase):
     def test_no_writes_after_save_point_is_a_no_op(self) -> None:
         connection = FakeConnection()
         writer = FakeGraphWriter()
         service = RollbackService(FakePool(connection), writer)
-        save_point = SavePoint("save-1", "ctx-1", None, None, datetime.now(UTC), datetime.now(UTC))
+        save_point = SavePoint(
+            "save-1", "ctx-1", None, None, datetime.now(UTC), datetime.now(UTC)
+        )
 
         result = service.rollback_to(save_point)
 
@@ -155,7 +191,9 @@ class RollbackServiceTests(unittest.TestCase):
     def test_archives_fact_created_after_cutoff(self) -> None:
         connection = FakeConnection()
         cutoff = datetime(2026, 1, 1, tzinfo=UTC)
-        connection.candidates = [("cand-new", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))]
+        connection.candidates = [
+            ("cand-new", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))
+        ]
         connection.graph_ids = {"fact:cand-new": 101}
         writer = FakeGraphWriter()
         service = RollbackService(FakePool(connection), writer)
@@ -173,7 +211,9 @@ class RollbackServiceTests(unittest.TestCase):
         connection = FakeConnection()
         cutoff = datetime(2026, 1, 1, tzinfo=UTC)
         original_valid_to = datetime(2027, 6, 1, tzinfo=UTC)
-        connection.candidates = [("cand-new", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))]
+        connection.candidates = [
+            ("cand-new", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))
+        ]
         connection.supersedes_logical_keys = ["supersedes:cand-new:cand-old"]
         connection.valid_to_by_id = {"cand-old": original_valid_to}
         connection.graph_ids = {"fact:cand-new": 101, "fact:cand-old": 100}
@@ -189,12 +229,16 @@ class RollbackServiceTests(unittest.TestCase):
         restored_node = by_graph_id[100]
         self.assertEqual(restored_node.properties["is_current"], True)
         self.assertEqual(restored_node.properties["superseded_at"], 9999999999)
-        self.assertEqual(restored_node.properties["valid_to"], int(original_valid_to.timestamp()))
+        self.assertEqual(
+            restored_node.properties["valid_to"], int(original_valid_to.timestamp())
+        )
 
     def test_deactivates_and_reactivates_postgres_side_state(self) -> None:
         connection = FakeConnection()
         cutoff = datetime(2026, 1, 1, tzinfo=UTC)
-        connection.candidates = [("cand-new", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))]
+        connection.candidates = [
+            ("cand-new", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))
+        ]
         connection.supersedes_logical_keys = ["supersedes:cand-new:cand-old"]
         connection.valid_to_by_id = {"cand-old": None}
         connection.graph_ids = {"fact:cand-new": 101, "fact:cand-old": 100}
@@ -206,10 +250,137 @@ class RollbackServiceTests(unittest.TestCase):
 
         queries = [q for q, _ in connection.executed]
         self.assertTrue(any("DELETE FROM conversation_buffer" in q for q in queries))
-        self.assertTrue(any("UPDATE memory_embeddings SET is_active = false" in q for q in queries))
-        self.assertTrue(any("UPDATE memory_embeddings SET is_active = true" in q for q in queries))
-        self.assertTrue(any("UPDATE fact_search_index SET is_active = false" in q for q in queries))
-        self.assertTrue(any("UPDATE fact_search_index SET is_active = true" in q for q in queries))
+        self.assertTrue(
+            any("UPDATE memory_embeddings SET is_active = false" in q for q in queries)
+        )
+        self.assertTrue(
+            any("UPDATE memory_embeddings SET is_active = true" in q for q in queries)
+        )
+        self.assertTrue(
+            any("UPDATE fact_search_index SET is_active = false" in q for q in queries)
+        )
+        self.assertTrue(
+            any("UPDATE fact_search_index SET is_active = true" in q for q in queries)
+        )
+
+
+class DirectAuthoredRollbackTests(unittest.TestCase):
+    """CRIT-06: direct-authored facts (Master Mode `write_fact`) never write
+    `extracted_memory_candidates`/`extraction_attempts`, so rollback must
+    recover them from `graph_write_manifests` instead. See `rollback.py`'s
+    `_find_direct_authored_archived_candidates`/`_parse_supersedes_keys`."""
+
+    def test_archives_direct_authored_fact_created_after_cutoff(self) -> None:
+        connection = FakeConnection()
+        cutoff = datetime(2026, 1, 1, tzinfo=UTC)
+        connection.node_manifests = [
+            ("fact:direct:abc123", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))
+        ]
+        connection.graph_ids = {"fact:direct:abc123": 201}
+        writer = FakeGraphWriter()
+        service = RollbackService(FakePool(connection), writer)
+        save_point = SavePoint("save-1", "ctx-1", None, None, cutoff, datetime.now(UTC))
+
+        result = service.rollback_to(save_point)
+
+        self.assertEqual(result.archived_fact_ids, ("direct:abc123",))
+        node = writer.plans[0].nodes[0]
+        self.assertEqual(node.graph_id, 201)
+        self.assertEqual(node.properties["archived"], True)
+
+    def test_restores_direct_authored_fact_superseded_after_cutoff(self) -> None:
+        connection = FakeConnection()
+        cutoff = datetime(2026, 1, 1, tzinfo=UTC)
+        connection.node_manifests = [
+            ("fact:direct:new", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))
+        ]
+        connection.supersedes_logical_keys = ["supersedes:fact:direct:new:100"]
+        connection.graph_ids = {"fact:direct:new": 201, "fact:direct:old": 100}
+        writer = FakeGraphWriter()
+        service = RollbackService(FakePool(connection), writer)
+        save_point = SavePoint("save-1", "ctx-1", None, None, cutoff, datetime.now(UTC))
+
+        result = service.rollback_to(save_point)
+
+        self.assertEqual(result.archived_fact_ids, ("direct:new",))
+        self.assertEqual(result.restored_fact_ids, ("direct:old",))
+        by_graph_id = {n.graph_id: n for n in writer.plans[0].nodes}
+        restored_node = by_graph_id[100]
+        self.assertEqual(restored_node.properties["is_current"], True)
+        # DirectFactInput has no valid_to field -- a restored direct-authored
+        # fact's original valid_to is unconditionally open-ended.
+        self.assertEqual(restored_node.properties["valid_to"], 9999999999)
+
+    def test_mixed_extraction_and_direct_authored_rollback_independently(self) -> None:
+        connection = FakeConnection()
+        cutoff = datetime(2026, 1, 1, tzinfo=UTC)
+        connection.candidates = [
+            ("cand-new", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))
+        ]
+        connection.node_manifests = [
+            ("fact:direct:new2", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))
+        ]
+        connection.supersedes_logical_keys = [
+            "supersedes:cand-new:cand-old",
+            "supersedes:fact:direct:new2:200",
+        ]
+        connection.valid_to_by_id = {"cand-old": None}
+        connection.graph_ids = {
+            "fact:cand-new": 101,
+            "fact:cand-old": 100,
+            "fact:direct:new2": 201,
+            "fact:direct:old2": 200,
+        }
+        writer = FakeGraphWriter()
+        service = RollbackService(FakePool(connection), writer)
+        save_point = SavePoint("save-1", "ctx-1", None, None, cutoff, datetime.now(UTC))
+
+        result = service.rollback_to(save_point)
+
+        self.assertEqual(set(result.archived_fact_ids), {"cand-new", "direct:new2"})
+        self.assertEqual(set(result.restored_fact_ids), {"cand-old", "direct:old2"})
+
+        update_calls = {
+            q: params for q, params in connection.executed if q.startswith("UPDATE")
+        }
+        deactivate_embeddings = next(
+            p
+            for q, p in update_calls.items()
+            if "is_active = false" in q and "memory_embeddings" in q
+        )
+        activate_embeddings = next(
+            p
+            for q, p in update_calls.items()
+            if "is_active = true" in q and "memory_embeddings" in q
+        )
+        # extraction ids pass through as candidate_id strings; direct-authored
+        # ids are translated to str(fact_graph_id) -- the id-space
+        # memory_embeddings/fact_search_index actually key direct-authored
+        # rows by (fact_projection.py's documented convention).
+        self.assertEqual(set(deactivate_embeddings[1]), {"cand-new", "201"})
+        self.assertEqual(set(activate_embeddings[1]), {"cand-old", "200"})
+
+    def test_direct_authored_query_never_matches_extraction_fact_nodes(self) -> None:
+        connection = FakeConnection()
+        cutoff = datetime(2026, 1, 1, tzinfo=UTC)
+        connection.candidates = [
+            ("cand-new", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))
+        ]
+        # extraction's own Fact-node manifest row (GraphWriter registers
+        # every plan's nodes into graph_write_manifests regardless of which
+        # pipeline wrote them) -- must NOT be picked up by the direct-authored
+        # archived-candidates query, or cand-new would be archived twice.
+        connection.node_manifests = [
+            ("fact:cand-new", "ctx-1", datetime(2026, 1, 2, tzinfo=UTC))
+        ]
+        connection.graph_ids = {"fact:cand-new": 101}
+        writer = FakeGraphWriter()
+        service = RollbackService(FakePool(connection), writer)
+        save_point = SavePoint("save-1", "ctx-1", None, None, cutoff, datetime.now(UTC))
+
+        result = service.rollback_to(save_point)
+
+        self.assertEqual(result.archived_fact_ids, ("cand-new",))
 
 
 if __name__ == "__main__":

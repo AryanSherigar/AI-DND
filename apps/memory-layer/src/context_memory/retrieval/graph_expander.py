@@ -23,6 +23,15 @@ class GraphExpander:
         self._pool = pool
         self._hydra = hydra_client
         self._config = config or Config()
+        # Engine-lifetime, not per-call: a fresh ThreadPoolExecutor per `expand()`
+        # call tears its worker threads down when the `with` block exits, which
+        # also discards HydraHttpTransport's per-thread keep-alive connection
+        # cache (`_connections`, thread-local) -- every request then pays a fresh
+        # TCP handshake on every one of its ~60-80 node reads instead of just the
+        # first. A single long-lived pool reuses the same worker threads (and so
+        # the same cached connections) across every `expand()` call this engine
+        # instance ever serves.
+        self._fetch_executor = ThreadPoolExecutor(max_workers=self._config.retrieval_graph_fetch_workers)
 
     def expand(
         self, context_id: str, seed_facts: dict[str, ScoredFact], temporal_bounds: DateRange, query_epoch: datetime
@@ -173,20 +182,19 @@ class GraphExpander:
             # retrieval; see valid_fact_keys union below.
             failed_fetch_fact_keys: set[str] = set()
 
-            with ThreadPoolExecutor(max_workers=self._config.retrieval_graph_fetch_workers) as pool:
-                futures = [
-                    pool.submit(_fetch_node, fact_key, graph_id)
-                    for fact_key, graph_id in graph_id_by_fact_key.items()
-                ]
-                for future in as_completed(futures):
-                    fact_key, rows = future.result()
-                    if rows is None:
-                        failed_fetch_fact_keys.add(fact_key)
-                        continue
-                    for row in rows:
-                        raw_nodes.append({**row, "fact_key": fact_key})
-                        if row.get("entity_key"):
-                            entity_key_by_fact[fact_key] = row["entity_key"]
+            futures = [
+                self._fetch_executor.submit(_fetch_node, fact_key, graph_id)
+                for fact_key, graph_id in graph_id_by_fact_key.items()
+            ]
+            for future in as_completed(futures):
+                fact_key, rows = future.result()
+                if rows is None:
+                    failed_fetch_fact_keys.add(fact_key)
+                    continue
+                for row in rows:
+                    raw_nodes.append({**row, "fact_key": fact_key})
+                    if row.get("entity_key"):
+                        entity_key_by_fact[fact_key] = row["entity_key"]
 
             # Apply Bitemporal filtering in Python
             valid_fact_keys = set()
@@ -373,6 +381,23 @@ class GraphExpander:
                     for row in path_res:
                         path = row.get("path", [])
                         if len(path) >= 3:
+                            # NOTE: path alternates Entity (even index) / Fact (odd
+                            # index) -- odd positions are the Fact hops this path
+                            # traverses. A compensated/rolled-back Fact is archived,
+                            # not deleted (orchestrator._compensate_plan /
+                            # rollback.py), so it can still sit on an ABOUT edge here --
+                            # ghost connectivity that would otherwise inflate
+                            # path_count/hop_count for OTHER, still-valid facts about
+                            # the same two entities. Skip any path that hops through
+                            # one, same exclusion already applied to seed facts above
+                            # (`if row.get("archived"): continue`).
+                            interior_archived = any(
+                                isinstance(path[idx], dict) and path[idx].get("archived")
+                                for idx in range(1, len(path), 2)
+                            )
+                            if interior_archived:
+                                continue
+
                             hops = len(path) // 2
                             start_node = path[0]
                             end_node = path[-1]

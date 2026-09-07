@@ -13,13 +13,17 @@ class MigrationError(RuntimeError):
 
 
 class Cursor(Protocol):
-    def execute(self, query: str, params: tuple[object, ...] | None = None) -> object: ...
+    def execute(
+        self, query: str, params: tuple[object, ...] | None = None
+    ) -> object: ...
 
     def fetchone(self) -> tuple[str] | None: ...
 
     def __enter__(self) -> Cursor: ...
 
-    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None: ...
+    def __exit__(
+        self, exc_type: object, exc_value: object, traceback: object
+    ) -> None: ...
 
 
 class Connection(Protocol):
@@ -47,6 +51,8 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 )
 """
 
+MIGRATION_ADVISORY_LOCK_KEY = 718293849102938
+
 
 def discover_migrations(directory: Path) -> tuple[Migration, ...]:
     paths = sorted(directory.glob("[0-9][0-9][0-9][0-9]_*.sql"))
@@ -66,23 +72,27 @@ def apply_migrations(connection: Connection, directory: Path) -> tuple[str, ...]
     """Apply new SQL files in order; applied files must retain their checksum."""
     migrations = discover_migrations(directory)
     applied: list[str] = []
-    with connection.transaction():
-        with connection.cursor() as cursor:
-            cursor.execute(MIGRATION_TABLE_SQL)
-            for migration in migrations:
-                cursor.execute(
-                    "SELECT checksum FROM schema_migrations WHERE version = %s",
-                    (migration.version,),
-                )
-                existing = cursor.fetchone()
-                if existing is not None:
-                    if existing[0] != migration.checksum:
-                        raise MigrationError(f"checksum changed for applied migration {migration.version}")
-                    continue
-                cursor.execute(migration.sql)
-                cursor.execute(
-                    "INSERT INTO schema_migrations (version, checksum) VALUES (%s, %s)",
-                    (migration.version, migration.checksum),
-                )
-                applied.append(migration.version)
+    with connection.transaction(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(%s)", (MIGRATION_ADVISORY_LOCK_KEY,)
+        )
+        cursor.execute(MIGRATION_TABLE_SQL)
+        for migration in migrations:
+            cursor.execute(
+                "SELECT checksum FROM schema_migrations WHERE version = %s",
+                (migration.version,),
+            )
+            existing = cursor.fetchone()
+            if existing is not None:
+                if existing[0] != migration.checksum:
+                    raise MigrationError(
+                        f"checksum changed for applied migration {migration.version}"
+                    )
+                continue
+            cursor.execute(migration.sql)
+            cursor.execute(
+                "INSERT INTO schema_migrations (version, checksum) VALUES (%s, %s)",
+                (migration.version, migration.checksum),
+            )
+            applied.append(migration.version)
     return tuple(applied)

@@ -62,20 +62,23 @@ export function useReplitHandshake(
     setStatus("waiting");
     setOutcome(null);
 
-    let expectedOrigin: string;
     try {
-      expectedOrigin = new URL(embedUrl).origin;
+      new URL(embedUrl);
     } catch {
       setStatus("timed_out");
       return undefined;
     }
 
     const handleMessage = (event: MessageEvent): void => {
-      // Both checks required: origin alone doesn't prove the message came
-      // from *this* embedded iframe (another same-origin frame could send
-      // one), and source alone doesn't validate the origin claim.
+      // Both checks required: source alone doesn't validate the origin
+      // claim, and origin alone doesn't prove the message came from *this*
+      // embedded iframe (another frame sharing the same opaque origin could
+      // send one). The embed iframe is sandboxed without allow-same-origin
+      // (see ReplitEmbedMinigame.tsx), so the browser forces it into an
+      // opaque origin — postMessage always reports it as the literal string
+      // "null", never the embed URL's real origin.
       if (event.source !== iframeRef.current?.contentWindow) return;
-      if (event.origin !== expectedOrigin) return;
+      if (event.origin !== "null") return;
       if (!isRawHandshakeMessage(event.data)) return;
 
       if (event.data.type === "minigame:ready") {

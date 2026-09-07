@@ -7,22 +7,50 @@ from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 from context_memory.core.enums import IngestionJobState
-from context_memory.core.models import Chunk, ContextBatch, ContextRecord, Embedding, ExtractionDraft, IngestionJob
-from context_memory.core.resolution import EntityProfile, FactState, TemporalRelation, TemporalUpdateDecision
 from context_memory.core.graph import GraphWritePlan
+from context_memory.core.models import (
+    Chunk,
+    ContextBatch,
+    ContextRecord,
+    Embedding,
+    ExtractionDraft,
+    IngestionJob,
+)
 from context_memory.core.ports import Embedder, GraphTransport
+from context_memory.core.resolution import (
+    EntityProfile,
+    FactState,
+    TemporalRelation,
+    TemporalUpdateDecision,
+)
 from context_memory.ingestion.batch_models import BatchStatus
 
 __all__ = [
-    "Extractor", "Embedder", "BatchEmbedder", "ChunkStore", "JobStore",
-    "EmbeddingStore", "BatchEmbeddingStore", "ExtractionStore",
-    "SearchIndexStore", "BatchSearchIndexStore", "GraphIdAllocator",
-    "EntityResolutionModel", "BatchEntityResolutionModel",
-    "TemporalUpdateModel", "BatchTemporalUpdateModel", "GraphManifestStore",
-    "GraphTransport", "EntityNameIndex", "TemporalUpdateClassifierPort",
-    "BatchTemporalUpdateClassifierPort", "BatchStore",
-    "VerifiableEmbeddingStore", "VerifiableSearchIndexStore", "VerifiableGraphWriter",
+    "BatchEmbedder",
+    "BatchEmbeddingStore",
+    "BatchEntityResolutionModel",
+    "BatchSearchIndexStore",
+    "BatchStore",
+    "BatchTemporalUpdateClassifierPort",
+    "BatchTemporalUpdateModel",
+    "ChunkStore",
     "CopyableEmbeddingStore",
+    "Embedder",
+    "EmbeddingStore",
+    "EntityNameIndex",
+    "EntityResolutionModel",
+    "ExtractionStore",
+    "Extractor",
+    "GraphIdAllocator",
+    "GraphManifestStore",
+    "GraphTransport",
+    "JobStore",
+    "SearchIndexStore",
+    "TemporalUpdateClassifierPort",
+    "TemporalUpdateModel",
+    "VerifiableEmbeddingStore",
+    "VerifiableGraphWriter",
+    "VerifiableSearchIndexStore",
 ]
 
 # `Protocol` can't express "this method is optional" on a single class --
@@ -74,7 +102,9 @@ class BatchStore(Protocol):
     (a different replica, or this process restarted) -- see
     `MemoryEngine.get_batch_status`/`retry_batch`."""
 
-    def create(self, batch: ContextBatch, chunk_ids: Sequence[tuple[str, int | None]]) -> None: ...
+    def create(
+        self, batch: ContextBatch, chunk_ids: Sequence[tuple[str, int | None]]
+    ) -> None: ...
 
     def get_context_batch(self, batch_id: str) -> ContextBatch | None: ...
 
@@ -90,7 +120,9 @@ class EmbeddingStore(Protocol):
 
     def put(self, embedding: Embedding) -> Embedding: ...
 
-    def deactivate(self, context_id: str, subject_kind: str, subject_id: str) -> None: ...
+    def deactivate(
+        self, context_id: str, subject_kind: str, subject_id: str
+    ) -> None: ...
 
 
 @runtime_checkable
@@ -122,8 +154,22 @@ class CopyableEmbeddingStore(EmbeddingStore, Protocol):
     prior projection at all."""
 
     def get_active(
-        self, context_id: str, subject_kind: str, subject_id: str, model_name: str, model_version: str
+        self,
+        context_id: str,
+        subject_kind: str,
+        subject_id: str,
+        model_name: str,
+        model_version: str,
     ) -> tuple[float, ...] | None: ...
+
+
+@runtime_checkable
+class DeactivatableEmbeddingStore(EmbeddingStore, Protocol):
+    """Opt-in deactivation of embeddings on chunk failure, rollback, or compensation."""
+
+    def deactivate(
+        self, context_id: str, subject_kind: str, subject_id: str
+    ) -> None: ...
 
 
 class ExtractionStore(Protocol):
@@ -160,6 +206,13 @@ class VerifiableSearchIndexStore(SearchIndexStore, Protocol):
 
 
 @runtime_checkable
+class DeactivatableSearchIndexStore(SearchIndexStore, Protocol):
+    """Opt-in deactivation of search index entries on chunk failure, rollback, or compensation."""
+
+    def deactivate(self, context_id: str, fact_id: str) -> None: ...
+
+
+@runtime_checkable
 class VerifiableGraphWriter(Protocol):
     """§8 fix: opt-in independent post-write confirmation for a
     `GraphWritePlan` -- `ingestion.graph_writer.GraphWriter` implements
@@ -172,7 +225,9 @@ class VerifiableGraphWriter(Protocol):
 class GraphIdAllocator(Protocol):
     """Stable graph IDs are allocated in PostgreSQL before HydraDB writes."""
 
-    def allocate_graph_id(self, node_kind: str, context_id: str, logical_key: str) -> int: ...
+    def allocate_graph_id(
+        self, node_kind: str, context_id: str, logical_key: str
+    ) -> int: ...
 
 
 class EntityResolutionModel(Protocol):
@@ -188,14 +243,19 @@ class BatchEntityResolutionModel(EntityResolutionModel, Protocol):
     """One call for several mentions (§14) instead of the per-mention path."""
 
     def resolve_entities(
-        self, *, context_id: str, mentions: Sequence[tuple[str, Sequence[EntityProfile]]]
+        self,
+        *,
+        context_id: str,
+        mentions: Sequence[tuple[str, Sequence[EntityProfile]]],
     ) -> dict[int, int | None]: ...
 
 
 class TemporalUpdateModel(Protocol):
     """LLM classification after deterministic subject/predicate gating."""
 
-    def classify_update(self, *, new_fact: FactState, prior_fact: FactState) -> TemporalRelation: ...
+    def classify_update(
+        self, *, new_fact: FactState, prior_fact: FactState
+    ) -> TemporalRelation: ...
 
 
 @runtime_checkable
@@ -217,7 +277,9 @@ class TemporalUpdateClassifierPort(Protocol):
     """Post-gating decision over one new/prior fact pair -- distinct from
     `TemporalUpdateModel`, which is just the LLM call this wraps."""
 
-    def classify(self, *, new_fact: FactState, prior_fact: FactState) -> TemporalUpdateDecision: ...
+    def classify(
+        self, *, new_fact: FactState, prior_fact: FactState
+    ) -> TemporalUpdateDecision: ...
 
 
 @runtime_checkable
@@ -230,8 +292,15 @@ class BatchTemporalUpdateClassifierPort(TemporalUpdateClassifierPort, Protocol):
 class EntityNameIndex(Protocol):
     """Semantic candidate-name blocking for entity resolution (Tier 3)."""
 
-    def add(self, entity_id: str, name: str, entity_type: str, haystack_id: str) -> None: ...
+    def add(
+        self, entity_id: str, name: str, entity_type: str, haystack_id: str
+    ) -> None: ...
 
     def find_candidates(
-        self, query_name: str, entity_type: str, haystack_id: str, top_k: int = 5, threshold: float = 0.75,
+        self,
+        query_name: str,
+        entity_type: str,
+        haystack_id: str,
+        top_k: int = 5,
+        threshold: float = 0.75,
     ) -> Sequence[dict[str, object]]: ...

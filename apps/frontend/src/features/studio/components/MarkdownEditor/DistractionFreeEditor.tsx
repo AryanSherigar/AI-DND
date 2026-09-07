@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import ReactMarkdown, { Components } from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
 
 interface DistractionFreeEditorProps {
   value: string;
@@ -7,61 +9,23 @@ interface DistractionFreeEditorProps {
   className?: string;
 }
 
-const renderMarkdown = (text: string) => {
-  if (!text) return null;
-  const lines = text.split("\n");
-  return lines.map((line, index) => {
-    const parsedLine = line
-      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.*?)\*/g, "<em>$1</em>");
-
-    if (parsedLine.startsWith("### ")) {
-      return (
-        <h3
-          key={index}
-          className="text-lg font-bold mt-4 mb-2 text-content"
-          dangerouslySetInnerHTML={{ __html: parsedLine.slice(4) }}
-        />
-      );
-    }
-    if (parsedLine.startsWith("## ")) {
-      return (
-        <h2
-          key={index}
-          className="text-xl font-bold mt-5 mb-3 text-content"
-          dangerouslySetInnerHTML={{ __html: parsedLine.slice(3) }}
-        />
-      );
-    }
-    if (parsedLine.startsWith("# ")) {
-      return (
-        <h1
-          key={index}
-          className="text-2xl font-bold mt-6 mb-4 text-content"
-          dangerouslySetInnerHTML={{ __html: parsedLine.slice(2) }}
-        />
-      );
-    }
-    if (parsedLine.startsWith("- ")) {
-      return (
-        <li
-          key={index}
-          className="ml-5 list-disc text-content-muted my-1"
-          dangerouslySetInnerHTML={{ __html: parsedLine.slice(2) }}
-        />
-      );
-    }
-    if (parsedLine.trim() === "") {
-      return <div key={index} className="h-4"></div>;
-    }
-    return (
-      <p
-        key={index}
-        className="text-content-muted leading-relaxed mb-1"
-        dangerouslySetInnerHTML={{ __html: parsedLine }}
-      />
-    );
-  });
+const markdownComponents: Components = {
+  h1: ({ children }) => (
+    <h1 className="text-2xl font-bold mt-6 mb-4 text-content">{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="text-xl font-bold mt-5 mb-3 text-content">{children}</h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="text-lg font-bold mt-4 mb-2 text-content">{children}</h3>
+  ),
+  ul: ({ children }) => <ul className="my-1">{children}</ul>,
+  li: ({ children }) => (
+    <li className="ml-5 list-disc text-content-muted my-1">{children}</li>
+  ),
+  p: ({ children }) => (
+    <p className="text-content-muted leading-relaxed mb-3">{children}</p>
+  ),
 };
 
 export const DistractionFreeEditor: React.FC<DistractionFreeEditorProps> = ({
@@ -112,7 +76,12 @@ export const DistractionFreeEditor: React.FC<DistractionFreeEditorProps> = ({
         ) : (
           <div className="w-full h-full flex-1 overflow-y-auto px-6 py-6 font-sans">
             {value ? (
-              renderMarkdown(value)
+              <ReactMarkdown
+                rehypePlugins={[rehypeSanitize]}
+                components={markdownComponents}
+              >
+                {value}
+              </ReactMarkdown>
             ) : (
               <p className="text-content-faint italic">Nothing to preview</p>
             )}

@@ -250,18 +250,19 @@ pie title Infrastructure Findings by Category
 
 ---
 
-### [HIGH-05] Flat Single Network Lacking Tier Segregation (`aidnd-net`)
+### [HIGH-05] Flat Single Network Lacking Tier Segregation (`aidnd-net`) — [REMEDIATED]
 - **Severity**: High (P1)
 - **Category**: Network Architecture & Defense-in-Depth
-- **Location**: [`docker-compose.yml:168-170`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L168-L170)
+- **Status**: Remediated (Segregated into `frontend-net` and `backend-net`)
+- **Location**: [`docker-compose.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml)
 - **Problem & Root Cause**:
   Every service across all tiers resides on a single bridge network (`aidnd-net`). The public-facing `frontend` container shares the same network segment as the private PostgreSQL database instances (`aidnd-postgres` and `aidnd-postgres-memory`).
 - **Failure Scenario / Impact**:
   If the frontend Nginx or Vite container is compromised, the attacker has unrestricted network access to PostgreSQL port 5432, HydraDB internal ports (7687, 8443, 9090), and internal REST APIs with zero perimeter defense.
 - **Remediation**:
-  Implement dual-network segregation:
+  Dual-network segregation implemented:
   1. `frontend-net`: connects `frontend`, `core-api`, and `turn-resolution-service`.
-  2. `backend-net`: connects `core-api`, `turn-resolution-service`, `memory-layer`, `hydradb`, and PostgreSQL databases. `frontend` has zero route to `backend-net`.
+  2. `backend-net`: connects `core-api`, `turn-resolution-service`, `memory-layer`, `hydradb`, `migration-runner`, `memory-layer-migration-runner`, and PostgreSQL databases. `frontend` has zero route to `backend-net`.
 
 ---
 

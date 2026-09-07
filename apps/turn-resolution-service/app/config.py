@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     minigame_iframe_handshake_timeout_seconds: int = 20
     log_level: str = "INFO"
     log_format: str = "json"
+    sse_ping_interval_seconds: int = 15
 
 
 settings = Settings()

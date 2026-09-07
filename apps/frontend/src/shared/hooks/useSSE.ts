@@ -31,6 +31,7 @@ export function useSSE(
       onEvent: (name, data) => onEventRef.current(name, data),
       onOpen: () => setStatus("open"),
       onError: () => setStatus("closed"),
+      onClose: () => setStatus("closed"),
     };
     const disconnect = createGetSSEConnection(url, accessToken, handlers);
 

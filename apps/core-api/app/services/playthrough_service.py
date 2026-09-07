@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 
 import structlog
-
 from app.db.models.participant import Participant
 from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
@@ -277,7 +276,9 @@ class PlaythroughService:
         if share is None or share.mode != "join":
             raise InvalidShareTokenError()
 
-        playthrough = await self.playthrough_repo.get_by_id(share.playthrough_id)
+        playthrough = await self.playthrough_repo.get_by_id_for_update(
+            share.playthrough_id
+        )
         if not playthrough:
             raise PlaythroughNotFoundError()
         if playthrough.status != "active":

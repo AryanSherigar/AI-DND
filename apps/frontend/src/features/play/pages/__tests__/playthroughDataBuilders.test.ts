@@ -79,6 +79,9 @@ function buildServerPlaythrough(
       },
     ],
     active_conditions: ["Bleeding Out"],
+    ended_outcome_tag: null,
+    ended_outcome_title: null,
+    ended_outcome_text: null,
     ...overrides,
   };
 }
@@ -145,6 +148,32 @@ describe("buildMasterPlaythroughData", () => {
     );
 
     expect(data.active_conditions).toEqual(["Bleeding Out"]);
+  });
+
+  it("carries the ended outcome through from the server response", () => {
+    const data = buildMasterPlaythroughData(
+      buildServerPlaythrough({
+        ended_outcome_tag: "win",
+        ended_outcome_title: "The Ashen Ending",
+        ended_outcome_text: "The Warden kneels.",
+      }),
+      emptyTurns,
+      false,
+    );
+
+    expect(data.ended_outcome_tag).toBe("win");
+    expect(data.ended_outcome_title).toBe("The Ashen Ending");
+    expect(data.ended_outcome_text).toBe("The Warden kneels.");
+  });
+
+  it("defaults the ended outcome to null for an in-progress playthrough", () => {
+    const data = buildMasterPlaythroughData(
+      buildServerPlaythrough(),
+      emptyTurns,
+      false,
+    );
+
+    expect(data.ended_outcome_tag).toBeNull();
   });
 
   it("parses pending_minigame from state._pending_minigame when present", () => {

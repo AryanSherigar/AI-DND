@@ -71,6 +71,9 @@ interface CommonPlaythroughFields {
   participant_id: string | null;
   can_act: boolean;
   next_actor_label: string | null;
+  ended_outcome_tag: "win" | "lose" | null;
+  ended_outcome_title: string | null;
+  ended_outcome_text: string | null;
 }
 
 /** Solo playthroughs always allow acting. Multiplayer cycles by turn_order_position. */
@@ -155,6 +158,9 @@ function buildCommonFields(
     participant_id: isSpectatorMode ? null : serverPlaythrough.participant_id,
     can_act: canAct,
     next_actor_label: nextActorLabel,
+    ended_outcome_tag: serverPlaythrough.ended_outcome_tag,
+    ended_outcome_title: serverPlaythrough.ended_outcome_title,
+    ended_outcome_text: serverPlaythrough.ended_outcome_text,
   };
 }
 

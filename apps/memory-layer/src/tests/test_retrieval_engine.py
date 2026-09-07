@@ -320,6 +320,56 @@ class TestRetrievalEngine(unittest.TestCase):
         self.assertEqual(graph_data, {})
         self.assertNotIn("fact-1", seed_facts)
 
+    def test_ghost_fact_on_graph_path_does_not_inflate_entity_stats(self):
+        """orchestrator._compensate_plan archives a Fact node when a group's
+        embedding/verification stage fails after its graph write already
+        landed (soft-archive, never deleted -- same convention as
+        rollback.py). The archived Fact can still sit on a live ABOUT edge in
+        HydraDB, so an algo.MSpaths path can hop straight through it. Before
+        this fix, that ghost hop was counted the same as a real one,
+        inflating path_count/hop_count for the unrelated, still-valid facts
+        at either end of the path."""
+
+        class FakeHydraWithGhostPath:
+            def read(self, cypher, params, bookmark):
+                if "SUPERSEDES" in cypher:
+                    return []
+                if "OPTIONAL MATCH" in cypher:
+                    match = re.search(r"MATCH \(f \{id: (\d+)\}\)", cypher)
+                    fid = int(match.group(1)) if match else None
+                    entity_key = {1: "entity-1", 2: "entity-2"}.get(fid)
+                    return [{
+                        "text": None, "speaker": None,
+                        "valid_from": 0, "valid_to": 9999999999,
+                        "observed_at": 1000, "superseded_at": 9999999999,
+                        "memory_scope": None, "entity_key": entity_key,
+                    }]
+                if "algo.MSpaths" in cypher:
+                    # entity-1 -[archived ghost fact]- entity-mid -[]- entity-2
+                    return [{"path": [
+                        {"logical_key": "entity-1"},
+                        {"archived": True},
+                        {"logical_key": "entity-mid"},
+                        {},
+                        {"logical_key": "entity-2"},
+                    ]}]
+                return []
+
+        conn = FakeConnection(registry_rows=[("fact:fact-1", 1), ("fact:fact-2", 2)])
+        hydra = FakeHydraWithGhostPath()
+        expander = GraphExpander(conn, hydra)
+        seed_facts = {
+            "fact-1": ScoredFact("fact-1", "linked A"),
+            "fact-2": ScoredFact("fact-2", "linked B"),
+        }
+
+        graph_data = expander.expand("ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc))
+
+        self.assertEqual(graph_data["fact-1"]["path_count"], 0)
+        self.assertEqual(graph_data["fact-2"]["path_count"], 0)
+        self.assertEqual(graph_data["fact-1"]["hop_count"], 1)
+        self.assertEqual(graph_data["fact-2"]["hop_count"], 1)
+
     def test_temporal_bounds_use_interval_overlap_not_only_valid_now(self):
         """§7 fix: a fact whose validity window falls entirely inside the
         requested [valid_from, valid_to] range must survive even though it

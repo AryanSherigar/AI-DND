@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 
+from app.config import settings
 from app.db.connection import get_db_session
 from app.middleware.auth import get_current_user
 from app.models.auth import CurrentUser
@@ -33,7 +34,8 @@ async def spectate(
     logger.info(EVENT_SPECTATE_STREAM_OPENED, playthrough_id=str(playthrough_id))
     queue = spectator_manager.subscribe(playthrough_id)
     return EventSourceResponse(
-        _relay(queue, lambda: spectator_manager.unsubscribe(playthrough_id, queue))
+        _relay(queue, lambda: spectator_manager.unsubscribe(playthrough_id, queue)),
+        ping=settings.sse_ping_interval_seconds,
     )
 
 
@@ -54,12 +56,13 @@ async def notifications(
         _relay(
             queue,
             lambda: notification_manager.unsubscribe(playthrough_id, participant_id),
-        )
+        ),
+        ping=settings.sse_ping_interval_seconds,
     )
 
 
 async def _relay(
-    queue: asyncio.Queue, on_disconnect: Callable[[], None]
+    queue: asyncio.Queue[tuple[str, str]], on_disconnect: Callable[[], None]
 ) -> AsyncIterator[ServerSentEvent]:
     """Drain a subscriber queue as SSE events, unsubscribing on disconnect."""
     try:

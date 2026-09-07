@@ -103,8 +103,10 @@ def _decode_value(value: object) -> object:
 # graph_expander.py's own comments and its docstring's list of live-confirmed
 # rejections); each read was previously its own fresh TCP handshake via
 # urlopen. Reusing the connection per worker thread removes that handshake
-# from every request but the pool's first, which is the only lever left once
-# genuine query batching is off the table.
+# from every request but the very first, ever -- GraphExpander's fetch pool is
+# instance-lifetime (built once in __init__, not per `expand()` call), so the
+# same fixed set of worker threads, and so the same cached connections, serve
+# every retrieval this process ever handles.
 _connections = threading.local()
 
 

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSSE } from "@/shared/hooks/useSSE";
 
 import { ScenarioMood } from "../types/audio.types";
@@ -18,18 +19,27 @@ export function useSpectator(
 ) {
   const [streamingText, setStreamingText] = useState("");
   const [isLive, setIsLive] = useState(false);
+  const queryClient = useQueryClient();
 
-  const handleEvent = useCallback((eventName: string, data: string) => {
-    if (eventName === "mood") {
-      ambientSoundtrack.transitionTo(data as ScenarioMood);
-    } else if (eventName === "narration") {
-      setIsLive(true);
-      setStreamingText((prev) => prev + data);
-    } else if (eventName === "done") {
-      setIsLive(false);
-      setStreamingText("");
-    }
-  }, []);
+  const handleEvent = useCallback(
+    (eventName: string, data: string) => {
+      if (eventName === "mood") {
+        ambientSoundtrack.transitionTo(data as ScenarioMood);
+      } else if (eventName === "narration") {
+        setIsLive(true);
+        setStreamingText((prev) => prev + data);
+      } else if (eventName === "done") {
+        setIsLive(false);
+        if (playthroughId) {
+          void queryClient.invalidateQueries({
+            queryKey: ["playthrough-turns", playthroughId],
+          });
+        }
+        setStreamingText("");
+      }
+    },
+    [playthroughId, queryClient],
+  );
 
   const url =
     playthroughId && shareToken

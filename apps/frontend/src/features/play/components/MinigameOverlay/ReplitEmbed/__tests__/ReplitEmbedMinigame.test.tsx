@@ -11,9 +11,12 @@ function getIframe(): HTMLIFrameElement {
   return iframe;
 }
 
+// The embed iframe is sandboxed without allow-same-origin, so a real browser
+// always reports its postMessage origin as the opaque literal "null" —
+// never the embed URL's real origin (see useReplitHandshake.ts).
 function postHandshakeMessage(
   data: Record<string, unknown>,
-  origin: string = new URL(EMBED_URL).origin,
+  origin: string = "null",
 ): void {
   const iframe = getIframe();
   act(() => {

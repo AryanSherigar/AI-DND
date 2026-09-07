@@ -24,21 +24,96 @@ export interface SSEHandlers {
   onClose?: () => void;
 }
 
+export interface SSERetryConfig {
+  initialDelayMs: number;
+  maxDelayMs: number;
+  backoffMultiplier: number;
+}
+
+export const DEFAULT_RETRY_CONFIG: SSERetryConfig = {
+  initialDelayMs: 1000,
+  maxDelayMs: 15000,
+  backoffMultiplier: 1.5,
+};
+
+function computeNextBackoff(
+  currentDelay: number,
+  config: SSERetryConfig,
+): number {
+  return Math.min(currentDelay * config.backoffMultiplier, config.maxDelayMs);
+}
+
+function createReconnectingHandlers(
+  handlers: SSEHandlers,
+  onResetDelay: () => void,
+  onReconnect: () => void,
+): SSEHandlers {
+  return {
+    ...handlers,
+    onOpen: () => {
+      onResetDelay();
+      handlers.onOpen?.();
+    },
+    onClose: () => {
+      handlers.onClose?.();
+      onReconnect();
+    },
+    onError: (error: unknown) => {
+      handlers.onError?.(error);
+      onReconnect();
+    },
+  };
+}
+
 /** Persistent GET-based SSE connection (notifications, spectate streams). */
 export function createGetSSEConnection(
   url: string,
   authToken: string | null,
   handlers: SSEHandlers,
   requestId?: string,
+  retryConfig?: Partial<SSERetryConfig>,
 ): () => void {
-  return createFetchSSEConnection(
-    url,
-    "GET",
-    undefined,
-    authToken,
+  const config = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+  const controller = new AbortController();
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryDelayMs = config.initialDelayMs;
+
+  const reconnect = () => {
+    if (controller.signal.aborted || retryTimer !== null) return;
+    const currentDelay = retryDelayMs;
+    retryDelayMs = computeNextBackoff(retryDelayMs, config);
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      connect();
+    }, currentDelay);
+  };
+
+  const wrappedHandlers = createReconnectingHandlers(
     handlers,
-    requestId,
+    () => {
+      retryDelayMs = config.initialDelayMs;
+    },
+    reconnect,
   );
+
+  const connect = () => {
+    if (controller.signal.aborted) return;
+    void streamRequest(
+      url,
+      "GET",
+      undefined,
+      authToken,
+      wrappedHandlers,
+      controller.signal,
+      requestId,
+    );
+  };
+
+  connect();
+  return () => {
+    if (retryTimer !== null) clearTimeout(retryTimer);
+    controller.abort();
+  };
 }
 
 /** One-shot POST-then-stream SSE connection (TRS's POST /v1/turn). */
@@ -137,9 +212,13 @@ async function readEventStream(
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  while (true) {
+  let isStreaming = true;
+  while (isStreaming) {
     const { done, value } = await reader.read();
-    if (done) return;
+    if (done) {
+      isStreaming = false;
+      break;
+    }
     // sse_starlette (the server) writes CRLF line endings, so frames are
     // separated by "\r\n\r\n", not "\n\n" — normalize before splitting.
     buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");

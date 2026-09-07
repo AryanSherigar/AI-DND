@@ -6,7 +6,8 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID, uuid5
-from fastapi import APIRouter, Depends, Header, HTTPException, status, BackgroundTasks
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
 from context_memory.engine import MemoryEngine
@@ -350,37 +351,62 @@ def get_entity(entity_id: str, context_id: str, engine: MemoryEngine = Depends(g
     return EntityDetailResponse(**entity)
 
 
-@router.get("/v1/health")
-def health_check():
-    db_url = os.environ.get("CONTEXT_MEMORY_DATABASE_URL", os.environ.get("DATABASE_URL", "postgresql://context_memory@127.0.0.1:54329/context_memory"))
-    hydra_url = os.environ.get("CONTEXT_MEMORY_HYDRADB_URL", os.environ.get("HYDRA_DB_HOST", "http://127.0.0.1:8080"))
+def _ping_postgres_pool(pool: object) -> None:
+    with (
+        pool.connection() as connection,  # type: ignore[attr-defined]
+        connection.cursor() as cursor,
+    ):
+        cursor.execute("SELECT 1")
+
+
+async def _check_postgres(request: Request, timeout_seconds: float = 0.5) -> str:
+    engine = getattr(request.app.state, "engine", None) or _GLOBAL_ENGINE
+    if engine is None or not hasattr(engine, "pool") or engine.pool is None:
+        return "down (uninitialized)"
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(_ping_postgres_pool, engine.pool),
+            timeout=timeout_seconds,
+        )
+        return "up"
+    except TimeoutError:
+        return "down (TimeoutError)"
+    except Exception as exception:  # noqa: BLE001
+        return f"down ({type(exception).__name__})"
+
+
+async def _check_hydradb(timeout_seconds: float = 0.5) -> str:
+    hydra_url = os.environ.get(
+        "CONTEXT_MEMORY_HYDRADB_URL",
+        os.environ.get("HYDRA_DB_HOST", "http://127.0.0.1:8080"),
+    )
     if not hydra_url.startswith("http://") and not hydra_url.startswith("https://"):
         hydra_url = f"http://{hydra_url}"
-
-    postgres_status = "unknown"
-    hydradb_status = "unknown"
-
     try:
-        import psycopg
-        with psycopg.connect(db_url, connect_timeout=2) as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1")
-                postgres_status = "up"
-    except Exception as e:
-        postgres_status = f"down ({type(e).__name__})"
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            response = await client.get(f"{hydra_url}/health")
+            return (
+                "up"
+                if response.status_code < 500
+                else f"unhealthy ({response.status_code})"
+            )
+    except Exception as exception:  # noqa: BLE001
+        return f"down ({type(exception).__name__})"
 
-    try:
-        import httpx
-        r = httpx.get(f"{hydra_url}/health", timeout=2.0)
-        hydradb_status = "up" if r.status_code < 500 else f"unhealthy ({r.status_code})"
-    except Exception as e:
-        hydradb_status = f"down ({type(e).__name__})"
 
-    # §12 fix: was `{"status": "ok", ...}` unconditionally -- overall_status
-    # was computed and then discarded, so this endpoint reported healthy
-    # even with Postgres or HydraDB both confirmed down two lines above.
-    overall_status = "ok" if postgres_status == "up" and hydradb_status == "up" else "degraded"
-    return {"status": overall_status, "postgres": postgres_status, "hydradb": hydradb_status}
+@router.get("/v1/health")
+async def health_check(request: Request) -> dict[str, str]:
+    postgres_status, hydradb_status = await asyncio.gather(
+        _check_postgres(request),
+        _check_hydradb(),
+    )
+    is_healthy = postgres_status == "up" and hydradb_status == "up"
+    overall_status = "ok" if is_healthy else "degraded"
+    return {
+        "status": overall_status,
+        "postgres": postgres_status,
+        "hydradb": hydradb_status,
+    }
 
 
 @router.post("/v1/demo/clear")

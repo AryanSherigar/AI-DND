@@ -72,6 +72,12 @@ class HybridRetrievalEngine:
             self._rewrite_cache = JsonFileRewriteCache(path) if path else {}
         self._seeder = CandidateSeeder(pool, embedder, self._config)
         self._graph_expander = GraphExpander(pool, hydra_client, self._config)
+        # Engine-lifetime, not per-call: see GraphExpander's own executor for
+        # why a fresh ThreadPoolExecutor per request is wasteful (thread
+        # create/destroy churn, and it discards HydraHttpTransport's per-thread
+        # keep-alive connection cache). This pool only ever runs Phase 0's two
+        # LLM calls, which touch no shared per-call state.
+        self._phase0_executor = ThreadPoolExecutor(max_workers=2)
         self._fuser = CandidateFuser(Reranker(self._rerank_client, self._config), self._config)
         self._reader = AnswerReader(
             llm_client, SiblingExpander(pool, embedder, self._config), self._config
@@ -368,11 +374,10 @@ class HybridRetrievalEngine:
                 # time, so each concurrent task needs its own copy, not one
                 # shared snapshot -- two calls is cheap, both still see the same
                 # ambient values since neither has diverged from this point yet.
-                with ThreadPoolExecutor(max_workers=2) as thread_pool:
-                    temporal_future = thread_pool.submit(contextvars.copy_context().run, resolver.resolve, question, question_date)
-                    rewriter_future = thread_pool.submit(contextvars.copy_context().run, rewriter.rewrite, question)
-                    temporal_bounds = temporal_future.result()
-                    expanded_query = rewriter_future.result()
+                temporal_future = self._phase0_executor.submit(contextvars.copy_context().run, resolver.resolve, question, question_date)
+                rewriter_future = self._phase0_executor.submit(contextvars.copy_context().run, rewriter.rewrite, question)
+                temporal_bounds = temporal_future.result()
+                expanded_query = rewriter_future.result()
 
             # Phase 1: Semantic + Keyword Seeding
             seed_facts = self._seeder.seed(context_id, question, expanded_query, top_k)

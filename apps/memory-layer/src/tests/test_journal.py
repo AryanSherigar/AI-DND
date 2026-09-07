@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-import time
 import unittest
 from contextlib import nullcontext
 
@@ -41,7 +40,7 @@ class FakeCursor:
     def fetchone(self):
         return None
 
-    def __enter__(self) -> "FakeCursor":
+    def __enter__(self) -> FakeCursor:
         return self
 
     def __exit__(self, *exc) -> None:
@@ -68,18 +67,36 @@ class RaisingConnection:
         return nullcontext()
 
 
+class FakePool:
+    """`StepJournal` now acquires a connection per call via `pool.connection()`
+    -- this just yields the same fake connection every time, so existing
+    tests can keep asserting against one shared connection's recorded state.
+    Mirrors `test_rollback.py`'s `FakePool`, added for the same reason
+    (`SavePointStore`/`RollbackService` moving to per-call pool acquisition)."""
+
+    def __init__(self, connection: object) -> None:
+        self._connection = connection
+
+    def connection(self):
+        return nullcontext(self._connection)
+
+
 class FakeLLMClient:
     """Minimal `LLMClient`-shaped fake; no provider, no database, no graph."""
 
     model = "fake-model"
 
-    def __init__(self, structured_result: BaseModel | None = None, text_result: str = "an answer") -> None:
+    def __init__(
+        self, structured_result: BaseModel | None = None, text_result: str = "an answer"
+    ) -> None:
         self._structured_result = structured_result
         self._text_result = text_result
         self.structured_calls: list[tuple] = []
         self.text_calls: list[tuple] = []
 
-    def structured_completion(self, system_prompt, user_prompt, response_schema, **kwargs):
+    def structured_completion(
+        self, system_prompt, user_prompt, response_schema, **kwargs
+    ):
         self.structured_calls.append((system_prompt, user_prompt, response_schema))
         return self._structured_result
 
@@ -90,7 +107,10 @@ class FakeLLMClient:
 
 class HashRequestTests(unittest.TestCase):
     def test_deterministic_for_same_inputs(self) -> None:
-        self.assertEqual(hash_request("reader", "m1", "sys", "user"), hash_request("reader", "m1", "sys", "user"))
+        self.assertEqual(
+            hash_request("reader", "m1", "sys", "user"),
+            hash_request("reader", "m1", "sys", "user"),
+        )
 
     def test_differs_on_any_part(self) -> None:
         base = hash_request("reader", "m1", "sys", "user")
@@ -122,16 +142,23 @@ class CorrelationScopeTests(unittest.TestCase):
 class StepJournalRecordTests(unittest.TestCase):
     def test_record_inserts_one_row(self) -> None:
         connection = FakeConnection()
-        journal = StepJournal(connection)
+        journal = StepJournal(FakePool(connection))
         step_id = journal.record(
-            step_type="llm.text_completion", call_role="reader", idempotency_key="key-1",
-            request_payload={"user_prompt": "hi"}, response_payload={"text": "hello"},
-            outcome="ok", elapsed_ms=12.5, model_name="m1",
+            step_type="llm.text_completion",
+            call_role="reader",
+            idempotency_key="key-1",
+            request_payload={"user_prompt": "hi"},
+            response_payload={"text": "hello"},
+            outcome="ok",
+            elapsed_ms=12.5,
+            model_name="m1",
         )
         self.assertIsNotNone(step_id)
         self.assertEqual(len(connection.rows), 1)
 
-    def test_journal_is_append_only_repeated_idempotency_key_does_not_dedupe(self) -> None:
+    def test_journal_is_append_only_repeated_idempotency_key_does_not_dedupe(
+        self,
+    ) -> None:
         """§10 fix: was `self.assertEqual(len(connection.rows), 1)` -- three
         calls sharing an idempotency_key (a real scenario: the same prompt
         legitimately retried, or two different requests happening to
@@ -139,11 +166,16 @@ class StepJournalRecordTests(unittest.TestCase):
         with no trace the other two calls ever happened. Each call gets its
         own step_id and its own row now."""
         connection = FakeConnection()
-        journal = StepJournal(connection)
+        journal = StepJournal(FakePool(connection))
         step_ids = [
             journal.record(
-                step_type="llm.text_completion", call_role="reader", idempotency_key="same-key",
-                request_payload={}, response_payload=None, outcome="ok", elapsed_ms=1.0,
+                step_type="llm.text_completion",
+                call_role="reader",
+                idempotency_key="same-key",
+                request_payload={},
+                response_payload=None,
+                outcome="ok",
+                elapsed_ms=1.0,
             )
             for _ in range(3)
         ]
@@ -152,32 +184,52 @@ class StepJournalRecordTests(unittest.TestCase):
 
     def test_different_step_types_do_not_collide_on_same_key(self) -> None:
         connection = FakeConnection()
-        journal = StepJournal(connection)
+        journal = StepJournal(FakePool(connection))
         journal.record(
-            step_type="llm.text_completion", call_role="reader", idempotency_key="same-key",
-            request_payload={}, response_payload=None, outcome="ok", elapsed_ms=1.0,
+            step_type="llm.text_completion",
+            call_role="reader",
+            idempotency_key="same-key",
+            request_payload={},
+            response_payload=None,
+            outcome="ok",
+            elapsed_ms=1.0,
         )
         journal.record(
-            step_type="llm.structured_completion[X]", call_role="reader", idempotency_key="same-key",
-            request_payload={}, response_payload=None, outcome="ok", elapsed_ms=1.0,
+            step_type="llm.structured_completion[X]",
+            call_role="reader",
+            idempotency_key="same-key",
+            request_payload={},
+            response_payload=None,
+            outcome="ok",
+            elapsed_ms=1.0,
         )
         self.assertEqual(len(connection.rows), 2)
 
     def test_never_raises_on_connection_failure(self) -> None:
-        journal = StepJournal(RaisingConnection())
+        journal = StepJournal(FakePool(RaisingConnection()))
         step_id = journal.record(
-            step_type="llm.text_completion", call_role="reader", idempotency_key="key-1",
-            request_payload={}, response_payload=None, outcome="ok", elapsed_ms=1.0,
+            step_type="llm.text_completion",
+            call_role="reader",
+            idempotency_key="key-1",
+            request_payload={},
+            response_payload=None,
+            outcome="ok",
+            elapsed_ms=1.0,
         )
         self.assertIsNone(step_id)
 
     def test_context_threaded_from_correlation_scope(self) -> None:
         connection = FakeConnection()
-        journal = StepJournal(connection)
+        journal = StepJournal(FakePool(connection))
         with correlation_scope(JournalContext(context_id="ctx-1", session_id="sess-1")):
             journal.record(
-                step_type="llm.text_completion", call_role="reader", idempotency_key="key-1",
-                request_payload={}, response_payload=None, outcome="ok", elapsed_ms=1.0,
+                step_type="llm.text_completion",
+                call_role="reader",
+                idempotency_key="key-1",
+                request_payload={},
+                response_payload=None,
+                outcome="ok",
+                elapsed_ms=1.0,
             )
         row = connection.rows[0]
         # (step_id, correlation_id, context_id, session_id, turn_index, scenario_id, ...)
@@ -186,65 +238,69 @@ class StepJournalRecordTests(unittest.TestCase):
 
     def test_scenario_id_threaded_from_correlation_scope(self) -> None:
         connection = FakeConnection()
-        journal = StepJournal(connection)
-        with correlation_scope(JournalContext(context_id="ctx-1", scenario_id="scenario-forest-of-echoes")):
+        journal = StepJournal(FakePool(connection))
+        with correlation_scope(
+            JournalContext(context_id="ctx-1", scenario_id="scenario-forest-of-echoes")
+        ):
             journal.record(
-                step_type="llm.text_completion", call_role="reader", idempotency_key="key-1",
-                request_payload={}, response_payload=None, outcome="ok", elapsed_ms=1.0,
+                step_type="llm.text_completion",
+                call_role="reader",
+                idempotency_key="key-1",
+                request_payload={},
+                response_payload=None,
+                outcome="ok",
+                elapsed_ms=1.0,
             )
         row = connection.rows[0]
         self.assertEqual(row[5], "scenario-forest-of-echoes")
 
 
-class MutualExclusionProbeCursor(FakeCursor):
-    """Detects two threads inside the critical section at once, directly --
-    a plain Python list can't actually reproduce psycopg's real C-level
-    thread-unsafety (GIL makes `list.append` atomic regardless), so a test
-    built on one can only prove data survives, not that access was
-    serialized. This asserts the thing `_lock` actually guarantees:
-    mutual exclusion, independent of whether the fake's own data structure
-    happens to tolerate concurrent access anyway."""
+class SharedRowsPool:
+    """Simulates the real `ConnectionPool`: each `.connection()` acquisition
+    hands out a *distinct* `FakeConnection` (so concurrent `record()` calls
+    don't contend on one shared connection object, the way the pre-fix
+    single-connection design did), but every connection's cursor writes into
+    one shared `rows` list -- standing in for the one underlying Postgres
+    table every pooled connection ultimately reaches."""
 
-    active_count = 0
-    max_observed_concurrency = 0
-    _class_lock = threading.Lock()
+    def __init__(self) -> None:
+        self.rows: list[tuple] = []
 
-    def execute(self, query: str, params: tuple | None = None) -> None:
-        if "ON CONFLICT" in query:
-            with MutualExclusionProbeCursor._class_lock:
-                MutualExclusionProbeCursor.active_count += 1
-                MutualExclusionProbeCursor.max_observed_concurrency = max(
-                    MutualExclusionProbeCursor.max_observed_concurrency, MutualExclusionProbeCursor.active_count
-                )
-            time.sleep(0.005)  # widen the window -- without the lock, a second thread enters while this sleeps
-            with MutualExclusionProbeCursor._class_lock:
-                MutualExclusionProbeCursor.active_count -= 1
-        super().execute(query, params)
-
-
-class ProbeConnection(FakeConnection):
-    def cursor(self) -> MutualExclusionProbeCursor:
-        return MutualExclusionProbeCursor(self.rows)
+    def connection(self):
+        conn = FakeConnection()
+        conn.rows = self.rows
+        conn._cursor = FakeCursor(self.rows)
+        return nullcontext(conn)
 
 
 class StepJournalConcurrencyTests(unittest.TestCase):
     """Regression test for a real bug: Phase 0 runs the temporal resolver and
     query rewriter concurrently (their own `ThreadPoolExecutor`, since Track
-    A), and a shared connection accessed from multiple threads without
-    synchronization silently lost most rows in a live 30-instance run (30
-    expected per role, ~7 landed, zero raised exceptions) -- `StepJournal`'s
-    `_lock` fixes it by serializing access to the connection."""
+    A), and the old design -- one `StepJournal` holding a single shared
+    connection for its whole lifetime -- silently lost most rows when
+    accessed from multiple threads without synchronization (a live
+    30-instance run: 30 expected per role, ~7 landed, zero raised exceptions).
 
-    def test_concurrent_record_calls_never_overlap_the_critical_section(self) -> None:
-        MutualExclusionProbeCursor.active_count = 0
-        MutualExclusionProbeCursor.max_observed_concurrency = 0
-        connection = ProbeConnection()
-        journal = StepJournal(connection)
+    `StepJournal` now acquires a fresh connection per `record()` call from
+    the pool instead, so concurrent calls no longer share any connection to
+    race on -- correctness comes from Postgres safely handling concurrent
+    inserts from separate connections, not from an app-level lock. This test
+    asserts the property that still matters: no rows lost under concurrency,
+    not that calls were serialized (they no longer are, and shouldn't be)."""
+
+    def test_concurrent_record_calls_all_persist_without_loss(self) -> None:
+        pool = SharedRowsPool()
+        journal = StepJournal(pool)
 
         def record_one(i: int) -> None:
             journal.record(
-                step_type="llm.text_completion", call_role="reader", idempotency_key=f"key-{i}",
-                request_payload={}, response_payload=None, outcome="ok", elapsed_ms=1.0,
+                step_type="llm.text_completion",
+                call_role="reader",
+                idempotency_key=f"key-{i}",
+                request_payload={},
+                response_payload=None,
+                outcome="ok",
+                elapsed_ms=1.0,
             )
 
         threads = [threading.Thread(target=record_one, args=(i,)) for i in range(20)]
@@ -253,14 +309,13 @@ class StepJournalConcurrencyTests(unittest.TestCase):
         for t in threads:
             t.join()
 
-        self.assertEqual(len(connection.rows), 20)
-        self.assertEqual(MutualExclusionProbeCursor.max_observed_concurrency, 1)  # never more than one thread inside
+        self.assertEqual(len(pool.rows), 20)
 
 
 class JournaledLLMClientTests(unittest.TestCase):
     def test_wraps_structured_completion_and_records_one_row(self) -> None:
         connection = FakeConnection()
-        journal = StepJournal(connection)
+        journal = StepJournal(FakePool(connection))
         inner = FakeLLMClient(structured_result=_Answer(value="42"))
         client = JournaledLLMClient(inner, journal, call_role="reader")
 
@@ -272,7 +327,7 @@ class JournaledLLMClientTests(unittest.TestCase):
 
     def test_wraps_text_completion_and_records_one_row(self) -> None:
         connection = FakeConnection()
-        journal = StepJournal(connection)
+        journal = StepJournal(FakePool(connection))
         inner = FakeLLMClient(text_result="hello there")
         client = JournaledLLMClient(inner, journal, call_role="rerank")
 
@@ -283,7 +338,7 @@ class JournaledLLMClientTests(unittest.TestCase):
 
     def test_records_error_outcome_and_reraises(self) -> None:
         connection = FakeConnection()
-        journal = StepJournal(connection)
+        journal = StepJournal(FakePool(connection))
 
         class FailingClient:
             model = "fake-model"
@@ -301,14 +356,16 @@ class JournaledLLMClientTests(unittest.TestCase):
         # step_type, call_role, idempotency_key, model_name, request_payload, response_payload, outcome
         self.assertEqual(row[outcome_index], "error")
 
-    def test_identical_calls_produce_the_same_idempotency_key_but_both_are_recorded(self) -> None:
+    def test_identical_calls_produce_the_same_idempotency_key_but_both_are_recorded(
+        self,
+    ) -> None:
         """§10 fix: was `self.assertEqual(len(connection.rows), 1)` -- two
         real, distinct calls (both actually happened) used to leave only
         one trace. The fingerprint (`idempotency_key`) is still
         deterministic -- same inputs, same key -- but it no longer decides
         whether a call gets recorded at all."""
         connection = FakeConnection()
-        journal = StepJournal(connection)
+        journal = StepJournal(FakePool(connection))
         inner = FakeLLMClient(text_result="same answer")
         client = JournaledLLMClient(inner, journal, call_role="reader")
 
@@ -317,7 +374,9 @@ class JournaledLLMClientTests(unittest.TestCase):
 
         self.assertEqual(len(connection.rows), 2)
         idempotency_index = 8
-        self.assertEqual(connection.rows[0][idempotency_index], connection.rows[1][idempotency_index])
+        self.assertEqual(
+            connection.rows[0][idempotency_index], connection.rows[1][idempotency_index]
+        )
 
 
 if __name__ == "__main__":

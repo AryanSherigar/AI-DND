@@ -30,6 +30,10 @@ export interface PlaythroughResponse {
   participants: ParticipantSummary[];
   // Master-mode-only; [] for newbie or no scenario_conditions currently true.
   active_conditions: string[];
+  // Populated once an end condition matches (status becomes "completed").
+  ended_outcome_tag: "win" | "lose" | null;
+  ended_outcome_title: string | null;
+  ended_outcome_text: string | null;
 }
 
 export async function createPlaythrough(

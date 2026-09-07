@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from context_memory.core.errors import ContractValidationError
 from context_memory.core.enums import IngestionJobState, MemoryScope, MemoryType
@@ -389,3 +389,13 @@ class IngestionJob:
             raise ContractValidationError("job.attempt_count", "must be a non-negative integer")
         if self.last_verified_state is not None and not isinstance(self.last_verified_state, IngestionJobState):
             raise ContractValidationError("job.last_verified_state", "must be a supported IngestionJobState")
+
+
+@dataclass(frozen=True)
+class BatchStatus:
+    batch_id: str
+    status: Literal["pending", "succeeded", "failed", "partial"]
+    facts_created: int
+    error: str | None = None
+    retryable: bool = False
+

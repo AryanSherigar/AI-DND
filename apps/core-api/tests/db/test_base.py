@@ -3,9 +3,6 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import schema
-from sqlalchemy.dialects import postgresql
-
 from app.db.base import (
     NAMING_CONVENTION,
     Base,
@@ -19,6 +16,8 @@ from app.db.models import (
     TurnLog,
     User,
 )
+from sqlalchemy import schema
+from sqlalchemy.dialects import postgresql
 
 
 def test_base_metadata_contains_all_tables() -> None:
@@ -110,6 +109,11 @@ def test_indexes_and_unique_constraints() -> None:
     turn_logs_table = Base.metadata.tables["turn_logs"]
     turn_logs_constraint_names = {c.name for c in turn_logs_table.constraints}
     assert "uq_turn_logs_playthrough_turn" in turn_logs_constraint_names
+
+    participants_table = Base.metadata.tables["participants"]
+    participants_constraint_names = {c.name for c in participants_table.constraints}
+    assert "uq_participants_playthrough_user" in participants_constraint_names
+    assert "uq_participants_turn_order" in participants_constraint_names
 
     users_table = Base.metadata.tables["users"]
     auth_col = users_table.columns["auth_provider_id"]

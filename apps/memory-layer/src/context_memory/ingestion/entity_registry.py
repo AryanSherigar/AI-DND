@@ -7,25 +7,66 @@ Bare `§N` references below are sections of docs/fixes_and_evaluation_findings.m
 
 from __future__ import annotations
 
+import threading
+from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Protocol
 
 from context_memory.core.logging import get_logger, record_event
-from context_memory.ingestion.entity_blocking import find_nickname_candidates, is_stable_for_fuzzy_matching
-from context_memory.ingestion.ports import BatchEntityResolutionModel, EntityNameIndex, EntityResolutionModel, GraphIdAllocator
-from context_memory.core.resolution import EntityProfile, EntityResolution, ResolutionStatus, canonicalize_entity_surface
+from context_memory.core.resolution import (
+    EntityProfile,
+    EntityResolution,
+    ResolutionStatus,
+    canonicalize_entity_surface,
+)
+from context_memory.ingestion.entity_blocking import (
+    find_nickname_candidates,
+    is_stable_for_fuzzy_matching,
+)
+from context_memory.ingestion.entity_hydration import HydratedEntity
+from context_memory.ingestion.ports import (
+    BatchEntityResolutionModel,
+    EntityNameIndex,
+    EntityResolutionModel,
+    GraphIdAllocator,
+)
 
 logger = get_logger(__name__)
 
 
+class EntityHydrator(Protocol):
+    """Bulk-reads a context's existing entities+aliases from durable storage
+    for `EntityRegistry`'s lazy per-context hydration. `HydraEntityHydrator`
+    (`ingestion.entity_hydration`) is the production implementation."""
+
+    def fetch(self, context_id: str) -> Sequence[HydratedEntity]: ...
+
+
 class EntityRegistry:
     def __init__(
-        self, allocator: GraphIdAllocator, name_index: EntityNameIndex | None = None,
-        model: EntityResolutionModel | None = None, batch_enabled: bool = True,
+        self,
+        allocator: GraphIdAllocator,
+        name_index: EntityNameIndex | None = None,
+        model: EntityResolutionModel | None = None,
+        batch_enabled: bool = True,
+        hydrator: EntityHydrator | None = None,
+        max_hydrated_contexts: int = 2000,
     ) -> None:
         self._allocator = allocator
         self._name_index = name_index
         self._model = model
+        self._hydrator = hydrator
+        self._max_hydrated_contexts = max_hydrated_contexts
+        # LRU-ordered "have I hydrated this context in this process" marker.
+        # Eviction here only drops the marker (a context re-hydrates, harmless
+        # extra read) -- it never drops `_profiles`/`_profile_ids_by_context`
+        # content, since that could be actively mid-ingestion and a re-read
+        # could lag an in-flight write for that same context. See
+        # `_mark_hydrated`.
+        self._hydrated_contexts: OrderedDict[str, None] = OrderedDict()
+        self._hydration_locks: dict[str, threading.Lock] = {}
+        self._hydration_locks_guard = threading.Lock()
         # §14: resolve_many batches mentions into one call when the model
         # supports resolve_entities() and this is True (default). Plain bool,
         # not a Config object, matching TemporalUpdateClassifier's pattern.
@@ -52,11 +93,15 @@ class EntityRegistry:
     def register(self, profile: EntityProfile) -> None:
         existing = self._profiles.get(profile.graph_id)
         if existing is not None and existing != profile:
-            raise ValueError(f"graph ID {profile.graph_id} has conflicting entity content")
+            raise ValueError(
+                f"graph ID {profile.graph_id} has conflicting entity content"
+            )
         is_new = profile.graph_id not in self._profiles
         self._profiles[profile.graph_id] = profile
         if is_new:
-            self._profile_ids_by_context.setdefault(profile.context_id, []).append(profile.graph_id)
+            self._profile_ids_by_context.setdefault(profile.context_id, []).append(
+                profile.graph_id
+            )
         self._index_profile(profile)
 
     def _index_profile(self, profile: EntityProfile) -> None:
@@ -80,11 +125,18 @@ class EntityRegistry:
             return
         try:
             self._name_index.add(
-                entity_id=str(profile.graph_id), name=profile.canonical_name,
-                entity_type=profile.entity_type, haystack_id=profile.context_id,
+                entity_id=str(profile.graph_id),
+                name=profile.canonical_name,
+                entity_type=profile.entity_type,
+                haystack_id=profile.context_id,
             )
         except Exception as error:
-            logger.warning("EntityNameIndex indexing failed for entity %s (%r): %s", profile.graph_id, profile.canonical_name, error)
+            logger.warning(
+                "EntityNameIndex indexing failed for entity %s (%r): %s",
+                profile.graph_id,
+                profile.canonical_name,
+                error,
+            )
 
     def _grow_alias(self, graph_id: int, canonical_surface: str) -> EntityProfile:
         """Called only after a model has explicitly confirmed
@@ -99,19 +151,28 @@ class EntityRegistry:
         deliberately rather than routing through `register()`.
         """
         existing = self._profiles[graph_id]
-        if canonical_surface == existing.canonical_name or canonical_surface in existing.aliases:
+        if (
+            canonical_surface == existing.canonical_name
+            or canonical_surface in existing.aliases
+        ):
             return existing  # already known under this exact form, nothing to grow
         grown = EntityProfile(
-            graph_id=existing.graph_id, context_id=existing.context_id,
-            canonical_name=existing.canonical_name, entity_type=existing.entity_type,
+            graph_id=existing.graph_id,
+            context_id=existing.context_id,
+            canonical_name=existing.canonical_name,
+            entity_type=existing.entity_type,
             aliases=(*existing.aliases, canonical_surface),
         )
         self._profiles[graph_id] = grown
         return grown
 
-    def resolve_entity(self, context_id: str, surface: str, entity_type: str = "other") -> EntityProfile | None:
+    def resolve_entity(
+        self, context_id: str, surface: str, entity_type: str = "other"
+    ) -> EntityProfile | None:
         """Helper adapter matching GraphPlanBuilder.ResolveEntity callable."""
-        res = self.resolve(context_id=context_id, surface=surface, entity_type=entity_type)
+        res = self.resolve(
+            context_id=context_id, surface=surface, entity_type=entity_type
+        )
         return res.entity
 
     def _in_context(self, context_id: str) -> list[EntityProfile]:
@@ -120,21 +181,116 @@ class EntityRegistry:
         # entry in place, same graph_id, same context_id) is always the
         # latest version -- the index only ever needs to track *membership*,
         # never the profile content itself.
-        return [self._profiles[gid] for gid in self._profile_ids_by_context.get(context_id, ())]
+        self._ensure_hydrated(context_id)
+        return [
+            self._profiles[gid]
+            for gid in self._profile_ids_by_context.get(context_id, ())
+        ]
 
-    def _exact_match(self, canonical: str, in_context: list[EntityProfile]) -> EntityResolution | None:
+    def _ensure_hydrated(self, context_id: str) -> None:
+        """Runs at most once per `context_id` per process (see
+        `_mark_hydrated`) -- always called before any `register()`/
+        `_grow_alias()` for that context, since both are only reachable
+        through `resolve()`/`resolve_many()`, which call `_in_context()`
+        first. NOTE: only covers entities a *prior* process instance wrote --
+        a different concurrent process writing new aliases for this context
+        after this process already hydrated it is not picked up (matches
+        today's single-instance deployment; see docs/BEGINNER_BUILD_FLOW.md
+        item 51)."""
+        if self._hydrator is None:
+            return
+        if context_id in self._hydrated_contexts:
+            self._hydrated_contexts.move_to_end(context_id)
+            return
+        with self._lock_for(context_id):
+            if context_id in self._hydrated_contexts:
+                self._hydrated_contexts.move_to_end(context_id)
+                return
+            self._hydrate(context_id)
+            self._mark_hydrated(context_id)
+
+    def _lock_for(self, context_id: str) -> threading.Lock:
+        with self._hydration_locks_guard:
+            return self._hydration_locks.setdefault(context_id, threading.Lock())
+
+    def _mark_hydrated(self, context_id: str) -> None:
+        self._hydrated_contexts[context_id] = None
+        if len(self._hydrated_contexts) > self._max_hydrated_contexts:
+            oldest_context_id, _ = self._hydrated_contexts.popitem(last=False)
+            with self._hydration_locks_guard:
+                self._hydration_locks.pop(oldest_context_id, None)
+
+    def _hydrate(self, context_id: str) -> None:
+        try:
+            hydrated = self._hydrator.fetch(context_id)
+        except Exception as error:
+            logger.warning(
+                "EntityRegistry hydration failed for context %s (%r); resolving as cold context",
+                context_id,
+                error,
+            )
+            return
+        if not hydrated:
+            return
+        # Bypasses `register()` deliberately: hydration only ever runs
+        # before this context has any profiles registered in this process
+        # (see `_ensure_hydrated`'s docstring), so `register()`'s conflict
+        # check has nothing to protect against, and its per-entity
+        # `name_index.add()` call would just duplicate the bulk encode
+        # `rebuild_from_entities` does below.
+        for entity in hydrated:
+            profile = EntityProfile(
+                entity.graph_id,
+                context_id,
+                entity.canonical_name,
+                entity.entity_type,
+                entity.aliases,
+            )
+            self._profiles[profile.graph_id] = profile
+            self._profile_ids_by_context.setdefault(context_id, []).append(
+                profile.graph_id
+            )
+        if self._name_index is not None:
+            indexed = self._name_index.rebuild_from_entities(
+                (str(e.graph_id), e.canonical_name, e.entity_type, context_id)
+                for e in hydrated
+            )
+            logger.info(
+                "EntityRegistry hydrated context %s: %d entities, %d indexed",
+                context_id,
+                len(hydrated),
+                indexed,
+            )
+
+    def _exact_match(
+        self, canonical: str, in_context: list[EntityProfile]
+    ) -> EntityResolution | None:
         """Canonical/alias exact match only -- never touches the model,
         never mutates the registry. Shared by `resolve()` and
         `resolve_many()` so both apply the identical short-circuit."""
-        canonicals = [profile for profile in in_context if canonicalize_entity_surface(profile.canonical_name) == canonical]
+        canonicals = [
+            profile
+            for profile in in_context
+            if canonicalize_entity_surface(profile.canonical_name) == canonical
+        ]
         if len(canonicals) == 1:
-            return EntityResolution(ResolutionStatus.EXACT_CANONICAL, canonicals[0], "exact canonical match")
-        aliases = [profile for profile in in_context if canonical in {canonicalize_entity_surface(a) for a in profile.aliases}]
+            return EntityResolution(
+                ResolutionStatus.EXACT_CANONICAL, canonicals[0], "exact canonical match"
+            )
+        aliases = [
+            profile
+            for profile in in_context
+            if canonical in {canonicalize_entity_surface(a) for a in profile.aliases}
+        ]
         if len(aliases) == 1:
-            return EntityResolution(ResolutionStatus.EXACT_ALIAS, aliases[0], "exact alias match")
+            return EntityResolution(
+                ResolutionStatus.EXACT_ALIAS, aliases[0], "exact alias match"
+            )
         return None
 
-    def _ambiguous_exact_matches(self, canonical: str, in_context: list[EntityProfile]) -> list[EntityProfile]:
+    def _ambiguous_exact_matches(
+        self, canonical: str, in_context: list[EntityProfile]
+    ) -> list[EntityProfile]:
         """Every profile whose canonical name or an alias exactly equals
         `canonical` -- used only when `_exact_match` found *more than one*
         (2+ profiles genuinely share the identical string, so neither
@@ -148,16 +304,29 @@ class EntityRegistry:
         string -- not a real blocking decision, a side effect of the
         signal that got removed. Fixed at the source instead of
         re-enabling trigram to paper over it."""
-        canonicals = [p for p in in_context if canonicalize_entity_surface(p.canonical_name) == canonical]
-        aliases = [p for p in in_context if canonical in {canonicalize_entity_surface(a) for a in p.aliases}]
+        canonicals = [
+            p
+            for p in in_context
+            if canonicalize_entity_surface(p.canonical_name) == canonical
+        ]
+        aliases = [
+            p
+            for p in in_context
+            if canonical in {canonicalize_entity_surface(a) for a in p.aliases}
+        ]
         seen: dict[int, EntityProfile] = {}
         for profile in [*canonicals, *aliases]:
             seen[profile.graph_id] = profile
         return list(seen.values())
 
     def _generate_shortlist(
-        self, context_id: str, surface: str, canonical: str, entity_type: str,
-        in_context: list[EntityProfile], candidate_ids: Iterable[int],
+        self,
+        context_id: str,
+        surface: str,
+        canonical: str,
+        entity_type: str,
+        in_context: list[EntityProfile],
+        candidate_ids: Iterable[int],
     ) -> dict[int, EntityProfile]:
         """Candidate generation ("blocking") -- two signals feed the same
         bounded shortlist the LLM disambiguator judges: curated nickname
@@ -200,7 +369,9 @@ class EntityRegistry:
                 if gid not in candidate_ids:
                     candidate_ids.append(gid)
             if is_stable_for_fuzzy_matching(canonical) and self._name_index:
-                semantic_candidates = self._name_index.find_candidates(query_name=surface, entity_type=entity_type, haystack_id=context_id)
+                semantic_candidates = self._name_index.find_candidates(
+                    query_name=surface, entity_type=entity_type, haystack_id=context_id
+                )
                 embedding_hits = len(semantic_candidates)
                 for c in semantic_candidates:
                     # EntityNameIndex returns string IDs; only usable here when they're graph IDs.
@@ -220,8 +391,12 @@ class EntityRegistry:
             # at real scale got measured in the first place (§4.6/4.7).
             record_event(
                 "entity_resolution.blocking",
-                {"canonical": canonical, "nickname_hits": nickname_hits, "embedding_hits": embedding_hits,
-                 "total_candidates": len(candidate_ids)},
+                {
+                    "canonical": canonical,
+                    "nickname_hits": nickname_hits,
+                    "embedding_hits": embedding_hits,
+                    "total_candidates": len(candidate_ids),
+                },
             )
 
         shortlist: dict[int, EntityProfile] = {}
@@ -247,22 +422,46 @@ class EntityRegistry:
         exact = self._exact_match(canonical, in_context)
         if exact is not None:
             return exact
-        candidate_ids = list(candidate_ids) or [p.graph_id for p in self._ambiguous_exact_matches(canonical, in_context)]
+        candidate_ids = list(candidate_ids) or [
+            p.graph_id for p in self._ambiguous_exact_matches(canonical, in_context)
+        ]
 
-        shortlist = self._generate_shortlist(context_id, surface, canonical, entity_type, in_context, candidate_ids)
+        shortlist = self._generate_shortlist(
+            context_id, surface, canonical, entity_type, in_context, candidate_ids
+        )
         if shortlist:
             if effective_model is None:
-                return EntityResolution(ResolutionStatus.UNRESOLVED, None, "ambiguous candidate set requires model")
-            selected_id = effective_model.resolve_entity(context_id=context_id, surface=surface, candidates=tuple(shortlist.values()))
+                return EntityResolution(
+                    ResolutionStatus.UNRESOLVED,
+                    None,
+                    "ambiguous candidate set requires model",
+                )
+            selected_id = effective_model.resolve_entity(
+                context_id=context_id,
+                surface=surface,
+                candidates=tuple(shortlist.values()),
+            )
             selected = shortlist.get(selected_id) if selected_id is not None else None
             if selected is None:
-                return EntityResolution(ResolutionStatus.UNRESOLVED, None, "model abstained or selected outside bounded candidates")
+                return EntityResolution(
+                    ResolutionStatus.UNRESOLVED,
+                    None,
+                    "model abstained or selected outside bounded candidates",
+                )
             grown = self._grow_alias(selected.graph_id, canonical)
-            return EntityResolution(ResolutionStatus.MODEL_RESOLVED, grown, "model selected bounded candidate")
-        graph_id = self._allocator.allocate_graph_id("entity", context_id, f"entity:{canonical}")
+            return EntityResolution(
+                ResolutionStatus.MODEL_RESOLVED,
+                grown,
+                "model selected bounded candidate",
+            )
+        graph_id = self._allocator.allocate_graph_id(
+            "entity", context_id, f"entity:{canonical}"
+        )
         profile = EntityProfile(graph_id, context_id, canonical, entity_type)
         self.register(profile)
-        return EntityResolution(ResolutionStatus.NEW_ENTITY, profile, "no candidate in active context")
+        return EntityResolution(
+            ResolutionStatus.NEW_ENTITY, profile, "no candidate in active context"
+        )
 
     def resolve_many(
         self,
@@ -349,9 +548,15 @@ class EntityRegistry:
         # for why this can't be left to blocking to rediscover.
         shortlists: dict[str, dict[int, EntityProfile]] = {
             canonical: self._generate_shortlist(
-                context_id, surface_for_prompt_by_canonical[canonical], canonical,
-                entity_type_by_surface[canonical], in_context,
-                [p.graph_id for p in self._ambiguous_exact_matches(canonical, in_context)],
+                context_id,
+                surface_for_prompt_by_canonical[canonical],
+                canonical,
+                entity_type_by_surface[canonical],
+                in_context,
+                [
+                    p.graph_id
+                    for p in self._ambiguous_exact_matches(canonical, in_context)
+                ],
             )
             for canonical in pending_indices_by_surface
         }
@@ -362,28 +567,49 @@ class EntityRegistry:
         # supports it and batching is enabled (§14) -- cuts request count,
         # the actual pressure point under concurrency; falls back to firing
         # one concurrent call per surface otherwise (unchanged from before).
-        to_call = [canonical for canonical, shortlist in shortlists.items() if shortlist]
+        to_call = [
+            canonical for canonical, shortlist in shortlists.items() if shortlist
+        ]
         model_results: dict[str, EntityProfile | None] = {}
         if to_call and effective_model is not None:
-            if self._batch_enabled and isinstance(effective_model, BatchEntityResolutionModel):
+            if self._batch_enabled and isinstance(
+                effective_model, BatchEntityResolutionModel
+            ):
                 batch_mentions = [
-                    (surface_for_prompt_by_canonical[canonical], tuple(shortlists[canonical].values()))
+                    (
+                        surface_for_prompt_by_canonical[canonical],
+                        tuple(shortlists[canonical].values()),
+                    )
                     for canonical in to_call
                 ]
-                selected = effective_model.resolve_entities(context_id=context_id, mentions=batch_mentions)
+                selected = effective_model.resolve_entities(
+                    context_id=context_id, mentions=batch_mentions
+                )
                 for slot, canonical in enumerate(to_call):
                     selected_id = selected.get(slot)
-                    model_results[canonical] = shortlists[canonical].get(selected_id) if selected_id is not None else None
+                    model_results[canonical] = (
+                        shortlists[canonical].get(selected_id)
+                        if selected_id is not None
+                        else None
+                    )
             else:
+
                 def _call_model(canonical: str) -> EntityProfile | None:
                     shortlist = shortlists[canonical]
                     selected_id = effective_model.resolve_entity(
-                        context_id=context_id, surface=surface_for_prompt_by_canonical[canonical], candidates=tuple(shortlist.values()),
+                        context_id=context_id,
+                        surface=surface_for_prompt_by_canonical[canonical],
+                        candidates=tuple(shortlist.values()),
                     )
-                    return shortlist.get(selected_id) if selected_id is not None else None
+                    return (
+                        shortlist.get(selected_id) if selected_id is not None else None
+                    )
 
                 with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                    future_to_canonical = {pool.submit(_call_model, canonical): canonical for canonical in to_call}
+                    future_to_canonical = {
+                        pool.submit(_call_model, canonical): canonical
+                        for canonical in to_call
+                    }
                     for future in as_completed(future_to_canonical):
                         canonical = future_to_canonical[future]
                         model_results[canonical] = future.result()
@@ -391,18 +617,27 @@ class EntityRegistry:
         # Phase 4: apply mutations serially, in a stable order (first
         # occurrence in `mentions`, not completion order) so replay/
         # idempotency behavior never depends on network timing.
-        for canonical in sorted(pending_indices_by_surface, key=lambda c: pending_indices_by_surface[c][0]):
+        for canonical in sorted(
+            pending_indices_by_surface, key=lambda c: pending_indices_by_surface[c][0]
+        ):
             shortlist = shortlists[canonical]
             if not shortlist:
-                graph_id = self._allocator.allocate_graph_id("entity", context_id, f"entity:{canonical}")
-                profile = EntityProfile(graph_id, context_id, canonical, entity_type_by_surface[canonical])
+                graph_id = self._allocator.allocate_graph_id(
+                    "entity", context_id, f"entity:{canonical}"
+                )
+                profile = EntityProfile(
+                    graph_id, context_id, canonical, entity_type_by_surface[canonical]
+                )
                 self.register(profile)
                 resolved_profile: EntityProfile | None = profile
             else:
                 selected = model_results.get(canonical)
-                resolved_profile = self._grow_alias(selected.graph_id, canonical) if selected is not None else None
+                resolved_profile = (
+                    self._grow_alias(selected.graph_id, canonical)
+                    if selected is not None
+                    else None
+                )
             for i in pending_indices_by_surface[canonical]:
                 resolved_by_index[i] = resolved_profile
 
         return resolved_by_index
-

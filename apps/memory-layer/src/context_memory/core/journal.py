@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import contextvars
 import json
-import threading
 import time
 import uuid
 from collections.abc import Iterator
@@ -29,7 +28,9 @@ from context_memory.core.tracing import get_tracer
 
 logger = get_logger(__name__)
 
-_correlation_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("correlation_id", default=None)
+_correlation_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "correlation_id", default=None
+)
 
 
 @dataclass(frozen=True)
@@ -54,7 +55,9 @@ class JournalContext:
 
 
 _EMPTY_CONTEXT = JournalContext()
-_journal_context: contextvars.ContextVar[JournalContext] = contextvars.ContextVar("journal_context", default=_EMPTY_CONTEXT)
+_journal_context: contextvars.ContextVar[JournalContext] = contextvars.ContextVar(
+    "journal_context", default=_EMPTY_CONTEXT
+)
 
 
 def hash_request(*parts: str) -> str:
@@ -84,7 +87,9 @@ def current_journal_context() -> JournalContext:
 
 
 @contextmanager
-def correlation_scope(context: JournalContext | None = None, *, existing: str | None = None) -> Iterator[str]:
+def correlation_scope(
+    context: JournalContext | None = None, *, existing: str | None = None
+) -> Iterator[str]:
     """One correlation id (and one `JournalContext`) per logical request/turn.
     Reuses the ambient values if already inside a scope (e.g. `search_memories`
     called from within `generate_reply`) rather than minting new ones --
@@ -116,7 +121,9 @@ def correlation_scope(context: JournalContext | None = None, *, existing: str | 
         if context.scenario_id:
             span_attributes["mem1.scenario_id"] = context.scenario_id
     try:
-        with get_tracer().start_as_current_span("mem1.request", attributes=span_attributes):
+        with get_tracer().start_as_current_span(
+            "mem1.request", attributes=span_attributes
+        ):
             yield correlation_id
     finally:
         _correlation_id.reset(correlation_token)
@@ -128,19 +135,26 @@ class StepJournal:
     into the caller: a journal outage must never break a real request, the
     same posture `timed_operation` already takes for logging.
 
-    `_lock` serializes access to `_connection`: Phase 0's temporal
-    resolver and query rewriter already run concurrently (their own
-    `ThreadPoolExecutor`, since Track A), and a psycopg `Connection` is not
-    safe for concurrent use from multiple threads without external
-    synchronization -- confirmed live, not theoretical: an unserialized
-    30-instance oracle run journaled only ~7 of the ~30 real, distinct
-    calls per role, with zero raised exceptions to explain the gap (a data
-    race, not a crash). One lock around the insert costs nothing an audit
-    log's write volume would ever notice."""
+    Takes the shared `ConnectionPool`, not a single connection, and acquires
+    one via `pool.connection()` per `record()` call -- the same pattern every
+    other store in `persistence/postgres.py` already uses. This is what makes
+    concurrent calls safe: Phase 0's temporal resolver and query rewriter
+    already run concurrently (their own `ThreadPoolExecutor`, since Track A),
+    and a single psycopg `Connection` is not safe for concurrent use from
+    multiple threads without external synchronization -- confirmed live, not
+    theoretical: an early version sharing one connection across threads
+    journaled only ~7 of ~30 real, distinct calls per role in a 30-instance
+    oracle run, with zero raised exceptions to explain the gap (a data race,
+    not a crash). Per-call pool acquisition removes the shared mutable state
+    that race depended on -- each thread gets its own physical connection, so
+    there's nothing left to serialize with an app-level lock. It also means a
+    dropped/expired connection (Cloud SQL idle timeout, restart, network
+    blip) no longer takes journaling down for the rest of the process: the
+    next `record()` call just acquires a fresh connection from the pool
+    instead of retrying a connection that's permanently dead."""
 
-    def __init__(self, connection: object) -> None:
-        self._connection = connection
-        self._lock = threading.Lock()
+    def __init__(self, pool: object) -> None:
+        self._pool = pool
 
     def record(
         self,
@@ -160,56 +174,86 @@ class StepJournal:
         correlation_id = current_correlation() or uuid.uuid4().hex
         step_id = uuid.uuid4().hex
         self._emit_span(
-            step_type=step_type, call_role=call_role, idempotency_key=idempotency_key,
-            model_name=model_name, outcome=outcome, error_message=error_message,
-            elapsed_ms=elapsed_ms, context=context, correlation_id=correlation_id,
+            step_type=step_type,
+            call_role=call_role,
+            idempotency_key=idempotency_key,
+            model_name=model_name,
+            outcome=outcome,
+            error_message=error_message,
+            elapsed_ms=elapsed_ms,
+            context=context,
+            correlation_id=correlation_id,
         )
         try:
-            with self._lock, self._connection.transaction():
-                with self._connection.cursor() as cursor:
-                    # §10 fix: was `ON CONFLICT (step_type, idempotency_key)
-                    # DO NOTHING` -- a real unique constraint on the request
-                    # FINGERPRINT, not the event. Two genuinely distinct
-                    # calls (different correlation_id/request, or the same
-                    # prompt legitimately retried twice within one request)
-                    # that happen to hash to the same idempotency_key
-                    # silently lost every occurrence after the first, with
-                    # no error and no trace it happened. `step_id` (the
-                    # actual PRIMARY KEY, a fresh uuid4 every call) is
-                    # already a real, collision-free event identity -- this
-                    # table is append-only now, one row per call, always.
-                    # `idempotency_key` stays a queryable fingerprint column
-                    # (still indexed, just no longer unique) for finding
-                    # "calls that were the same request", not for silently
-                    # merging them.
-                    cursor.execute(
-                        """
-                        INSERT INTO journal_steps (
-                            step_id, correlation_id, context_id, session_id, turn_index, scenario_id,
-                            step_type, call_role, idempotency_key, model_name,
-                            request_payload, response_payload, outcome, error_message, elapsed_ms
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (step_id) DO NOTHING
-                        """,
-                        (
-                            step_id, correlation_id, context.context_id, context.session_id, context.turn_index,
-                            context.scenario_id,
-                            step_type, call_role, idempotency_key, model_name,
-                            json.dumps(request_payload, sort_keys=True),
-                            json.dumps(response_payload, sort_keys=True) if response_payload is not None else None,
-                            outcome, error_message, elapsed_ms,
-                        ),
-                    )
+            with self._pool.connection() as conn:
+                with conn.transaction():
+                    with conn.cursor() as cursor:
+                        # §10 fix: was `ON CONFLICT (step_type, idempotency_key)
+                        # DO NOTHING` -- a real unique constraint on the request
+                        # FINGERPRINT, not the event. Two genuinely distinct
+                        # calls (different correlation_id/request, or the same
+                        # prompt legitimately retried twice within one request)
+                        # that happen to hash to the same idempotency_key
+                        # silently lost every occurrence after the first, with
+                        # no error and no trace it happened. `step_id` (the
+                        # actual PRIMARY KEY, a fresh uuid4 every call) is
+                        # already a real, collision-free event identity -- this
+                        # table is append-only now, one row per call, always.
+                        # `idempotency_key` stays a queryable fingerprint column
+                        # (still indexed, just no longer unique) for finding
+                        # "calls that were the same request", not for silently
+                        # merging them.
+                        cursor.execute(
+                            """
+                            INSERT INTO journal_steps (
+                                step_id, correlation_id, context_id, session_id, turn_index, scenario_id,
+                                step_type, call_role, idempotency_key, model_name,
+                                request_payload, response_payload, outcome, error_message, elapsed_ms
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (step_id) DO NOTHING
+                            """,
+                            (
+                                step_id,
+                                correlation_id,
+                                context.context_id,
+                                context.session_id,
+                                context.turn_index,
+                                context.scenario_id,
+                                step_type,
+                                call_role,
+                                idempotency_key,
+                                model_name,
+                                json.dumps(request_payload, sort_keys=True),
+                                json.dumps(response_payload, sort_keys=True)
+                                if response_payload is not None
+                                else None,
+                                outcome,
+                                error_message,
+                                elapsed_ms,
+                            ),
+                        )
             return step_id
         except Exception as error:
-            logger.warning("journal_steps insert failed for %s (%s): %s", step_type, idempotency_key, error)
+            logger.warning(
+                "journal_steps insert failed for %s (%s): %s",
+                step_type,
+                idempotency_key,
+                error,
+            )
             return None
 
     @staticmethod
     def _emit_span(
-        *, step_type: str, call_role: str | None, idempotency_key: str, model_name: str | None,
-        outcome: Literal["ok", "error"], error_message: str | None, elapsed_ms: float,
-        context: JournalContext, correlation_id: str,
+        *,
+        step_type: str,
+        call_role: str | None,
+        idempotency_key: str,
+        model_name: str | None,
+        outcome: Literal["ok", "error"],
+        error_message: str | None,
+        elapsed_ms: float,
+        context: JournalContext,
+        correlation_id: str,
     ) -> None:
         """Reconstructs a span after the fact from data `record()` already
         has -- no separate span-per-call-site instrumentation to keep in
@@ -217,7 +261,9 @@ class StepJournal:
         outage is: never break the request for observability."""
         try:
             attributes: dict[str, Any] = {
-                "mem1.step_type": step_type, "mem1.correlation_id": correlation_id, "mem1.idempotency_key": idempotency_key,
+                "mem1.step_type": step_type,
+                "mem1.correlation_id": correlation_id,
+                "mem1.idempotency_key": idempotency_key,
             }
             if call_role:
                 attributes["mem1.call_role"] = call_role
@@ -231,7 +277,9 @@ class StepJournal:
                 attributes[gen_ai_attributes.GEN_AI_REQUEST_MODEL] = model_name
             span_name = step_type
             if step_type.startswith("llm."):
-                attributes[gen_ai_attributes.GEN_AI_OPERATION_NAME] = gen_ai_attributes.GenAiOperationNameValues.CHAT.value
+                attributes[gen_ai_attributes.GEN_AI_OPERATION_NAME] = (
+                    gen_ai_attributes.GenAiOperationNameValues.CHAT.value
+                )
                 # `GEN_AI_PROVIDER_NAME` isn't exported by this repo's pinned
                 # opentelemetry-semantic-conventions floor (0.48b0) -- it's an
                 # `_incubating` module, so the constant name isn't stable
@@ -242,11 +290,22 @@ class StepJournal:
 
             end_ns = time.time_ns()
             start_ns = end_ns - int(elapsed_ms * 1_000_000)
-            span = get_tracer().start_span(span_name, start_time=start_ns, attributes=attributes)
-            span.set_status(Status(StatusCode.ERROR, error_message or "") if outcome == "error" else Status(StatusCode.OK))
+            span = get_tracer().start_span(
+                span_name, start_time=start_ns, attributes=attributes
+            )
+            span.set_status(
+                Status(StatusCode.ERROR, error_message or "")
+                if outcome == "error"
+                else Status(StatusCode.OK)
+            )
             span.end(end_time=end_ns)
         except Exception as error:
-            logger.warning("span emission failed for %s (%s): %s", step_type, idempotency_key, error)
+            logger.warning(
+                "span emission failed for %s (%s): %s",
+                step_type,
+                idempotency_key,
+                error,
+            )
 
 
 class JournaledLLMClient:
@@ -273,26 +332,48 @@ class JournaledLLMClient:
         schema_name = response_schema.__name__
         step_type = f"llm.structured_completion[{schema_name}]"
         model_name = getattr(self._inner, "model", None)
-        idempotency_key = hash_request(self._call_role, model_name or "", system_prompt, user_prompt, schema_name)
-        request_payload = {"system_prompt": system_prompt, "user_prompt": user_prompt, "schema": schema_name}
+        idempotency_key = hash_request(
+            self._call_role, model_name or "", system_prompt, user_prompt, schema_name
+        )
+        request_payload = {
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "schema": schema_name,
+        }
 
         start = time.monotonic()
         try:
             result = self._inner.structured_completion(
-                system_prompt, user_prompt, response_schema,
-                temperature=temperature, max_tokens=max_tokens, timeout=timeout, max_retries=max_retries,
+                system_prompt,
+                user_prompt,
+                response_schema,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
+                max_retries=max_retries,
             )
         except Exception as error:
             self._journal.record(
-                step_type=step_type, call_role=self._call_role, idempotency_key=idempotency_key,
-                request_payload=request_payload, response_payload=None, outcome="error",
-                elapsed_ms=(time.monotonic() - start) * 1000, model_name=model_name, error_message=str(error),
+                step_type=step_type,
+                call_role=self._call_role,
+                idempotency_key=idempotency_key,
+                request_payload=request_payload,
+                response_payload=None,
+                outcome="error",
+                elapsed_ms=(time.monotonic() - start) * 1000,
+                model_name=model_name,
+                error_message=str(error),
             )
             raise
         self._journal.record(
-            step_type=step_type, call_role=self._call_role, idempotency_key=idempotency_key,
-            request_payload=request_payload, response_payload=result.model_dump(mode="json"), outcome="ok",
-            elapsed_ms=(time.monotonic() - start) * 1000, model_name=model_name,
+            step_type=step_type,
+            call_role=self._call_role,
+            idempotency_key=idempotency_key,
+            request_payload=request_payload,
+            response_payload=result.model_dump(mode="json"),
+            outcome="ok",
+            elapsed_ms=(time.monotonic() - start) * 1000,
+            model_name=model_name,
         )
         return result
 
@@ -307,25 +388,42 @@ class JournaledLLMClient:
     ) -> str:
         step_type = "llm.text_completion"
         model_name = getattr(self._inner, "model", None)
-        idempotency_key = hash_request(self._call_role, model_name or "", system_prompt, user_prompt)
+        idempotency_key = hash_request(
+            self._call_role, model_name or "", system_prompt, user_prompt
+        )
         request_payload = {"system_prompt": system_prompt, "user_prompt": user_prompt}
 
         start = time.monotonic()
         try:
             result = self._inner.text_completion(
-                system_prompt, user_prompt, temperature, max_tokens=max_tokens, timeout=timeout,
+                system_prompt,
+                user_prompt,
+                temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
             )
         except Exception as error:
             self._journal.record(
-                step_type=step_type, call_role=self._call_role, idempotency_key=idempotency_key,
-                request_payload=request_payload, response_payload=None, outcome="error",
-                elapsed_ms=(time.monotonic() - start) * 1000, model_name=model_name, error_message=str(error),
+                step_type=step_type,
+                call_role=self._call_role,
+                idempotency_key=idempotency_key,
+                request_payload=request_payload,
+                response_payload=None,
+                outcome="error",
+                elapsed_ms=(time.monotonic() - start) * 1000,
+                model_name=model_name,
+                error_message=str(error),
             )
             raise
         self._journal.record(
-            step_type=step_type, call_role=self._call_role, idempotency_key=idempotency_key,
-            request_payload=request_payload, response_payload={"text": result}, outcome="ok",
-            elapsed_ms=(time.monotonic() - start) * 1000, model_name=model_name,
+            step_type=step_type,
+            call_role=self._call_role,
+            idempotency_key=idempotency_key,
+            request_payload=request_payload,
+            response_payload={"text": result},
+            outcome="ok",
+            elapsed_ms=(time.monotonic() - start) * 1000,
+            model_name=model_name,
         )
         return result
 
@@ -338,7 +436,10 @@ class JournaledLLMClient:
         step_type = "llm.chat_with_tools"
         model_name = getattr(self._inner, "model", None)
         idempotency_key = hash_request(
-            self._call_role, model_name or "", json.dumps(messages, sort_keys=True), json.dumps(tools or [], sort_keys=True)
+            self._call_role,
+            model_name or "",
+            json.dumps(messages, sort_keys=True),
+            json.dumps(tools or [], sort_keys=True),
         )
         request_payload = {"messages": messages, "tools": tools}
 
@@ -347,22 +448,37 @@ class JournaledLLMClient:
             response = self._inner.chat_with_tools(messages, tools, **kwargs)
         except Exception as error:
             self._journal.record(
-                step_type=step_type, call_role=self._call_role, idempotency_key=idempotency_key,
-                request_payload=request_payload, response_payload=None, outcome="error",
-                elapsed_ms=(time.monotonic() - start) * 1000, model_name=model_name, error_message=str(error),
+                step_type=step_type,
+                call_role=self._call_role,
+                idempotency_key=idempotency_key,
+                request_payload=request_payload,
+                response_payload=None,
+                outcome="error",
+                elapsed_ms=(time.monotonic() - start) * 1000,
+                model_name=model_name,
+                error_message=str(error),
             )
             raise
         message = response.choices[0].message
         response_payload = {
             "content": message.content,
             "tool_calls": [
-                {"id": tc.id, "name": tc.function.name, "arguments": tc.function.arguments}
+                {
+                    "id": tc.id,
+                    "name": tc.function.name,
+                    "arguments": tc.function.arguments,
+                }
                 for tc in (message.tool_calls or [])
             ],
         }
         self._journal.record(
-            step_type=step_type, call_role=self._call_role, idempotency_key=idempotency_key,
-            request_payload=request_payload, response_payload=response_payload, outcome="ok",
-            elapsed_ms=(time.monotonic() - start) * 1000, model_name=model_name,
+            step_type=step_type,
+            call_role=self._call_role,
+            idempotency_key=idempotency_key,
+            request_payload=request_payload,
+            response_payload=response_payload,
+            outcome="ok",
+            elapsed_ms=(time.monotonic() - start) * 1000,
+            model_name=model_name,
         )
         return response

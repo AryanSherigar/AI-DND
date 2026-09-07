@@ -2,11 +2,10 @@
 
 import uuid
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class PlaythroughRepo:
@@ -24,6 +23,18 @@ class PlaythroughRepo:
     async def get_by_id(self, playthrough_id: uuid.UUID) -> Playthrough | None:
         """Retrieve a playthrough by its primary key ID."""
         stmt = select(Playthrough).where(Playthrough.playthrough_id == playthrough_id)
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
+    async def get_by_id_for_update(
+        self, playthrough_id: uuid.UUID
+    ) -> Playthrough | None:
+        """Retrieve a playthrough by primary key with an exclusive row lock (FOR UPDATE)."""
+        stmt = (
+            select(Playthrough)
+            .where(Playthrough.playthrough_id == playthrough_id)
+            .with_for_update()
+        )
         result = await self.session.execute(stmt)
         return result.scalars().first()
 

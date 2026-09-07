@@ -19,7 +19,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - aidnd-net
+      - backend-net
 
   migration-runner:
     build:
@@ -34,7 +34,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - aidnd-net
+      - backend-net
 
   core-api:
     build:
@@ -64,7 +64,8 @@ services:
       migration-runner:
         condition: service_completed_successfully
     networks:
-      - aidnd-net
+      - frontend-net
+      - backend-net
 
   turn-resolution-service:
     build:
@@ -88,7 +89,8 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - aidnd-net
+      - frontend-net
+      - backend-net
 
   postgres-memory:
     image: pgvector/pgvector:0.8.6-pg16-bookworm
@@ -106,7 +108,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - aidnd-net
+      - backend-net
 
   hydradb:
     build:
@@ -139,7 +141,7 @@ services:
       timeout: 3s
       retries: 20
     networks:
-      - aidnd-net
+      - backend-net
 
   memory-layer-migration-runner:
     build:
@@ -154,7 +156,7 @@ services:
       postgres-memory:
         condition: service_healthy
     networks:
-      - aidnd-net
+      - backend-net
 
   memory-layer:
     build:
@@ -183,7 +185,7 @@ services:
       memory-layer-migration-runner:
         condition: service_completed_successfully
     networks:
-      - aidnd-net
+      - backend-net
 
   frontend:
     build:
@@ -207,10 +209,12 @@ services:
       - core-api
       - turn-resolution-service
     networks:
-      - aidnd-net
+      - frontend-net
 
 networks:
-  aidnd-net:
+  frontend-net:
+    driver: bridge
+  backend-net:
     driver: bridge
 
 volumes:

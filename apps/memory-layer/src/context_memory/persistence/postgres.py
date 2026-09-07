@@ -10,9 +10,14 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from context_memory.core.enums import IngestionJobState, is_legal_job_transition
-from context_memory.core.errors import GraphPayloadConflictError, IllegalJobTransitionError, ImmutableRecordConflictError
+from context_memory.core.errors import (
+    GraphPayloadConflictError,
+    IllegalJobTransitionError,
+    ImmutableRecordConflictError,
+)
 from context_memory.core.graph import GraphNode, GraphRelationship, GraphWritePlan
 from context_memory.core.models import (
+    BatchStatus,
     Chunk,
     ContextBatch,
     ContextRecord,
@@ -21,7 +26,6 @@ from context_memory.core.models import (
     IngestionJob,
     SourceDescriptor,
 )
-from context_memory.ingestion.batch_models import BatchStatus
 
 
 class PostgresChunkStore:
@@ -122,7 +126,9 @@ class PostgresChunkStore:
             metadata=row[10],
         )
 
-    def allocate_graph_id(self, node_kind: str, context_id: str, logical_key: str) -> int:
+    def allocate_graph_id(
+        self, node_kind: str, context_id: str, logical_key: str
+    ) -> int:
         with self._pool.connection() as conn:
             with conn.transaction():
                 with conn.cursor() as cursor:
@@ -171,8 +177,16 @@ class PostgresExtractionStore:
                         ) VALUES (%s, %s, %s, %s, %s, 'deterministic_fixture', 'baseline_only', %s, %s, %s)
                         ON CONFLICT (attempt_id) DO NOTHING
                         """,
-                        (attempt_id, chunk.chunk_id, chunk.context_id, extractor_name, extractor_version,
-                         chunk.content_hash, len(accepted_items), len(rejected_items)),
+                        (
+                            attempt_id,
+                            chunk.chunk_id,
+                            chunk.context_id,
+                            extractor_name,
+                            extractor_version,
+                            chunk.content_hash,
+                            len(accepted_items),
+                            len(rejected_items),
+                        ),
                     )
                     for candidate in accepted_items:
                         assert isinstance(candidate, ExtractedMemoryCandidate)
@@ -186,14 +200,29 @@ class PostgresExtractionStore:
                             ON CONFLICT (attempt_id, candidate_id) DO NOTHING
                             """,
                             (
-                                attempt_id, candidate.candidate_id, candidate.text, candidate.memory_type.value,
-                                candidate.scope_type.value, candidate.scope_id, candidate.source_span.source_record_id,
-                                candidate.source_span.source_start, candidate.source_span.source_end, candidate.confidence,
-                                candidate.temporal.observed_at, candidate.temporal.valid_from, candidate.temporal.valid_to,
-                                json.dumps([
-                                    {"surface": entity.surface, "entity_type": entity.entity_type}
-                                    for entity in candidate.entities
-                                ], sort_keys=True),
+                                attempt_id,
+                                candidate.candidate_id,
+                                candidate.text,
+                                candidate.memory_type.value,
+                                candidate.scope_type.value,
+                                candidate.scope_id,
+                                candidate.source_span.source_record_id,
+                                candidate.source_span.source_start,
+                                candidate.source_span.source_end,
+                                candidate.confidence,
+                                candidate.temporal.observed_at,
+                                candidate.temporal.valid_from,
+                                candidate.temporal.valid_to,
+                                json.dumps(
+                                    [
+                                        {
+                                            "surface": entity.surface,
+                                            "entity_type": entity.entity_type,
+                                        }
+                                        for entity in candidate.entities
+                                    ],
+                                    sort_keys=True,
+                                ),
                             ),
                         )
 
@@ -207,15 +236,27 @@ class PostgresExtractionStore:
                             ON CONFLICT (attempt_id, ordinal) DO NOTHING
                             """,
                             (
-                                attempt_id, ordinal, item.candidate_id, item.reason,
-                                json.dumps({
-                                    "candidate_id": draft.candidate_id, "text": draft.text,
-                                    "source_start": draft.source_start, "source_end": draft.source_end,
-                                    "confidence": draft.confidence,
-                                    "memory_type": draft.memory_type.value if draft.memory_type else None,
-                                    "scope_type": draft.scope_type.value if draft.scope_type else None,
-                                    "scope_id": draft.scope_id,
-                                }, sort_keys=True),
+                                attempt_id,
+                                ordinal,
+                                item.candidate_id,
+                                item.reason,
+                                json.dumps(
+                                    {
+                                        "candidate_id": draft.candidate_id,
+                                        "text": draft.text,
+                                        "source_start": draft.source_start,
+                                        "source_end": draft.source_end,
+                                        "confidence": draft.confidence,
+                                        "memory_type": draft.memory_type.value
+                                        if draft.memory_type
+                                        else None,
+                                        "scope_type": draft.scope_type.value
+                                        if draft.scope_type
+                                        else None,
+                                        "scope_id": draft.scope_id,
+                                    },
+                                    sort_keys=True,
+                                ),
                             ),
                         )
 
@@ -244,7 +285,9 @@ class PostgresGraphManifestStore:
     service as an "undo" marker.
     """
 
-    NODE_MUTABLE_PROPERTIES = frozenset({"is_current", "superseded_at", "valid_to", "archived"})
+    NODE_MUTABLE_PROPERTIES = frozenset(
+        {"is_current", "superseded_at", "valid_to", "archived"}
+    )
 
     def __init__(self, pool: object) -> None:
         self._pool = pool
@@ -254,7 +297,9 @@ class PostgresGraphManifestStore:
             with conn.transaction():
                 with conn.cursor() as cursor:
                     for record in plan.records():
-                        kind = "node" if isinstance(record, GraphNode) else "relationship"
+                        kind = (
+                            "node" if isinstance(record, GraphNode) else "relationship"
+                        )
                         payload_hash = plan.payload_hash(record)
                         cursor.execute(
                             "SELECT graph_id, payload_hash, payload FROM graph_write_manifests WHERE record_kind = %s AND context_id = %s AND logical_key = %s FOR UPDATE",
@@ -262,28 +307,52 @@ class PostgresGraphManifestStore:
                         )
                         existing = cursor.fetchone()
                         if existing is not None:
-                            existing_graph_id, existing_hash, existing_payload = existing
-                            if (existing_graph_id, existing_hash) == (record.graph_id, payload_hash):
+                            existing_graph_id, existing_hash, existing_payload = (
+                                existing
+                            )
+                            if (existing_graph_id, existing_hash) == (
+                                record.graph_id,
+                                payload_hash,
+                            ):
                                 continue
                             merged_payload = None
                             if kind == "node" and existing_graph_id == record.graph_id:
-                                merged_payload = self._merge_mutable_only(existing_payload, self._payload(record))
+                                merged_payload = self._merge_mutable_only(
+                                    existing_payload, self._payload(record)
+                                )
                             if merged_payload is None:
-                                raise GraphPayloadConflictError(f"{kind} {record.logical_key} has a different immutable graph payload")
+                                raise GraphPayloadConflictError(
+                                    f"{kind} {record.logical_key} has a different immutable graph payload"
+                                )
                             merged_hash = self._hash(merged_payload)
                             cursor.execute(
                                 "UPDATE graph_write_manifests SET payload_hash = %s, payload = %s::jsonb "
                                 "WHERE record_kind = %s AND context_id = %s AND logical_key = %s",
-                                (merged_hash, json.dumps(merged_payload, sort_keys=True), kind, plan.context_id, record.logical_key),
+                                (
+                                    merged_hash,
+                                    json.dumps(merged_payload, sort_keys=True),
+                                    kind,
+                                    plan.context_id,
+                                    record.logical_key,
+                                ),
                             )
                             continue
                         cursor.execute(
                             "INSERT INTO graph_write_manifests (record_kind, context_id, logical_key, graph_id, payload_hash, payload) VALUES (%s, %s, %s, %s, %s, %s::jsonb)",
-                            (kind, plan.context_id, record.logical_key, record.graph_id, payload_hash, json.dumps(self._payload(record), sort_keys=True)),
+                            (
+                                kind,
+                                plan.context_id,
+                                record.logical_key,
+                                record.graph_id,
+                                payload_hash,
+                                json.dumps(self._payload(record), sort_keys=True),
+                            ),
                         )
 
     @classmethod
-    def _merge_mutable_only(cls, existing_payload: dict[str, object], new_payload: dict[str, object]) -> dict[str, object] | None:
+    def _merge_mutable_only(
+        cls, existing_payload: dict[str, object], new_payload: dict[str, object]
+    ) -> dict[str, object] | None:
         """Returns a merged payload if `new_payload` only touches properties in
         `NODE_MUTABLE_PROPERTIES` relative to `existing_payload`, else None (a
         real conflict). The merge is additive over the *existing* full property
@@ -292,21 +361,44 @@ class PostgresGraphManifestStore:
             return None
         merged_properties = dict(existing_payload.get("properties", {}))
         for key, value in new_payload.get("properties", {}).items():
-            if key in merged_properties and merged_properties[key] != value and key not in cls.NODE_MUTABLE_PROPERTIES:
+            if (
+                key in merged_properties
+                and merged_properties[key] != value
+                and key not in cls.NODE_MUTABLE_PROPERTIES
+            ):
                 return None
             merged_properties[key] = value
-        return {"label": existing_payload["label"], "id": existing_payload["id"], "properties": merged_properties}
+        return {
+            "label": existing_payload["label"],
+            "id": existing_payload["id"],
+            "properties": merged_properties,
+        }
 
     @staticmethod
     def _hash(payload: dict[str, object]) -> str:
         import hashlib
-        return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
 
     @staticmethod
     def _payload(record: GraphNode | GraphRelationship) -> dict[str, object]:
         if isinstance(record, GraphNode):
-            return {"label": record.label, "id": record.graph_id, "properties": dict(record.properties)}
-        return {"type": record.relationship_type, "id": record.graph_id, "source": record.source_id, "destination": record.destination_id, "source_label": record.source_label, "destination_label": record.destination_label, "properties": dict(record.properties)}
+            return {
+                "label": record.label,
+                "id": record.graph_id,
+                "properties": dict(record.properties),
+            }
+        return {
+            "type": record.relationship_type,
+            "id": record.graph_id,
+            "source": record.source_id,
+            "destination": record.destination_id,
+            "source_label": record.source_label,
+            "destination_label": record.destination_label,
+            "properties": dict(record.properties),
+        }
 
 
 class PostgresSearchIndexStore:
@@ -326,7 +418,7 @@ class PostgresSearchIndexStore:
                         ON CONFLICT (fact_id) DO UPDATE
                         SET raw_text = EXCLUDED.raw_text, is_active = true
                         """,
-                        (fact_id, context_id, raw_text)
+                        (fact_id, context_id, raw_text),
                     )
 
     def contains(self, context_id: str, fact_id: str) -> bool:
@@ -371,6 +463,18 @@ class PostgresSearchIndexStore:
                         params,
                     )
 
+    def deactivate(self, context_id: str, fact_id: str) -> None:
+        """Mark a fact search index entry inactive on failure or rollback."""
+        with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor() as cursor,
+        ):
+            cursor.execute(
+                "UPDATE fact_search_index SET is_active = false WHERE context_id = %s AND fact_id = %s",
+                (context_id, fact_id),
+            )
+
 
 class PostgresEmbeddingStore:
     """Versioned fact/chunk embedding persistence against `memory_embeddings` (Milestone 7)."""
@@ -393,8 +497,11 @@ class PostgresEmbeddingStore:
                         FOR UPDATE
                         """,
                         (
-                            embedding.context_id, embedding.subject_kind, embedding.subject_id,
-                            embedding.model_name, embedding.model_version,
+                            embedding.context_id,
+                            embedding.subject_kind,
+                            embedding.subject_id,
+                            embedding.model_name,
+                            embedding.model_version,
                         ),
                     )
                     existing = cursor.fetchone()
@@ -406,7 +513,11 @@ class PostgresEmbeddingStore:
                                 "has a different embedded_content_hash"
                             )
                         return embedding
-                    vector_literal = "[" + ",".join(repr(float(value)) for value in embedding.values) + "]"
+                    vector_literal = (
+                        "["
+                        + ",".join(repr(float(value)) for value in embedding.values)
+                        + "]"
+                    )
                     cursor.execute(
                         """
                         INSERT INTO memory_embeddings (
@@ -416,9 +527,15 @@ class PostgresEmbeddingStore:
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s)
                         """,
                         (
-                            embedding.context_id, embedding.subject_kind, embedding.subject_id,
-                            embedding.source_chunk_id, embedding.model_name, embedding.model_version,
-                            len(embedding.values), vector_literal, embedding.embedded_content_hash,
+                            embedding.context_id,
+                            embedding.subject_kind,
+                            embedding.subject_id,
+                            embedding.source_chunk_id,
+                            embedding.model_name,
+                            embedding.model_version,
+                            len(embedding.values),
+                            vector_literal,
+                            embedding.embedded_content_hash,
                             embedding.is_active,
                         ),
                     )
@@ -442,7 +559,13 @@ class PostgresEmbeddingStore:
             with conn.transaction():
                 with conn.cursor() as cursor:
                     keys = [
-                        (e.context_id, e.subject_kind, e.subject_id, e.model_name, e.model_version)
+                        (
+                            e.context_id,
+                            e.subject_kind,
+                            e.subject_id,
+                            e.model_name,
+                            e.model_version,
+                        )
                         for e in embeddings
                     ]
                     key_values_sql = ", ".join(["(%s, %s, %s, %s, %s)"] * len(keys))
@@ -457,7 +580,8 @@ class PostgresEmbeddingStore:
                         key_params,
                     )
                     existing_hash_by_key = {
-                        (row[0], row[1], row[2], row[3], row[4]): row[5] for row in cursor.fetchall()
+                        (row[0], row[1], row[2], row[3], row[4]): row[5]
+                        for row in cursor.fetchall()
                     }
 
                     to_insert: list[Embedding] = []
@@ -474,16 +598,33 @@ class PostgresEmbeddingStore:
                         to_insert.append(embedding)
 
                     if to_insert:
-                        row_values_sql = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s)"] * len(to_insert))
+                        row_values_sql = ", ".join(
+                            ["(%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s)"]
+                            * len(to_insert)
+                        )
                         row_params: list[object] = []
                         for embedding in to_insert:
-                            vector_literal = "[" + ",".join(repr(float(value)) for value in embedding.values) + "]"
-                            row_params.extend((
-                                embedding.context_id, embedding.subject_kind, embedding.subject_id,
-                                embedding.source_chunk_id, embedding.model_name, embedding.model_version,
-                                len(embedding.values), vector_literal, embedding.embedded_content_hash,
-                                embedding.is_active,
-                            ))
+                            vector_literal = (
+                                "["
+                                + ",".join(
+                                    repr(float(value)) for value in embedding.values
+                                )
+                                + "]"
+                            )
+                            row_params.extend(
+                                (
+                                    embedding.context_id,
+                                    embedding.subject_kind,
+                                    embedding.subject_id,
+                                    embedding.source_chunk_id,
+                                    embedding.model_name,
+                                    embedding.model_version,
+                                    len(embedding.values),
+                                    vector_literal,
+                                    embedding.embedded_content_hash,
+                                    embedding.is_active,
+                                )
+                            )
                         cursor.execute(
                             f"""
                             INSERT INTO memory_embeddings (
@@ -509,7 +650,12 @@ class PostgresEmbeddingStore:
                 return cursor.fetchone() is not None
 
     def get_active(
-        self, context_id: str, subject_kind: str, subject_id: str, model_name: str, model_version: str
+        self,
+        context_id: str,
+        subject_kind: str,
+        subject_id: str,
+        model_name: str,
+        model_version: str,
     ) -> tuple[float, ...] | None:
         """Reads back one active embedding's vector for an EXACT
         (model_name, model_version) match -- used by
@@ -519,34 +665,32 @@ class PostgresEmbeddingStore:
         space. `::text` cast: no pgvector Python type is registered on this
         connection, so this reads back the same bracketed literal format
         `put`/`put_batch` write, parsed the same way."""
-        with self._pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
+        with self._pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                """
                     SELECT embedding::text FROM memory_embeddings
                     WHERE context_id = %s AND subject_kind = %s AND subject_id = %s
                       AND model_name = %s AND model_version = %s AND is_active = true
                     LIMIT 1
                     """,
-                    (context_id, subject_kind, subject_id, model_name, model_version),
-                )
-                row = cursor.fetchone()
+                (context_id, subject_kind, subject_id, model_name, model_version),
+            )
+            row = cursor.fetchone()
         if row is None:
             return None
         return tuple(float(value) for value in row[0].strip("[]").split(","))
 
     def deactivate(self, context_id: str, subject_kind: str, subject_id: str) -> None:
         """Mark all model versions of one subject inactive (e.g. superseded fact)."""
-        with self._pool.connection() as conn:
-            with conn.transaction():
-                with conn.cursor() as cursor:
-                    cursor.execute(
-                        """
+        with self._pool.connection() as conn, conn.transaction():
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
                         UPDATE memory_embeddings SET is_active = false
                         WHERE context_id = %s AND subject_kind = %s AND subject_id = %s
                         """,
-                        (context_id, subject_kind, subject_id),
-                    )
+                    (context_id, subject_kind, subject_id),
+                )
 
 
 class PostgresJobStore:
@@ -569,31 +713,38 @@ class PostgresJobStore:
         if row is None:
             return None
         return IngestionJob(
-            job_id=row[0], chunk_id=row[1], context_id=row[2], state=IngestionJobState(row[3]),
-            attempt_count=row[4], last_verified_state=IngestionJobState(row[5]) if row[5] else None,
+            job_id=row[0],
+            chunk_id=row[1],
+            context_id=row[2],
+            state=IngestionJobState(row[3]),
+            attempt_count=row[4],
+            last_verified_state=IngestionJobState(row[5]) if row[5] else None,
             last_error=row[6],
         )
 
     def seed(self, chunk_id: str, context_id: str) -> IngestionJob:
         """Idempotent: PostgresChunkStore.put already inserts this row (ADR-014); this
         is a defensive fallback, safe to call even when that row already exists."""
-        with self._pool.connection() as conn:
-            with conn.transaction():
-                with conn.cursor() as cursor:
-                    cursor.execute(
-                        """
+        with self._pool.connection() as conn, conn.transaction():
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
                         INSERT INTO ingestion_jobs (job_id, chunk_id, context_id, state)
                         VALUES (%s, %s, %s, 'pending_graph')
                         ON CONFLICT (chunk_id) DO NOTHING
                         """,
-                        (f"job:{chunk_id}", chunk_id, context_id),
-                    )
+                    (f"job:{chunk_id}", chunk_id, context_id),
+                )
         job = self.get(chunk_id)
         if job is None:
-            raise RuntimeError(f"job seed for chunk_id {chunk_id} did not produce a row")
+            raise RuntimeError(
+                f"job seed for chunk_id {chunk_id} did not produce a row"
+            )
         return job
 
-    def transition(self, chunk_id: str, new_state: IngestionJobState, *, error: str | None = None) -> IngestionJob:
+    def transition(
+        self, chunk_id: str, new_state: IngestionJobState, *, error: str | None = None
+    ) -> IngestionJob:
         with self._pool.connection() as conn:
             with conn.transaction():
                 with conn.cursor() as cursor:
@@ -606,31 +757,64 @@ class PostgresJobStore:
                     )
                     row = cursor.fetchone()
                     if row is None:
-                        raise IllegalJobTransitionError(f"no ingestion job for chunk_id {chunk_id}")
-                    job_id, context_id, current_raw, attempt_count, last_verified_raw = row
+                        raise IllegalJobTransitionError(
+                            f"no ingestion job for chunk_id {chunk_id}"
+                        )
+                    (
+                        job_id,
+                        context_id,
+                        current_raw,
+                        attempt_count,
+                        last_verified_raw,
+                    ) = row
                     current = IngestionJobState(current_raw)
-                    last_verified = IngestionJobState(last_verified_raw) if last_verified_raw else None
+                    last_verified = (
+                        IngestionJobState(last_verified_raw)
+                        if last_verified_raw
+                        else None
+                    )
                     if not is_legal_job_transition(current, new_state, last_verified):
                         raise IllegalJobTransitionError(
                             f"chunk {chunk_id}: {current.value} -> {new_state.value} is not a legal transition"
                         )
-                    next_attempt_count = attempt_count + 1 if new_state == IngestionJobState.RETRYABLE_FAILED else attempt_count
-                    next_last_verified = current.value if current.value not in (
-                        IngestionJobState.RETRYABLE_FAILED.value, IngestionJobState.TERMINAL_FAILED.value,
-                        IngestionJobState.MANUAL_REPAIR.value,
-                    ) else last_verified_raw
+                    next_attempt_count = (
+                        attempt_count + 1
+                        if new_state == IngestionJobState.RETRYABLE_FAILED
+                        else attempt_count
+                    )
+                    next_last_verified = (
+                        current.value
+                        if current.value
+                        not in (
+                            IngestionJobState.RETRYABLE_FAILED.value,
+                            IngestionJobState.TERMINAL_FAILED.value,
+                            IngestionJobState.MANUAL_REPAIR.value,
+                        )
+                        else last_verified_raw
+                    )
                     cursor.execute(
                         """
                         UPDATE ingestion_jobs
                         SET state = %s, attempt_count = %s, last_verified_state = %s, last_error = %s, updated_at = now()
                         WHERE chunk_id = %s
                         """,
-                        (new_state.value, next_attempt_count, next_last_verified, error, chunk_id),
+                        (
+                            new_state.value,
+                            next_attempt_count,
+                            next_last_verified,
+                            error,
+                            chunk_id,
+                        ),
                     )
         return IngestionJob(
-            job_id=job_id, chunk_id=chunk_id, context_id=context_id, state=new_state,
+            job_id=job_id,
+            chunk_id=chunk_id,
+            context_id=context_id,
+            state=new_state,
             attempt_count=next_attempt_count,
-            last_verified_state=IngestionJobState(next_last_verified) if next_last_verified else None,
+            last_verified_state=IngestionJobState(next_last_verified)
+            if next_last_verified
+            else None,
             last_error=error,
         )
 
@@ -646,10 +830,20 @@ class PostgresFactMetadataStore:
         self._pool = pool
 
     def put(
-        self, context_id: str, fact_id: int, checkpoint: str | None, when_active: dict | None,
-        visible_to_participant_id: str | None = None, hidden: bool = False,
+        self,
+        context_id: str,
+        fact_id: int,
+        checkpoint: str | None,
+        when_active: dict | None,
+        visible_to_participant_id: str | None = None,
+        hidden: bool = False,
     ) -> None:
-        if checkpoint is None and when_active is None and visible_to_participant_id is None and not hidden:
+        if (
+            checkpoint is None
+            and when_active is None
+            and visible_to_participant_id is None
+            and not hidden
+        ):
             return
         with self._pool.connection() as conn:
             with conn.transaction():
@@ -663,9 +857,14 @@ class PostgresFactMetadataStore:
                             visible_to_participant_id = EXCLUDED.visible_to_participant_id, hidden = EXCLUDED.hidden
                         """,
                         (
-                            fact_id, context_id, checkpoint,
-                            json.dumps(when_active) if when_active is not None else None,
-                            visible_to_participant_id, hidden,
+                            fact_id,
+                            context_id,
+                            checkpoint,
+                            json.dumps(when_active)
+                            if when_active is not None
+                            else None,
+                            visible_to_participant_id,
+                            hidden,
                         ),
                     )
 
@@ -685,7 +884,10 @@ class PostgresFactMetadataStore:
                     "WHERE context_id = %s AND fact_id = ANY(%s)",
                     (context_id, list(fact_ids)),
                 )
-                return {row[0]: (row[1], row[2], row[3], row[4]) for row in cursor.fetchall()}
+                return {
+                    row[0]: (row[1], row[2], row[3], row[4])
+                    for row in cursor.fetchall()
+                }
 
 
 class PostgresExternalFactIdStore:
@@ -707,7 +909,9 @@ class PostgresExternalFactIdStore:
                 row = cursor.fetchone()
         return (int(row[0]), row[1]) if row else None
 
-    def put(self, context_id: str, external_fact_id: str, graph_id: int, logical_key: str) -> None:
+    def put(
+        self, context_id: str, external_fact_id: str, graph_id: int, logical_key: str
+    ) -> None:
         with self._pool.connection() as conn:
             with conn.transaction():
                 with conn.cursor() as cursor:
@@ -749,16 +953,20 @@ class PostgresCheckpointStore:
         with self._pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "SELECT checkpoints FROM scenario_template_checkpoints WHERE context_id = %s", (context_id,)
+                    "SELECT checkpoints FROM scenario_template_checkpoints WHERE context_id = %s",
+                    (context_id,),
                 )
                 row = cursor.fetchone()
         return row[0] if row else None
 
 
-_BATCH_IN_FLIGHT_STATES = frozenset({
-    IngestionJobState.PENDING_GRAPH.value, IngestionJobState.PENDING_EMBEDDINGS.value,
-    IngestionJobState.VERIFYING.value,
-})
+_BATCH_IN_FLIGHT_STATES = frozenset(
+    {
+        IngestionJobState.PENDING_GRAPH.value,
+        IngestionJobState.PENDING_EMBEDDINGS.value,
+        IngestionJobState.VERIFYING.value,
+    }
+)
 
 
 def _serialize_context_batch(batch: ContextBatch) -> dict:
@@ -803,7 +1011,8 @@ def _deserialize_context_batch(payload: dict) -> ContextBatch:
         ingestion_id=payload["ingestion_id"],
         context_id=payload["context_id"],
         source=SourceDescriptor(
-            source_type=payload["source_type"], source_external_id=payload["source_external_id"]
+            source_type=payload["source_type"],
+            source_external_id=payload["source_external_id"],
         ),
         records=records,
         metadata=payload.get("metadata") or {},
@@ -824,7 +1033,9 @@ class PostgresBatchStore:
     def __init__(self, pool: object) -> None:
         self._pool = pool
 
-    def create(self, batch: ContextBatch, chunk_ids: Sequence[tuple[str, int | None]]) -> None:
+    def create(
+        self, batch: ContextBatch, chunk_ids: Sequence[tuple[str, int | None]]
+    ) -> None:
         """Idempotent: a retry re-submitting the identical `batch_id` (never
         happens today -- `retry_batch` reuses the row instead -- but kept
         idempotent defensively) is a no-op, not a conflict."""
@@ -858,12 +1069,12 @@ class PostgresBatchStore:
         """Reconstructs the exact `ContextBatch` `submit_batch` built, for
         `retry_batch` to re-submit after a process restart (when the
         in-memory copy, if any, is long gone)."""
-        with self._pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT submitted_payload FROM ingestion_batches WHERE batch_id = %s", (batch_id,)
-                )
-                row = cursor.fetchone()
+        with self._pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT submitted_payload FROM ingestion_batches WHERE batch_id = %s",
+                (batch_id,),
+            )
+            row = cursor.fetchone()
         return _deserialize_context_batch(row[0]) if row else None
 
     def mark_run_error(self, batch_id: str, error: str) -> None:
@@ -900,26 +1111,42 @@ class PostgresBatchStore:
         Postgres instead of held in memory."""
         with self._pool.connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT run_error FROM ingestion_batches WHERE batch_id = %s", (batch_id,))
+                cursor.execute(
+                    "SELECT run_error FROM ingestion_batches WHERE batch_id = %s",
+                    (batch_id,),
+                )
                 row = cursor.fetchone()
                 if row is None:
                     return None
                 run_error = row[0]
                 if run_error is not None:
-                    return BatchStatus(batch_id=batch_id, status="failed", facts_created=0, error=run_error, retryable=True)
+                    return BatchStatus(
+                        batch_id=batch_id,
+                        status="failed",
+                        facts_created=0,
+                        error=run_error,
+                        retryable=True,
+                    )
 
                 cursor.execute(
-                    "SELECT chunk_id FROM ingestion_batch_chunks WHERE batch_id = %s ORDER BY chunk_id", (batch_id,)
+                    "SELECT chunk_id FROM ingestion_batch_chunks WHERE batch_id = %s ORDER BY chunk_id",
+                    (batch_id,),
                 )
                 chunk_ids = [r[0] for r in cursor.fetchall()]
                 if not chunk_ids:
                     # Row exists (submit_batch already wrote it) but the
                     # background run hasn't reached chunk_store.put for even one
                     # chunk yet -- genuinely still pending, not unknown.
-                    return BatchStatus(batch_id=batch_id, status="pending", facts_created=0, retryable=False)
+                    return BatchStatus(
+                        batch_id=batch_id,
+                        status="pending",
+                        facts_created=0,
+                        retryable=False,
+                    )
 
                 cursor.execute(
-                    "SELECT chunk_id, state, last_error FROM ingestion_jobs WHERE chunk_id = ANY(%s)", (chunk_ids,)
+                    "SELECT chunk_id, state, last_error FROM ingestion_jobs WHERE chunk_id = ANY(%s)",
+                    (chunk_ids,),
                 )
                 job_by_chunk = {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
 
@@ -951,20 +1178,42 @@ class PostgresBatchStore:
 
         facts_created = sum(facts_by_chunk.values())
         if any(state is None or state in _BATCH_IN_FLIGHT_STATES for state in states):
-            return BatchStatus(batch_id=batch_id, status="pending", facts_created=facts_created, retryable=False)
+            return BatchStatus(
+                batch_id=batch_id,
+                status="pending",
+                facts_created=facts_created,
+                retryable=False,
+            )
 
         state_set = set(states)
         first_error = errors[0] if errors else None
         if state_set <= {IngestionJobState.COMPLETED.value}:
-            return BatchStatus(batch_id=batch_id, status="succeeded", facts_created=facts_created, retryable=False)
+            return BatchStatus(
+                batch_id=batch_id,
+                status="succeeded",
+                facts_created=facts_created,
+                retryable=False,
+            )
         if IngestionJobState.COMPLETED.value in state_set:
             return BatchStatus(
-                batch_id=batch_id, status="partial", facts_created=facts_created, error=first_error, retryable=True
+                batch_id=batch_id,
+                status="partial",
+                facts_created=facts_created,
+                error=first_error,
+                retryable=True,
             )
         if state_set <= {IngestionJobState.RETRYABLE_FAILED.value}:
             return BatchStatus(
-                batch_id=batch_id, status="failed", facts_created=facts_created, error=first_error, retryable=True
+                batch_id=batch_id,
+                status="failed",
+                facts_created=facts_created,
+                error=first_error,
+                retryable=True,
             )
         return BatchStatus(
-            batch_id=batch_id, status="failed", facts_created=facts_created, error=first_error, retryable=False
+            batch_id=batch_id,
+            status="failed",
+            facts_created=facts_created,
+            error=first_error,
+            retryable=False,
         )

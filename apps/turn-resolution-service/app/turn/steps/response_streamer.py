@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 
+from app.config import settings
 from app.models.minigame_event import MinigameEventPayload
 from app.models.turn_summary import TurnSummaryPayload
 
@@ -75,4 +76,4 @@ async def build_sse_response(
     Events are forwarded as they arrive — never buffered — per CLAUDE.md's
     SSE streaming rule.
     """
-    return EventSourceResponse(events)
+    return EventSourceResponse(events, ping=settings.sse_ping_interval_seconds)

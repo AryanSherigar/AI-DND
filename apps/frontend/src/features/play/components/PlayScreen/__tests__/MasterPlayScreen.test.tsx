@@ -31,6 +31,9 @@ function buildPlaythrough(
     player_stats: [],
     player_inventory: [],
     pending_minigame: null,
+    ended_outcome_tag: null,
+    ended_outcome_title: null,
+    ended_outcome_text: null,
     ...overrides,
   };
 }
@@ -92,5 +95,32 @@ describe("MasterPlayScreen", () => {
 
     fireEvent.click(screen.getByTitle("Open Character Sheet"));
     expect(drawer).toHaveClass("translate-x-0");
+  });
+
+  it("hides the ending banner and allows the action drawer while in progress", () => {
+    renderScreen();
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Take Action/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the ending banner and blocks the action drawer once the playthrough has ended", () => {
+    usePlayStore.setState({
+      playthrough: buildPlaythrough({
+        ended_outcome_tag: "win",
+        ended_outcome_title: "The Ashen Ending",
+        ended_outcome_text: "The Warden kneels.",
+      }),
+    });
+    renderScreen();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("The Ashen Ending");
+    expect(screen.getByRole("alert")).toHaveTextContent("The Warden kneels.");
+    expect(screen.getByText(/This chronicle has ended/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Take Action/i }),
+    ).not.toBeInTheDocument();
   });
 });

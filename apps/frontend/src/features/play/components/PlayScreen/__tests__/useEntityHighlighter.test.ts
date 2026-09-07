@@ -69,4 +69,33 @@ describe("useEntityHighlighter", () => {
       { label: "Awareness", value: "40" },
     ]);
   });
+
+  it("drops entities with blank or whitespace-only names", () => {
+    const blankCard: StoryCard = {
+      id: "c1",
+      title: "   ",
+      category: "location",
+      content: "An unnamed place.",
+    };
+    const colonPrefixedFact = ":something with a leading colon";
+    const masterEntities: MasterEntity[] = [
+      {
+        entity_id: "e1",
+        entity_type: "character",
+        canonical_name: "Named One",
+        aliases: ["", "   "],
+        description: null,
+        attributes_schema: {},
+        obtainable: null,
+        attributes: {},
+      },
+    ];
+
+    const { result } = renderHook(() =>
+      useEntityHighlighter([blankCard], [colonPrefixedFact], masterEntities),
+    );
+
+    expect(result.current.map((e) => e.name)).toEqual(["Named One"]);
+    expect(result.current.every((e) => e.name.trim().length > 0)).toBe(true);
+  });
 });

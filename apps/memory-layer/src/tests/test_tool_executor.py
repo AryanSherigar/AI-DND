@@ -54,6 +54,17 @@ class FakeConnection:
         return nullcontext()
 
 
+class FakePool:
+    """`StepJournal` acquires a connection per call via `pool.connection()`
+    -- this just yields the same fake connection every time."""
+
+    def __init__(self, connection: object) -> None:
+        self._connection = connection
+
+    def connection(self):
+        return nullcontext(self._connection)
+
+
 def _registry_with(*tools: Tool) -> ToolRegistry:
     registry = ToolRegistry()
     for tool in tools:
@@ -63,7 +74,9 @@ def _registry_with(*tools: Tool) -> ToolRegistry:
 
 class GuardedToolExecutorTests(unittest.TestCase):
     def test_executes_and_returns_the_handler_result(self) -> None:
-        registry = _registry_with(Tool(name="roll_dice", description="", input_schema={}, handler=_roll_dice))
+        registry = _registry_with(
+            Tool(name="roll_dice", description="", input_schema={}, handler=_roll_dice)
+        )
         executor = GuardedToolExecutor(registry)
 
         result = executor.execute("roll_dice", {"sides": 20})
@@ -77,8 +90,17 @@ class GuardedToolExecutorTests(unittest.TestCase):
 
     def test_pre_hook_deny_blocks_execution(self) -> None:
         calls = []
-        registry = _registry_with(Tool(name="roll_dice", description="", input_schema={}, handler=lambda a: calls.append(a) or {}))
-        deny = lambda tool, args: HookResult(HookDecision.DENY, reason="not allowed mid-combat")
+        registry = _registry_with(
+            Tool(
+                name="roll_dice",
+                description="",
+                input_schema={},
+                handler=lambda a: calls.append(a) or {},
+            )
+        )
+        deny = lambda tool, args: HookResult(
+            HookDecision.DENY, reason="not allowed mid-combat"
+        )
         executor = GuardedToolExecutor(registry, pre_hooks=(deny,))
 
         with self.assertRaisesRegex(ToolDeniedError, "not allowed mid-combat"):
@@ -86,7 +108,9 @@ class GuardedToolExecutorTests(unittest.TestCase):
         self.assertEqual(calls, [])  # handler never ran
 
     def test_pre_hook_allow_lets_execution_proceed(self) -> None:
-        registry = _registry_with(Tool(name="roll_dice", description="", input_schema={}, handler=_roll_dice))
+        registry = _registry_with(
+            Tool(name="roll_dice", description="", input_schema={}, handler=_roll_dice)
+        )
         allow = lambda tool, args: HookResult(HookDecision.ALLOW)
         executor = GuardedToolExecutor(registry, pre_hooks=(allow,))
 
@@ -94,17 +118,28 @@ class GuardedToolExecutorTests(unittest.TestCase):
 
     def test_post_hook_observes_tool_args_and_result(self) -> None:
         observed = []
-        registry = _registry_with(Tool(name="roll_dice", description="", input_schema={}, handler=_roll_dice))
-        executor = GuardedToolExecutor(registry, post_hooks=(lambda tool, args, result: observed.append((tool.name, args, result)),))
+        registry = _registry_with(
+            Tool(name="roll_dice", description="", input_schema={}, handler=_roll_dice)
+        )
+        executor = GuardedToolExecutor(
+            registry,
+            post_hooks=(
+                lambda tool, args, result: observed.append((tool.name, args, result)),
+            ),
+        )
 
         executor.execute("roll_dice", {"sides": 8})
 
-        self.assertEqual(observed, [("roll_dice", {"sides": 8}, {"result": 4, "sides": 8})])
+        self.assertEqual(
+            observed, [("roll_dice", {"sides": 8}, {"result": 4, "sides": 8})]
+        )
 
     def test_handler_exception_propagates_and_is_journaled_as_error(self) -> None:
         connection = FakeConnection()
-        journal = StepJournal(connection)
-        registry = _registry_with(Tool(name="explode", description="", input_schema={}, handler=_failing_tool))
+        journal = StepJournal(FakePool(connection))
+        registry = _registry_with(
+            Tool(name="explode", description="", input_schema={}, handler=_failing_tool)
+        )
         executor = GuardedToolExecutor(registry, journal=journal)
 
         with self.assertRaises(RuntimeError):
@@ -115,11 +150,16 @@ class GuardedToolExecutorTests(unittest.TestCase):
 
     def test_non_idempotent_tool_gets_a_fresh_key_every_call(self) -> None:
         connection = FakeConnection()
-        journal = StepJournal(connection)
-        registry = _registry_with(Tool(
-            name="roll_dice", description="", input_schema={}, handler=_roll_dice,
-            annotations=ToolAnnotations(idempotent_hint=False),
-        ))
+        journal = StepJournal(FakePool(connection))
+        registry = _registry_with(
+            Tool(
+                name="roll_dice",
+                description="",
+                input_schema={},
+                handler=_roll_dice,
+                annotations=ToolAnnotations(idempotent_hint=False),
+            )
+        )
         executor = GuardedToolExecutor(registry, journal=journal)
 
         executor.execute("roll_dice", {"sides": 6})
@@ -129,11 +169,18 @@ class GuardedToolExecutorTests(unittest.TestCase):
 
     def test_idempotent_tool_dedups_identical_calls(self) -> None:
         connection = FakeConnection()
-        journal = StepJournal(connection)
-        registry = _registry_with(Tool(
-            name="get_inventory", description="", input_schema={}, handler=lambda a: {"items": []},
-            annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True),
-        ))
+        journal = StepJournal(FakePool(connection))
+        registry = _registry_with(
+            Tool(
+                name="get_inventory",
+                description="",
+                input_schema={},
+                handler=lambda a: {"items": []},
+                annotations=ToolAnnotations(
+                    read_only_hint=True, destructive_hint=False, idempotent_hint=True
+                ),
+            )
+        )
         executor = GuardedToolExecutor(registry, journal=journal)
 
         executor.execute("get_inventory", {"player": "p1"})

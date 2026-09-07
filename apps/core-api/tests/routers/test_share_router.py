@@ -3,11 +3,10 @@
 import uuid
 
 import pytest
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db.models.scenario import Scenario
 from app.repositories.user_repo import UserRepo
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.fixture
@@ -164,6 +163,39 @@ async def test_join_playthrough_adds_participant(
         f"/v1/playthroughs/{playthrough_id}", headers=headers2
     )
     assert get_resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_join_playthrough_repeated_join_returns_existing_participant(
+    async_client: AsyncClient, dev_user, dev_user2, multiplayer_scenario
+) -> None:
+    playthrough_id = await _create_playthrough(
+        async_client, multiplayer_scenario, dev_user
+    )
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    share_resp = await async_client.post(
+        f"/v1/playthroughs/{playthrough_id}/share",
+        json={"mode": "join"},
+        headers=headers,
+    )
+    share_token = share_resp.json()["share_token"]
+
+    headers2 = {"x-dev-user-id": str(dev_user2.user_id)}
+    join1 = await async_client.post(
+        "/v1/playthroughs/join",
+        json={"share_token": share_token},
+        headers=headers2,
+    )
+    join2 = await async_client.post(
+        "/v1/playthroughs/join",
+        json={"share_token": share_token},
+        headers=headers2,
+    )
+
+    assert join1.status_code == 200
+    assert join2.status_code == 200
+    assert join1.json()["participant_id"] == join2.json()["participant_id"]
+    assert len(join2.json()["participants"]) == 2
 
 
 @pytest.mark.asyncio

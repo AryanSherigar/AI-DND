@@ -3,7 +3,14 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import TIMESTAMP, CheckConstraint, ForeignKey, String, text
+from sqlalchemy import (
+    TIMESTAMP,
+    CheckConstraint,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +26,16 @@ class Participant(Base):
         CheckConstraint(
             "role IN ('owner', 'joined')",
             name="ck_participants_role",
+        ),
+        UniqueConstraint(
+            "playthrough_id",
+            "user_id",
+            name="uq_participants_playthrough_user",
+        ),
+        UniqueConstraint(
+            "playthrough_id",
+            "turn_order_position",
+            name="uq_participants_turn_order",
         ),
     )
 

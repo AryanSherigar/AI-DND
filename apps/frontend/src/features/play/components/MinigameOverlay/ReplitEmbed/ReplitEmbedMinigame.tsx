@@ -3,7 +3,12 @@ import { useReplitHandshake } from "@/shared/hooks/useReplitHandshake";
 import { IframeLoadingState } from "./IframeLoadingState";
 import { ReplitEmbedMinigameProps } from "./ReplitEmbedMinigame.types";
 
-const REPLIT_IFRAME_SANDBOX = "allow-scripts allow-same-origin allow-forms";
+// NOTE: allow-same-origin is deliberately omitted. Combined with
+// allow-scripts it would let the framed (creator-supplied, untrusted) origin
+// keep full script + storage access to itself, defeating the sandbox. See
+// useReplitHandshake.ts for the corresponding opaque-origin postMessage check
+// this requires.
+const REPLIT_IFRAME_SANDBOX = "allow-scripts allow-forms";
 
 /**
  * Live-embeds a creator's Replit-hosted minigame in a sandboxed iframe and
@@ -44,7 +49,11 @@ export function ReplitEmbedMinigame({
   useEffect(() => {
     // Only one manual retry is allowed (locked design) — a second timeout,
     // after the player has already retried once, auto-resolves the turn.
-    if (status !== "timed_out" || hasResolvedRef.current || !hasRetriedRef.current) {
+    if (
+      status !== "timed_out" ||
+      hasResolvedRef.current ||
+      !hasRetriedRef.current
+    ) {
       return;
     }
     hasResolvedRef.current = true;

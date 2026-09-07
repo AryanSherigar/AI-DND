@@ -105,3 +105,14 @@ async def refresh_token(
         )
     except jwt.InvalidTokenError:
         raise InvalidTokenError("Invalid or expired refresh token")
+
+
+@router.post("/logout", status_code=204)
+async def logout(response: Response) -> None:
+    response.delete_cookie(
+        key="refresh_token",
+        path="/v1/auth/refresh",
+        httponly=True,
+        secure=settings.environment != "development",
+        samesite="lax",
+    )

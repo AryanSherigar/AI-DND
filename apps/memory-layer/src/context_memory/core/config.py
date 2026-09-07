@@ -67,7 +67,9 @@ def _role_api_key(env_name: str) -> str:
         env_name,
         os.getenv(
             "LLM_API_KEY",
-            os.getenv("GOOGLE_CLOUD_API_KEY", os.getenv("Gemini_agentic_platform_api_key", "")),
+            os.getenv(
+                "GOOGLE_CLOUD_API_KEY", os.getenv("Gemini_agentic_platform_api_key", "")
+            ),
         ),
     )
 
@@ -79,8 +81,12 @@ def _role_model(env_name: str) -> str:
 @dataclass(frozen=True)
 class Config:
     # -- Ingestion/resolution roles (ADR-027/029) --------------------------
-    entity_resolution_api_key: str = field(default_factory=lambda: _role_api_key("ENTITY_RESOLUTION_API_KEY"))
-    entity_resolution_model: str = field(default_factory=lambda: _role_model("ENTITY_RESOLUTION_MODEL"))
+    entity_resolution_api_key: str = field(
+        default_factory=lambda: _role_api_key("ENTITY_RESOLUTION_API_KEY")
+    )
+    entity_resolution_model: str = field(
+        default_factory=lambda: _role_model("ENTITY_RESOLUTION_MODEL")
+    )
     # Own reasoning_effort (not the global `llm_reasoning_effort`) -- see
     # `get_entity_resolution_client`'s comment: needed because a smaller
     # model behind this specific role may accept a different reasoning-effort
@@ -90,10 +96,16 @@ class Config:
     # rejects "none" outright and only accepts low/medium/high). Empty
     # string (default) falls back to `llm_reasoning_effort`, same as before
     # this field existed.
-    entity_resolution_reasoning_effort: str = field(default_factory=lambda: os.getenv("ENTITY_RESOLUTION_REASONING_EFFORT", ""))
+    entity_resolution_reasoning_effort: str = field(
+        default_factory=lambda: os.getenv("ENTITY_RESOLUTION_REASONING_EFFORT", "")
+    )
 
-    temporal_update_api_key: str = field(default_factory=lambda: _role_api_key("TEMPORAL_UPDATE_API_KEY"))
-    temporal_update_model: str = field(default_factory=lambda: _role_model("TEMPORAL_UPDATE_MODEL"))
+    temporal_update_api_key: str = field(
+        default_factory=lambda: _role_api_key("TEMPORAL_UPDATE_API_KEY")
+    )
+    temporal_update_model: str = field(
+        default_factory=lambda: _role_model("TEMPORAL_UPDATE_MODEL")
+    )
     # Own reasoning_effort, same reasoning as entity_resolution_reasoning_effort
     # above -- this role never got the same treatment despite being the same
     # *kind* of call (a small, bounded, four-way classification decision, not
@@ -104,26 +116,42 @@ class Config:
     # prefetched) -- the single largest never-addressed ingest cost this
     # session found. Empty string (default) falls back to `llm_reasoning_effort`,
     # unchanged from before this field existed.
-    temporal_update_reasoning_effort: str = field(default_factory=lambda: os.getenv("TEMPORAL_UPDATE_REASONING_EFFORT", ""))
+    temporal_update_reasoning_effort: str = field(
+        default_factory=lambda: os.getenv("TEMPORAL_UPDATE_REASONING_EFFORT", "")
+    )
 
-    extractor_api_key: str = field(default_factory=lambda: _role_api_key("EXTRACTOR_API_KEY"))
+    extractor_api_key: str = field(
+        default_factory=lambda: _role_api_key("EXTRACTOR_API_KEY")
+    )
     extractor_model: str = field(default_factory=lambda: _role_model("EXTRACTOR_MODEL"))
 
     # -- Retrieval roles ------------------------------------------------
     reader_api_key: str = field(default_factory=lambda: _role_api_key("READER_API_KEY"))
     reader_model: str = field(default_factory=lambda: _role_model("READER_MODEL"))
 
-    temporal_resolver_api_key: str = field(default_factory=lambda: _role_api_key("TEMPORAL_RESOLVER_API_KEY"))
-    temporal_resolver_model: str = field(default_factory=lambda: _role_model("TEMPORAL_RESOLVER_MODEL"))
+    temporal_resolver_api_key: str = field(
+        default_factory=lambda: _role_api_key("TEMPORAL_RESOLVER_API_KEY")
+    )
+    temporal_resolver_model: str = field(
+        default_factory=lambda: _role_model("TEMPORAL_RESOLVER_MODEL")
+    )
     # See `entity_resolution_reasoning_effort`'s comment for why this is a
     # separate field from the global `llm_reasoning_effort` -- same
     # rationale, this role too is a narrow structured-decision task (date
     # range extraction) a smaller/non-reasoning model can handle.
-    temporal_resolver_reasoning_effort: str = field(default_factory=lambda: os.getenv("TEMPORAL_RESOLVER_REASONING_EFFORT", ""))
+    temporal_resolver_reasoning_effort: str = field(
+        default_factory=lambda: os.getenv("TEMPORAL_RESOLVER_REASONING_EFFORT", "")
+    )
 
-    query_rewriter_api_key: str = field(default_factory=lambda: _role_api_key("QUERY_REWRITER_API_KEY"))
-    query_rewriter_model: str = field(default_factory=lambda: _role_model("QUERY_REWRITER_MODEL"))
-    query_rewriter_reasoning_effort: str = field(default_factory=lambda: os.getenv("QUERY_REWRITER_REASONING_EFFORT", ""))
+    query_rewriter_api_key: str = field(
+        default_factory=lambda: _role_api_key("QUERY_REWRITER_API_KEY")
+    )
+    query_rewriter_model: str = field(
+        default_factory=lambda: _role_model("QUERY_REWRITER_MODEL")
+    )
+    query_rewriter_reasoning_effort: str = field(
+        default_factory=lambda: os.getenv("QUERY_REWRITER_REASONING_EFFORT", "")
+    )
 
     # -- LLM call limits, sized per role ------------------------------------
     # A 241-second call that returned an empty completion (hit its own output
@@ -135,10 +163,14 @@ class Config:
     # words of JSON and gain nothing from a large ceiling but pay for one in
     # provider-side worst-case latency. Every role below is sized to its own
     # output shape rather than sharing one number.
-    llm_temperature: float = field(default_factory=lambda: float(os.getenv("LLM_TEMPERATURE", "0.0")))
+    llm_temperature: float = field(
+        default_factory=lambda: float(os.getenv("LLM_TEMPERATURE", "0.0"))
+    )
     # Sent on every call when set. Best-effort per provider; empty omits it.
     llm_seed: int | None = field(
-        default_factory=lambda: int(os.environ["LLM_SEED"]) if os.getenv("LLM_SEED") else None
+        default_factory=lambda: (
+            int(os.environ["LLM_SEED"]) if os.getenv("LLM_SEED") else None
+        )
     )
     # Confirmed live (LongMemEval pilot): a reasoning model can spend its whole
     # completion budget on hidden reasoning and return empty content — the cap
@@ -146,11 +178,15 @@ class Config:
     # blunter prompt and, only on a genuine budget-exhaustion `finish_reason`,
     # a doubled budget) recovers most of these instead of silently losing a
     # turn's facts. See `LLMClient.structured_completion`.
-    llm_structured_retry_attempts: int = field(default_factory=lambda: int(os.getenv("LLM_STRUCTURED_RETRY_ATTEMPTS", "1")))
+    llm_structured_retry_attempts: int = field(
+        default_factory=lambda: int(os.getenv("LLM_STRUCTURED_RETRY_ATTEMPTS", "1"))
+    )
     # The OpenAI SDK's own retry count. Its default of 2 multiplies every timeout
     # (45s cap became 135s of real wall clock — measured). Kept at 1 rather than 0
     # because Groq rate-limits on tokens-per-minute and a 429 deserves one retry.
-    llm_sdk_max_retries: int = field(default_factory=lambda: int(os.getenv("LLM_SDK_MAX_RETRIES", "1")))
+    llm_sdk_max_retries: int = field(
+        default_factory=lambda: int(os.getenv("LLM_SDK_MAX_RETRIES", "1"))
+    )
     # Separate from both retry counts above: a 429 raises out of `.create()`
     # rather than returning unparseable content, so neither of them ever saw it
     # and rate-limited calls failed outright, silently dropping a turn's facts
@@ -158,7 +194,9 @@ class Config:
     # because a tokens-per-minute limiter legitimately needs several waits in a
     # row under concurrent prefetch; each wait honors the provider's own stated
     # retry-after, so this is mostly-idle time, not repeated load.
-    llm_rate_limit_max_retries: int = field(default_factory=lambda: int(os.getenv("LLM_RATE_LIMIT_MAX_RETRIES", "5")))
+    llm_rate_limit_max_retries: int = field(
+        default_factory=lambda: int(os.getenv("LLM_RATE_LIMIT_MAX_RETRIES", "5"))
+    )
     # How the response shape is described to the model: "typedef" (compact
     # TS/BAML-style class declaration) or "json_schema" (pydantic's own output).
     # Measured on the extraction schema: 839 chars as raw JSON Schema, 479 with
@@ -166,7 +204,9 @@ class Config:
     # call, so under a tokens-per-minute limit it is throughput, not cosmetics.
     # Groq reports no prompt caching (verified: identical prompts billed at full
     # price twice, no `cached_tokens` field), so nothing amortizes this for us.
-    llm_schema_format: str = field(default_factory=lambda: os.getenv("LLM_SCHEMA_FORMAT", "typedef"))
+    llm_schema_format: str = field(
+        default_factory=lambda: os.getenv("LLM_SCHEMA_FORMAT", "typedef")
+    )
     # Vertex AI's `GenerateContentConfig.service_tier`: "" (default) leaves
     # it unset (standard on-demand serving); "flex" opts into Flex
     # Processing (cost-optimized, some latency/availability variability) --
@@ -179,56 +219,123 @@ class Config:
     # doesn't support at all yet -- adopting real Batch mode needs its own
     # design (a submit/poll/retrieve flow, not a config value), tracked as
     # a separate follow-up rather than silently mislabeled as this field.
-    llm_service_tier: str = field(default_factory=lambda: os.getenv("LLM_SERVICE_TIER", ""))
+    llm_service_tier: str = field(
+        default_factory=lambda: os.getenv("LLM_SERVICE_TIER", "")
+    )
     # Sent only when non-empty, because valid values are model-specific
     # (qwen3.6: none|default — gpt-oss: low|medium|high) and an unsupported
     # value is a hard 400. Empty string omits the parameter entirely, which is
     # the right behavior for any provider/model that doesn't know it.
-    llm_reasoning_effort: str = field(default_factory=lambda: os.getenv("LLM_REASONING_EFFORT", "none"))
+    llm_reasoning_effort: str = field(
+        default_factory=lambda: os.getenv("LLM_REASONING_EFFORT", "none")
+    )
 
-    entity_resolution_max_tokens: int = field(default_factory=lambda: int(os.getenv("ENTITY_RESOLUTION_MAX_TOKENS", "512")))
-    entity_resolution_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("ENTITY_RESOLUTION_TIMEOUT_SECONDS", "20")))
-    batched_entity_resolution_system_prompt: str = BATCHED_ENTITY_RESOLUTION_SYSTEM_PROMPT
+    entity_resolution_max_tokens: int = field(
+        default_factory=lambda: int(os.getenv("ENTITY_RESOLUTION_MAX_TOKENS", "512"))
+    )
+    entity_resolution_timeout_seconds: float = field(
+        default_factory=lambda: float(
+            os.getenv("ENTITY_RESOLUTION_TIMEOUT_SECONDS", "20")
+        )
+    )
+    batched_entity_resolution_system_prompt: str = (
+        BATCHED_ENTITY_RESOLUTION_SYSTEM_PROMPT
+    )
     # ON by default, same posture as temporal_update_batch_enabled (§8) --
     # unlike that fix, this batches mentions already-parallelized by
     # resolve_many's ThreadPoolExecutor, so the win is request COUNT, not a
     # comparable wall-clock multiplier. Set 0 to fall back to the
     # one-call-per-mention path, kept intact.
     entity_resolution_batch_enabled: bool = field(
-        default_factory=lambda: os.getenv("ENTITY_RESOLUTION_BATCH_ENABLED", "1").lower() not in ("0", "false", "no")
+        default_factory=lambda: (
+            os.getenv("ENTITY_RESOLUTION_BATCH_ENABLED", "1").lower()
+            not in ("0", "false", "no")
+        )
     )
-    entity_resolution_batch_tokens_per_mention: int = field(default_factory=lambda: int(os.getenv("ENTITY_RESOLUTION_BATCH_TOKENS_PER_MENTION", "48")))
-    entity_resolution_batch_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("ENTITY_RESOLUTION_BATCH_TIMEOUT_SECONDS", "45")))
+    entity_resolution_batch_tokens_per_mention: int = field(
+        default_factory=lambda: int(
+            os.getenv("ENTITY_RESOLUTION_BATCH_TOKENS_PER_MENTION", "48")
+        )
+    )
+    entity_resolution_batch_timeout_seconds: float = field(
+        default_factory=lambda: float(
+            os.getenv("ENTITY_RESOLUTION_BATCH_TIMEOUT_SECONDS", "45")
+        )
+    )
 
     def entity_resolution_batch_max_tokens_for(self, mention_count: int) -> int:
-        return self.entity_resolution_max_tokens + self.entity_resolution_batch_tokens_per_mention * max(0, mention_count)
+        return (
+            self.entity_resolution_max_tokens
+            + self.entity_resolution_batch_tokens_per_mention * max(0, mention_count)
+        )
 
-    temporal_update_max_tokens: int = field(default_factory=lambda: int(os.getenv("TEMPORAL_UPDATE_MAX_TOKENS", "512")))
-    temporal_update_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("TEMPORAL_UPDATE_TIMEOUT_SECONDS", "20")))
+    # Lazy per-context hydration of EntityRegistry/EntityNameIndex from
+    # HydraDB (docs/BEGINNER_BUILD_FLOW.md item 51) -- ON by default. Set 0
+    # to fall back to the pre-existing cold-process behavior.
+    entity_hydration_enabled: bool = field(
+        default_factory=lambda: (
+            os.getenv("ENTITY_HYDRATION_ENABLED", "1").lower()
+            not in ("0", "false", "no")
+        )
+    )
+    entity_hydration_max_contexts: int = field(
+        default_factory=lambda: int(os.getenv("ENTITY_HYDRATION_MAX_CONTEXTS", "2000"))
+    )
+
+    temporal_update_max_tokens: int = field(
+        default_factory=lambda: int(os.getenv("TEMPORAL_UPDATE_MAX_TOKENS", "512"))
+    )
+    temporal_update_timeout_seconds: float = field(
+        default_factory=lambda: float(
+            os.getenv("TEMPORAL_UPDATE_TIMEOUT_SECONDS", "20")
+        )
+    )
 
     # Batched temporal-update classification (§8): measured 5.87 priors per
     # superseding fact (max 23), so 84% of these calls were the 2nd..Nth prior.
     # Set 0 to fall back to the pairwise path, which is kept intact.
     temporal_update_batch_enabled: bool = field(
-        default_factory=lambda: os.getenv("TEMPORAL_UPDATE_BATCH_ENABLED", "1").lower() not in ("0", "false", "no")
+        default_factory=lambda: (
+            os.getenv("TEMPORAL_UPDATE_BATCH_ENABLED", "1").lower()
+            not in ("0", "false", "no")
+        )
     )
     # Embedding pre-filter on candidate priors. Calibrated on 3540 real recorded
     # comparisons (§8): every supersession below 0.15 was verifiably spurious.
     # 0 disables. Cuts priors-per-batch ~29%, not call count -- batching already
     # took that.
-    temporal_update_similarity_threshold: float = field(default_factory=lambda: float(os.getenv("TEMPORAL_UPDATE_SIMILARITY_THRESHOLD", "0.15")))
-    temporal_update_batch_tokens_per_prior: int = field(default_factory=lambda: int(os.getenv("TEMPORAL_UPDATE_BATCH_TOKENS_PER_PRIOR", "48")))
-    temporal_update_batch_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("TEMPORAL_UPDATE_BATCH_TIMEOUT_SECONDS", "45")))
+    temporal_update_similarity_threshold: float = field(
+        default_factory=lambda: float(
+            os.getenv("TEMPORAL_UPDATE_SIMILARITY_THRESHOLD", "0.15")
+        )
+    )
+    temporal_update_batch_tokens_per_prior: int = field(
+        default_factory=lambda: int(
+            os.getenv("TEMPORAL_UPDATE_BATCH_TOKENS_PER_PRIOR", "48")
+        )
+    )
+    temporal_update_batch_timeout_seconds: float = field(
+        default_factory=lambda: float(
+            os.getenv("TEMPORAL_UPDATE_BATCH_TIMEOUT_SECONDS", "45")
+        )
+    )
 
     def temporal_update_batch_max_tokens_for(self, prior_count: int) -> int:
         """Shared reasoning headroom plus one {idx, relation} object per prior."""
-        return self.temporal_update_max_tokens + self.temporal_update_batch_tokens_per_prior * max(0, prior_count)
+        return (
+            self.temporal_update_max_tokens
+            + self.temporal_update_batch_tokens_per_prior * max(0, prior_count)
+        )
 
     # Extraction reasons over the whole turn before emitting JSON — this is the
     # role that actually hit the old 2048 shared cap and came back empty/truncated
     # (confirmed live). Given more headroom and more time to use it.
-    extractor_max_tokens: int = field(default_factory=lambda: int(os.getenv("EXTRACTOR_MAX_TOKENS", "4096")))
-    extractor_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("EXTRACTOR_TIMEOUT_SECONDS", "45")))
+    extractor_max_tokens: int = field(
+        default_factory=lambda: int(os.getenv("EXTRACTOR_MAX_TOKENS", "4096"))
+    )
+    extractor_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("EXTRACTOR_TIMEOUT_SECONDS", "45"))
+    )
 
     # Multi-stage max_tokens gateway for extraction (see
     # `extraction_max_tokens_for` below), tiered by turn content length in
@@ -246,13 +353,39 @@ class Config:
     # docs/fixes_and_evaluation_findings.md), and a short/medium turn now
     # gets a smaller allocation than before instead of paying the long-turn
     # ceiling every time.
-    extractor_max_tokens_tier_short_chars: int = field(default_factory=lambda: int(os.getenv("EXTRACTOR_MAX_TOKENS_TIER_SHORT_CHARS", "300")))
-    extractor_max_tokens_tier_short: int = field(default_factory=lambda: int(os.getenv("EXTRACTOR_MAX_TOKENS_TIER_SHORT", "1536")))
-    extractor_max_tokens_tier_medium_chars: int = field(default_factory=lambda: int(os.getenv("EXTRACTOR_MAX_TOKENS_TIER_MEDIUM_CHARS", "1200")))
-    extractor_max_tokens_tier_medium: int = field(default_factory=lambda: int(os.getenv("EXTRACTOR_MAX_TOKENS_TIER_MEDIUM", "2560")))
-    extractor_max_tokens_tier_long_chars: int = field(default_factory=lambda: int(os.getenv("EXTRACTOR_MAX_TOKENS_TIER_LONG_CHARS", "3000")))
-    extractor_max_tokens_tier_long: int = field(default_factory=lambda: int(os.getenv("EXTRACTOR_MAX_TOKENS_TIER_LONG", "4096")))
-    extractor_max_tokens_tier_xlong: int = field(default_factory=lambda: int(os.getenv("EXTRACTOR_MAX_TOKENS_TIER_XLONG", "6144")))
+    extractor_max_tokens_tier_short_chars: int = field(
+        default_factory=lambda: int(
+            os.getenv("EXTRACTOR_MAX_TOKENS_TIER_SHORT_CHARS", "300")
+        )
+    )
+    extractor_max_tokens_tier_short: int = field(
+        default_factory=lambda: int(
+            os.getenv("EXTRACTOR_MAX_TOKENS_TIER_SHORT", "1536")
+        )
+    )
+    extractor_max_tokens_tier_medium_chars: int = field(
+        default_factory=lambda: int(
+            os.getenv("EXTRACTOR_MAX_TOKENS_TIER_MEDIUM_CHARS", "1200")
+        )
+    )
+    extractor_max_tokens_tier_medium: int = field(
+        default_factory=lambda: int(
+            os.getenv("EXTRACTOR_MAX_TOKENS_TIER_MEDIUM", "2560")
+        )
+    )
+    extractor_max_tokens_tier_long_chars: int = field(
+        default_factory=lambda: int(
+            os.getenv("EXTRACTOR_MAX_TOKENS_TIER_LONG_CHARS", "3000")
+        )
+    )
+    extractor_max_tokens_tier_long: int = field(
+        default_factory=lambda: int(os.getenv("EXTRACTOR_MAX_TOKENS_TIER_LONG", "4096"))
+    )
+    extractor_max_tokens_tier_xlong: int = field(
+        default_factory=lambda: int(
+            os.getenv("EXTRACTOR_MAX_TOKENS_TIER_XLONG", "6144")
+        )
+    )
 
     def extraction_max_tokens_for(self, content_length: int) -> int:
         """Multi-stage if/else gateway: the smallest max_tokens tier whose
@@ -284,13 +417,19 @@ class Config:
     # batched path when this is set above 1 AND the extractor exposes
     # `extract_batch` (LLMExtractor does; FakeExtractor does not, and correctly
     # keeps running one-call-per-turn under this flag).
-    extraction_batch_size: int = field(default_factory=lambda: int(os.getenv("EXTRACTION_BATCH_SIZE", "1")))
+    extraction_batch_size: int = field(
+        default_factory=lambda: int(os.getenv("EXTRACTION_BATCH_SIZE", "1"))
+    )
     # A batch response carries N turns' worth of JSON instead of one, so it
     # takes proportionally longer to reason over and emit -- give it more room
     # than a single turn's extractor_timeout_seconds rather than reusing it
     # unchanged and risking a spurious timeout on a batch that was otherwise
     # about to succeed.
-    extractor_batch_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("EXTRACTOR_BATCH_TIMEOUT_SECONDS", "90")))
+    extractor_batch_timeout_seconds: float = field(
+        default_factory=lambda: float(
+            os.getenv("EXTRACTOR_BATCH_TIMEOUT_SECONDS", "90")
+        )
+    )
 
     def extraction_batch_max_tokens_for(self, content_lengths: Sequence[int]) -> int:
         """Sums each turn's own tiered allocation (`extraction_max_tokens_for`)
@@ -304,29 +443,54 @@ class Config:
     # Was 0.2 for prose warmth. Measured (§9): 3 identical retrievals over the
     # same stored context answered "four" / "three" / "two" to one counting
     # question. Readability is not worth an unreproducible benchmark.
-    reader_temperature: float = field(default_factory=lambda: float(os.getenv("READER_TEMPERATURE", "0.0")))
-    reader_max_tokens: int = field(default_factory=lambda: int(os.getenv("READER_MAX_TOKENS", "1536")))
-    reader_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("READER_TIMEOUT_SECONDS", "25")))
+    reader_temperature: float = field(
+        default_factory=lambda: float(os.getenv("READER_TEMPERATURE", "0.0"))
+    )
+    reader_max_tokens: int = field(
+        default_factory=lambda: int(os.getenv("READER_MAX_TOKENS", "1536"))
+    )
+    reader_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("READER_TIMEOUT_SECONDS", "25"))
+    )
 
-    temporal_resolver_max_tokens: int = field(default_factory=lambda: int(os.getenv("TEMPORAL_RESOLVER_MAX_TOKENS", "512")))
-    temporal_resolver_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("TEMPORAL_RESOLVER_TIMEOUT_SECONDS", "15")))
+    temporal_resolver_max_tokens: int = field(
+        default_factory=lambda: int(os.getenv("TEMPORAL_RESOLVER_MAX_TOKENS", "512"))
+    )
+    temporal_resolver_timeout_seconds: float = field(
+        default_factory=lambda: float(
+            os.getenv("TEMPORAL_RESOLVER_TIMEOUT_SECONDS", "15")
+        )
+    )
 
     # Rewrites are not reproducible (§9) and depend only on the question, so
     # caching them makes repeat asks deterministic and skips one LLM call.
     query_rewrite_cache_enabled: bool = field(
-        default_factory=lambda: os.getenv("QUERY_REWRITE_CACHE_ENABLED", "1").lower() not in ("0", "false", "no")
+        default_factory=lambda: (
+            os.getenv("QUERY_REWRITE_CACHE_ENABLED", "1").lower()
+            not in ("0", "false", "no")
+        )
     )
     # Unset = in-process only (repeat asks stable within one run). Set a path to
     # persist, so separate runs reproduce each other.
-    query_rewrite_cache_path: str = field(default_factory=lambda: os.getenv("QUERY_REWRITE_CACHE_PATH", ""))
-    query_rewriter_max_tokens: int = field(default_factory=lambda: int(os.getenv("QUERY_REWRITER_MAX_TOKENS", "768")))
-    query_rewriter_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("QUERY_REWRITER_TIMEOUT_SECONDS", "15")))
+    query_rewrite_cache_path: str = field(
+        default_factory=lambda: os.getenv("QUERY_REWRITE_CACHE_PATH", "")
+    )
+    query_rewriter_max_tokens: int = field(
+        default_factory=lambda: int(os.getenv("QUERY_REWRITER_MAX_TOKENS", "768"))
+    )
+    query_rewriter_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("QUERY_REWRITER_TIMEOUT_SECONDS", "15"))
+    )
 
     # -- Embedding (Milestone 7) ------------------------------------------
     embedding_model_name: str = field(
-        default_factory=lambda: os.getenv("EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
+        default_factory=lambda: os.getenv(
+            "EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2"
+        )
     )
-    embedding_model_version: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL_VERSION", "1"))
+    embedding_model_version: str = field(
+        default_factory=lambda: os.getenv("EMBEDDING_MODEL_VERSION", "1")
+    )
 
     # -- Retrieval tuning (FINAL_ARCHITECTURE.md §12) ----------------------
     # 15 -> 20. Every traced multi-session/preference retrieval miss on the
@@ -339,7 +503,9 @@ class Config:
     # forward) -- it's a cheap, low-risk mitigation: a wider reader window
     # gives near-miss facts more room to still get seen while the real ranking
     # fix (surface-similarity vs topical-relevance) is designed properly.
-    retrieval_top_k: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_TOP_K", "20")))
+    retrieval_top_k: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_TOP_K", "20"))
+    )
     # Wider top_k for count/enumeration questions (§10.3/§11.1/§15): the
     # observed undercount failure was NOT extraction losing facts (verified
     # present in the store every time) -- it's `ranked[:top_k]` truncating
@@ -347,7 +513,9 @@ class Config:
     # LLM pass was tried by a published 90.8%-LongMemEval system and made
     # accuracy WORSE (91.2%->86.0%); this widens the existing top-k truncation
     # for detected count queries instead of adding a reasoning step.
-    retrieval_count_query_top_k: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_COUNT_QUERY_TOP_K", "40")))
+    retrieval_count_query_top_k: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_COUNT_QUERY_TOP_K", "40"))
+    )
     # LLM reranking over the fused candidate pool (§23). OFF by default until
     # measured. Motivation is two confirmed pure-ranking failures where the
     # gold fact was in the store but lost the top_k cut ("Effective Time
@@ -364,20 +532,36 @@ class Config:
     # broad memories outrank the decisive specific one) that a plain RRF
     # channel could not fix without regressing something else (§21.3).
     retrieval_rerank_enabled: bool = field(
-        default_factory=lambda: os.getenv("RETRIEVAL_RERANK_ENABLED", "1").lower() not in ("0", "false", "no")
+        default_factory=lambda: (
+            os.getenv("RETRIEVAL_RERANK_ENABLED", "1").lower()
+            not in ("0", "false", "no")
+        )
     )
-    retrieval_rerank_candidates: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_RERANK_CANDIDATES", "60")))
-    retrieval_rerank_max_tokens: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_RERANK_MAX_TOKENS", "1024")))
-    retrieval_rerank_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("RETRIEVAL_RERANK_TIMEOUT_SECONDS", "30")))
-    rerank_system_prompt: str = field(default_factory=lambda: os.getenv("RERANK_SYSTEM_PROMPT", RERANK_SYSTEM_PROMPT))
+    retrieval_rerank_candidates: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_RERANK_CANDIDATES", "60"))
+    )
+    retrieval_rerank_max_tokens: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_RERANK_MAX_TOKENS", "1024"))
+    )
+    retrieval_rerank_timeout_seconds: float = field(
+        default_factory=lambda: float(
+            os.getenv("RETRIEVAL_RERANK_TIMEOUT_SECONDS", "30")
+        )
+    )
+    rerank_system_prompt: str = field(
+        default_factory=lambda: os.getenv("RERANK_SYSTEM_PROMPT", RERANK_SYSTEM_PROMPT)
+    )
 
     rerank_api_key: str = field(default_factory=lambda: _role_api_key("RERANK_API_KEY"))
     rerank_model: str = field(default_factory=lambda: _role_model("RERANK_MODEL"))
-    rerank_reasoning_effort: str = field(default_factory=lambda: os.getenv("RERANK_REASONING_EFFORT", ""))
+    rerank_reasoning_effort: str = field(
+        default_factory=lambda: os.getenv("RERANK_REASONING_EFFORT", "")
+    )
 
     def get_rerank_client(self) -> LLMClient:
         effort = self.rerank_reasoning_effort or None
         return self._client(self.rerank_api_key, self.rerank_model, effort)
+
     # Appended to the reader prompt ONLY for duration/elapsed-time questions
     # (§20). Targets the measured failure: given "from high school to
     # completion of my Bachelor's" with facts "high school 2010-2014" and
@@ -390,16 +574,25 @@ class Config:
     # aclanthology.org/2025.vlsp-1.38 reports taking date arithmetic from
     # 0.87 to 0.98 -- deliberately in ONE call, since a separate reasoning
     # call is the thing measured to REDUCE accuracy (§11.1, 91.2%->86.0%).
-    duration_query_guidance: str = field(default_factory=lambda: os.getenv("DURATION_QUERY_GUIDANCE", DURATION_QUERY_GUIDANCE))
+    duration_query_guidance: str = field(
+        default_factory=lambda: os.getenv(
+            "DURATION_QUERY_GUIDANCE", DURATION_QUERY_GUIDANCE
+        )
+    )
 
     # §26: structured sibling of duration_query_guidance -- same reasoning steps,
     # plus an instruction to also report the operands as data (not just prose),
     # so Python can verify the arithmetic against what the model itself claims.
     duration_query_structured_addendum: str = field(
-        default_factory=lambda: os.getenv("DURATION_QUERY_STRUCTURED_ADDENDUM", DURATION_QUERY_STRUCTURED_ADDENDUM)
+        default_factory=lambda: os.getenv(
+            "DURATION_QUERY_STRUCTURED_ADDENDUM", DURATION_QUERY_STRUCTURED_ADDENDUM
+        )
     )
     duration_structured_verification_enabled: bool = field(
-        default_factory=lambda: os.getenv("DURATION_STRUCTURED_VERIFICATION_ENABLED", "1").lower() not in ("0", "false", "no")
+        default_factory=lambda: (
+            os.getenv("DURATION_STRUCTURED_VERIFICATION_ENABLED", "1").lower()
+            not in ("0", "false", "no")
+        )
     )
     # Neighboring-turn expansion (ADR-005's accepted-but-never-implemented
     # "fact + span -> neighboring turn -> full chunk" tier). Traced live: a
@@ -408,7 +601,9 @@ class Config:
     # several atomic facts and Phase 3 scores them independently -- pulling in
     # every other fact from the same source turn as an already-relevant one
     # re-unites what extraction split apart. 0 disables it entirely.
-    retrieval_sibling_fact_limit: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_SIBLING_FACT_LIMIT", "20")))
+    retrieval_sibling_fact_limit: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_SIBLING_FACT_LIMIT", "20"))
+    )
     # SCAR (Semantic Continuity-Aware Retrieval; Zhong et al. 2026,
     # arxiv.org/abs/2606.16661) scores which siblings actually earn a spot,
     # rather than an unordered LIMIT -- confirmed live this mattered: a needed
@@ -418,12 +613,28 @@ class Config:
     # the bar a candidate must clear *relative to its own anchor's* query
     # relevance (a weak anchor -> a low bar; a strong anchor -> a high one).
     # Paper defaults, unchanged -- no tuning data of our own exists yet.
-    retrieval_sibling_continuity_penalty: float = field(default_factory=lambda: float(os.getenv("RETRIEVAL_SIBLING_CONTINUITY_PENALTY", "0.1")))
-    retrieval_sibling_relevance_ratio: float = field(default_factory=lambda: float(os.getenv("RETRIEVAL_SIBLING_RELEVANCE_RATIO", "0.80")))
-    retrieval_overfetch_multiplier: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_OVERFETCH_MULTIPLIER", "4")))
-    retrieval_overfetch_floor: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_OVERFETCH_FLOOR", "60")))
-    retrieval_chat_ttl_hours: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_CHAT_TTL_HOURS", "24")))
-    retrieval_temporal_buffer_days: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_TEMPORAL_BUFFER_DAYS", "2")))
+    retrieval_sibling_continuity_penalty: float = field(
+        default_factory=lambda: float(
+            os.getenv("RETRIEVAL_SIBLING_CONTINUITY_PENALTY", "0.1")
+        )
+    )
+    retrieval_sibling_relevance_ratio: float = field(
+        default_factory=lambda: float(
+            os.getenv("RETRIEVAL_SIBLING_RELEVANCE_RATIO", "0.80")
+        )
+    )
+    retrieval_overfetch_multiplier: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_OVERFETCH_MULTIPLIER", "4"))
+    )
+    retrieval_overfetch_floor: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_OVERFETCH_FLOOR", "60"))
+    )
+    retrieval_chat_ttl_hours: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_CHAT_TTL_HOURS", "24"))
+    )
+    retrieval_temporal_buffer_days: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_TEMPORAL_BUFFER_DAYS", "2"))
+    )
     # Session-[:HAS_TURN]->Turn-[:EXTRACTED_FROM]->Fact-[:ABOUT]->Entity is the
     # deepest real path in the schema; MSpaths hops fact-to-fact via a shared
     # Entity. 4 hops routinely walks past directly-relevant facts into
@@ -431,7 +642,9 @@ class Config:
     # trip (no batched UNWIND reads — see retrieval.py), so it's a latency cost
     # for mostly-noise recall. 3 still reaches one shared-entity hop past the
     # seed set.
-    retrieval_graph_max_hops: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_GRAPH_MAX_HOPS", "3")))
+    retrieval_graph_max_hops: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_GRAPH_MAX_HOPS", "3"))
+    )
     # Phase 2 fetches one fact's graph node per HydraDB HTTP call (a genuine
     # N+1 -- HydraDB rejects UNWIND-batched reads, see retrieval.py's own
     # comments), so a retrieval with the overfetch floor's ~60-80 seeded facts
@@ -439,9 +652,15 @@ class Config:
     # independent/read-only and the local HydraDB HTTP transport holds no
     # shared per-call state. 8 matches the same default already used for
     # concurrent extraction prefetch in benchmark_runner.py.
-    retrieval_graph_fetch_workers: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_GRAPH_FETCH_WORKERS", "8")))
-    retrieval_structural_path_cap: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_STRUCTURAL_PATH_CAP", "3")))
-    retrieval_entity_boost_cap: float = field(default_factory=lambda: float(os.getenv("RETRIEVAL_ENTITY_BOOST_CAP", "0.5")))
+    retrieval_graph_fetch_workers: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_GRAPH_FETCH_WORKERS", "8"))
+    )
+    retrieval_structural_path_cap: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_STRUCTURAL_PATH_CAP", "3"))
+    )
+    retrieval_entity_boost_cap: float = field(
+        default_factory=lambda: float(os.getenv("RETRIEVAL_ENTITY_BOOST_CAP", "0.5"))
+    )
     # Composite scoring fuses semantic/keyword/structural/entity by Reciprocal
     # Rank Fusion (rank position within each channel, not raw score value) --
     # replaced a raw weighted sum of the four differently-scaled scores, which
@@ -453,16 +672,25 @@ class Config:
     # 2009); lower values weight top-ranked-in-any-single-channel facts more
     # heavily, higher values flatten the fusion toward facts that rank
     # decently across several channels rather than winning any one of them.
-    retrieval_rrf_k: int = field(default_factory=lambda: int(os.getenv("RETRIEVAL_RRF_K", "60")))
+    retrieval_rrf_k: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_RRF_K", "60"))
+    )
     retrieval_abstention_semantic_threshold: float = field(
-        default_factory=lambda: float(os.getenv("RETRIEVAL_ABSTENTION_SEMANTIC_THRESHOLD", "0.3"))
+        default_factory=lambda: float(
+            os.getenv("RETRIEVAL_ABSTENTION_SEMANTIC_THRESHOLD", "0.3")
+        )
     )
     retrieval_abstention_message: str = field(
-        default_factory=lambda: os.getenv("RETRIEVAL_ABSTENTION_MESSAGE", "I don't have that information in my memory.")
+        default_factory=lambda: os.getenv(
+            "RETRIEVAL_ABSTENTION_MESSAGE",
+            "I don't have that information in my memory.",
+        )
     )
 
     # -- Ingestion concurrency ---------------------------------------------
-    ingestion_executor_max_workers: int = field(default_factory=lambda: int(os.getenv("INGESTION_EXECUTOR_MAX_WORKERS", "1")))
+    ingestion_executor_max_workers: int = field(
+        default_factory=lambda: int(os.getenv("INGESTION_EXECUTOR_MAX_WORKERS", "1"))
+    )
 
     # How many chunks `IngestionOrchestrator.run_batch` groups together before
     # flushing the graph write and the embedding/search-index write, instead
@@ -490,18 +718,24 @@ class Config:
     # cost more physical calls once a bucket needs splitting, never fail
     # outright. Not tested past 100 (the largest slice measured); raise
     # further only with the same kind of live measurement backing it.
-    ingestion_write_batch_size: int = field(default_factory=lambda: int(os.getenv("INGESTION_WRITE_BATCH_SIZE", "100")))
+    ingestion_write_batch_size: int = field(
+        default_factory=lambda: int(os.getenv("INGESTION_WRITE_BATCH_SIZE", "100"))
+    )
 
     # -- Storage / transport connection settings ---------------------------
     database_url: str = field(
         default_factory=lambda: os.getenv(
             "CONTEXT_MEMORY_DATABASE_URL",
-            os.getenv("DATABASE_URL", "postgresql://context_memory@127.0.0.1:54329/context_memory"),
+            os.getenv(
+                "DATABASE_URL",
+                "postgresql://context_memory@127.0.0.1:54329/context_memory",
+            ),
         )
     )
     hydradb_url: str = field(
         default_factory=lambda: os.getenv(
-            "CONTEXT_MEMORY_HYDRADB_URL", os.getenv("HYDRA_DB_HOST", "http://127.0.0.1:8080")
+            "CONTEXT_MEMORY_HYDRADB_URL",
+            os.getenv("HYDRA_DB_HOST", "http://127.0.0.1:8080"),
         )
     )
     # A single shared, non-pooled psycopg connection was reachable
@@ -512,9 +746,21 @@ class Config:
     # connection silently discarded it. `min_size`/`max_size` need tuning
     # against real deployed concurrency; these defaults are a starting
     # point, not a measured final value.
-    postgres_pool_min_size: int = field(default_factory=lambda: int(os.getenv("CONTEXT_MEMORY_POSTGRES_POOL_MIN_SIZE", "2")))
-    postgres_pool_max_size: int = field(default_factory=lambda: int(os.getenv("CONTEXT_MEMORY_POSTGRES_POOL_MAX_SIZE", "10")))
-    postgres_pool_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("CONTEXT_MEMORY_POSTGRES_POOL_TIMEOUT_SECONDS", "30")))
+    postgres_pool_min_size: int = field(
+        default_factory=lambda: int(
+            os.getenv("CONTEXT_MEMORY_POSTGRES_POOL_MIN_SIZE", "2")
+        )
+    )
+    postgres_pool_max_size: int = field(
+        default_factory=lambda: int(
+            os.getenv("CONTEXT_MEMORY_POSTGRES_POOL_MAX_SIZE", "10")
+        )
+    )
+    postgres_pool_timeout_seconds: float = field(
+        default_factory=lambda: float(
+            os.getenv("CONTEXT_MEMORY_POSTGRES_POOL_TIMEOUT_SECONDS", "30")
+        )
+    )
     hydradb_token: str = field(
         default_factory=lambda: os.getenv(
             "CONTEXT_MEMORY_HYDRADB_TOKEN",
@@ -522,10 +768,14 @@ class Config:
         )
     )
     hydradb_database: str = field(
-        default_factory=lambda: os.getenv("CONTEXT_MEMORY_HYDRADB_DATABASE", os.getenv("HYDRA_DB_GRAPH_ID", "default"))
+        default_factory=lambda: os.getenv(
+            "CONTEXT_MEMORY_HYDRADB_DATABASE", os.getenv("HYDRA_DB_GRAPH_ID", "default")
+        )
     )
     hydradb_request_timeout_seconds: float = field(
-        default_factory=lambda: float(os.getenv("HYDRADB_REQUEST_TIMEOUT_SECONDS", "15"))
+        default_factory=lambda: float(
+            os.getenv("HYDRADB_REQUEST_TIMEOUT_SECONDS", "15")
+        )
     )
     # Phase 5 (harness plan): every LLM call recorded to `journal_steps`,
     # wrapped once at the composition root (see composition.py). On by
@@ -533,7 +783,9 @@ class Config:
     # swallows its own errors), so there's no live-traffic reason to default
     # this off.
     step_journal_enabled: bool = field(
-        default_factory=lambda: os.getenv("STEP_JOURNAL_ENABLED", "1").lower() not in ("0", "false", "no")
+        default_factory=lambda: (
+            os.getenv("STEP_JOURNAL_ENABLED", "1").lower() not in ("0", "false", "no")
+        )
     )
 
     # -- Prompts (wording lives in core/prompts.py; fields here so a caller
@@ -552,15 +804,19 @@ class Config:
     # override-friendly pattern here costs nothing and helps hand-tuning.
     narrative_fact_extraction_system_prompt: str = field(
         default_factory=lambda: os.getenv(
-            "NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT", NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT
+            "NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT",
+            NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT,
         )
     )
     batched_narrative_fact_extraction_system_prompt: str = field(
         default_factory=lambda: os.getenv(
-            "BATCHED_NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT", BATCHED_NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT
+            "BATCHED_NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT",
+            BATCHED_NARRATIVE_FACT_EXTRACTION_SYSTEM_PROMPT,
         )
     )
-    temporal_resolver_system_prompt_template: str = TEMPORAL_RESOLVER_SYSTEM_PROMPT_TEMPLATE
+    temporal_resolver_system_prompt_template: str = (
+        TEMPORAL_RESOLVER_SYSTEM_PROMPT_TEMPLATE
+    )
     query_rewriter_system_prompt: str = QUERY_REWRITER_SYSTEM_PROMPT
     reader_system_prompt_template: str = READER_SYSTEM_PROMPT_TEMPLATE
 
@@ -588,16 +844,21 @@ class Config:
             "step_journal_enabled": self.step_journal_enabled,
         }
 
-    def _client(self, api_key: str, model: str, reasoning_effort: str | None = None) -> LLMClient:
+    def _client(
+        self, api_key: str, model: str, reasoning_effort: str | None = None
+    ) -> LLMClient:
         # Vertex AI migration: no `base_url` anymore -- `LLMClient` talks to
         # Vertex via `google-genai`'s API-key auth mode
         # (`genai.Client(vertexai=True, api_key=...)`), which resolves its
         # own endpoint internally. See `core/llm_client.py`'s module
         # docstring.
         return LLMClient(
-            api_key=api_key, model_name=model,
+            api_key=api_key,
+            model_name=model,
             sdk_max_retries=self.llm_sdk_max_retries,
-            reasoning_effort=reasoning_effort if reasoning_effort is not None else self.llm_reasoning_effort,
+            reasoning_effort=reasoning_effort
+            if reasoning_effort is not None
+            else self.llm_reasoning_effort,
             rate_limit_max_retries=self.llm_rate_limit_max_retries,
             schema_format=self.llm_schema_format,
             seed=self.llm_seed,
@@ -610,13 +871,17 @@ class Config:
         # ranges. Empty string omits the param entirely (provider default),
         # same convention as `llm_reasoning_effort` itself.
         effort = self.entity_resolution_reasoning_effort or None
-        return self._client(self.entity_resolution_api_key, self.entity_resolution_model, effort)
+        return self._client(
+            self.entity_resolution_api_key, self.entity_resolution_model, effort
+        )
 
     def get_temporal_update_client(self) -> LLMClient:
         # Own reasoning_effort -- same convention as get_entity_resolution_client
         # above, see temporal_update_reasoning_effort's field comment.
         effort = self.temporal_update_reasoning_effort or None
-        return self._client(self.temporal_update_api_key, self.temporal_update_model, effort)
+        return self._client(
+            self.temporal_update_api_key, self.temporal_update_model, effort
+        )
 
     def get_extractor_client(self) -> LLMClient:
         return self._client(self.extractor_api_key, self.extractor_model)
@@ -626,8 +891,12 @@ class Config:
 
     def get_temporal_resolver_client(self) -> LLMClient:
         effort = self.temporal_resolver_reasoning_effort or None
-        return self._client(self.temporal_resolver_api_key, self.temporal_resolver_model, effort)
+        return self._client(
+            self.temporal_resolver_api_key, self.temporal_resolver_model, effort
+        )
 
     def get_query_rewriter_client(self) -> LLMClient:
         effort = self.query_rewriter_reasoning_effort or None
-        return self._client(self.query_rewriter_api_key, self.query_rewriter_model, effort)
+        return self._client(
+            self.query_rewriter_api_key, self.query_rewriter_model, effort
+        )

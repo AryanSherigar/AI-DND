@@ -152,6 +152,11 @@ class MemoryEngine:
         # submitted) -- no reason to pay a Postgres round trip for that.
         self._batches: dict[str, dict[str, object]] = {}
 
+    @property
+    def pool(self) -> object:
+        """The underlying connection pool (e.g. psycopg_pool.ConnectionPool)."""
+        return self._pool
+
     def create_save_point(self, context_id: str, session_id: str | None = None, label: str | None = None) -> SavePoint:
         return self._save_point_store.create(context_id, session_id, label)
 

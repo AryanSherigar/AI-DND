@@ -4,19 +4,31 @@ import sys
 import threading
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from context_memory.ingestion.fakes import DeterministicEntityResolutionModel, InMemoryGraphIdAllocator
+from context_memory.core.resolution import (
+    EntityProfile,
+    ResolutionStatus,
+    canonicalize_entity_surface,
+)
+from context_memory.ingestion.entity_hydration import HydratedEntity
+from context_memory.ingestion.entity_name_index import EntityNameIndex
 from context_memory.ingestion.entity_registry import EntityRegistry
-from context_memory.core.resolution import EntityProfile, ResolutionStatus, canonicalize_entity_surface
+from context_memory.ingestion.fakes import (
+    DeterministicEntityResolutionModel,
+    InMemoryGraphIdAllocator,
+)
 
 
 class EntityResolutionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.registry = EntityRegistry(InMemoryGraphIdAllocator())
-        self.max = EntityProfile(7, "context-a", "Max", "pet", ("my dog", "the golden retriever"))
+        self.max = EntityProfile(
+            7, "context-a", "Max", "pet", ("my dog", "the golden retriever")
+        )
         self.registry.register(self.max)
 
     def test_unicode_canonicalization_is_stable(self) -> None:
@@ -24,8 +36,12 @@ class EntityResolutionTests(unittest.TestCase):
 
     def test_exact_canonical_and_alias_do_not_call_model(self) -> None:
         model = DeterministicEntityResolutionModel()
-        canonical = self.registry.resolve(context_id="context-a", surface=" max ", model=model)
-        alias = self.registry.resolve(context_id="context-a", surface="MY DOG", model=model)
+        canonical = self.registry.resolve(
+            context_id="context-a", surface=" max ", model=model
+        )
+        alias = self.registry.resolve(
+            context_id="context-a", surface="MY DOG", model=model
+        )
         self.assertEqual(canonical.status, ResolutionStatus.EXACT_CANONICAL)
         self.assertEqual(alias.status, ResolutionStatus.EXACT_ALIAS)
         self.assertEqual(model.calls, [])
@@ -40,7 +56,10 @@ class EntityResolutionTests(unittest.TestCase):
         result = self.registry.resolve(
             context_id="context-a", surface="him", candidate_ids=(7,), model=model
         )
-        self.assertEqual((result.status, result.entity.graph_id), (ResolutionStatus.MODEL_RESOLVED, 7))
+        self.assertEqual(
+            (result.status, result.entity.graph_id),
+            (ResolutionStatus.MODEL_RESOLVED, 7),
+        )
         self.assertEqual(model.calls, [("context-a", "him", (7,))])
 
     def test_model_cannot_select_outside_bounded_candidates(self) -> None:
@@ -72,7 +91,9 @@ class EntityResolutionTests(unittest.TestCase):
         payload (the documented idempotent-replay contract, orchestrator.py's
         module docstring) must not append a second copy of that id to the
         per-context index."""
-        self.registry.register(self.max)  # same profile, same graph_id -- a legal no-op replay
+        self.registry.register(
+            self.max
+        )  # same profile, same graph_id -- a legal no-op replay
         self.assertEqual(self.registry._profile_ids_by_context["context-a"].count(7), 1)
 
     def test_grown_alias_is_visible_via_the_index_without_reindexing(self) -> None:
@@ -81,14 +102,19 @@ class EntityResolutionTests(unittest.TestCase):
         a later `_in_context` call must see the grown aliases without any
         extra bookkeeping."""
         model = DeterministicEntityResolutionModel({"Maxie": 7})
-        self.registry.resolve(context_id="context-a", surface="Maxie", candidate_ids=(7,), model=model)
-        (profile,) = [p for p in self.registry._in_context("context-a") if p.graph_id == 7]
+        self.registry.resolve(
+            context_id="context-a", surface="Maxie", candidate_ids=(7,), model=model
+        )
+        (profile,) = [
+            p for p in self.registry._in_context("context-a") if p.graph_id == 7
+        ]
         self.assertIn("maxie", profile.aliases)
 
     def test_ambiguous_alias_without_model_is_unresolved(self) -> None:
         self.registry.register(EntityProfile(8, "context-a", "Rex", "pet", ("my dog",)))
         result = self.registry.resolve(context_id="context-a", surface="my dog")
         self.assertEqual(result.status, ResolutionStatus.UNRESOLVED)
+
 
 class _FakeSentenceModel:
     """Character-frequency vector, L2-normalized -- crude, but similar
@@ -110,6 +136,7 @@ class _FakeSentenceModel:
         norm = np.linalg.norm(vec)
         return vec / norm if norm > 0 else vec
 
+
 class DuplicateEntityFixTests(unittest.TestCase):
     """The Dave/David gap: confirmed live (see
     docs/fixes_and_evaluation_findings.md §4) that with no `name_index`, a
@@ -130,35 +157,56 @@ class DuplicateEntityFixTests(unittest.TestCase):
     def setUp(self) -> None:
         from context_memory.ingestion.entity_name_index import EntityNameIndex
 
-        self.registry = EntityRegistry(InMemoryGraphIdAllocator(), name_index=EntityNameIndex(model=_FakeSentenceModel()))
+        self.registry = EntityRegistry(
+            InMemoryGraphIdAllocator(),
+            name_index=EntityNameIndex(model=_FakeSentenceModel()),
+        )
 
     def test_nickname_style_surface_now_reaches_the_model_and_resolves(self) -> None:
-        first = self.registry.resolve(context_id="ctx", surface="Dave", entity_type="person")
+        first = self.registry.resolve(
+            context_id="ctx", surface="Dave", entity_type="person"
+        )
         self.assertEqual(first.status, ResolutionStatus.NEW_ENTITY)
 
         model = DeterministicEntityResolutionModel({"David": first.entity.graph_id})
-        second = self.registry.resolve(context_id="ctx", surface="David", entity_type="person", model=model)
+        second = self.registry.resolve(
+            context_id="ctx", surface="David", entity_type="person", model=model
+        )
 
         # Confirmed reachable this time -- the whole bug was that this call never happened.
         self.assertEqual(len(model.calls), 1)
         self.assertEqual(second.status, ResolutionStatus.MODEL_RESOLVED)
         self.assertEqual(second.entity.graph_id, first.entity.graph_id)
 
-    def test_sherlock_holmes_from_the_microsoft_graphrag_issue_resolves_to_one_entity(self) -> None:
+    def test_sherlock_holmes_from_the_microsoft_graphrag_issue_resolves_to_one_entity(
+        self,
+    ) -> None:
         """The exact case Microsoft GraphRAG's own dedup issue (#401) left
         unresolved."""
-        first = self.registry.resolve(context_id="ctx", surface="Sherlock Holmes", entity_type="person")
-        model = DeterministicEntityResolutionModel({"Holmes": first.entity.graph_id, "Mr. Holmes": first.entity.graph_id})
+        first = self.registry.resolve(
+            context_id="ctx", surface="Sherlock Holmes", entity_type="person"
+        )
+        model = DeterministicEntityResolutionModel(
+            {"Holmes": first.entity.graph_id, "Mr. Holmes": first.entity.graph_id}
+        )
 
-        second = self.registry.resolve(context_id="ctx", surface="Holmes", entity_type="person", model=model)
+        second = self.registry.resolve(
+            context_id="ctx", surface="Holmes", entity_type="person", model=model
+        )
         self.assertEqual(second.entity.graph_id, first.entity.graph_id)
 
     def test_genuinely_different_entity_still_creates_new_entity(self) -> None:
         """Blocking must not over-merge -- a clearly different short name
         should still end up as its own entity, not get force-matched."""
-        first = self.registry.resolve(context_id="ctx", surface="Dave", entity_type="person")
-        model = DeterministicEntityResolutionModel({})  # abstains on everything -- correct behavior for "Dan"
-        second = self.registry.resolve(context_id="ctx", surface="Dan", entity_type="person", model=model)
+        first = self.registry.resolve(
+            context_id="ctx", surface="Dave", entity_type="person"
+        )
+        model = DeterministicEntityResolutionModel(
+            {}
+        )  # abstains on everything -- correct behavior for "Dan"
+        second = self.registry.resolve(
+            context_id="ctx", surface="Dan", entity_type="person", model=model
+        )
         # 'dave'/'dan' scores below the blocking threshold (see
         # entity_blocking.py's calibration) so this never even reaches the
         # model as a candidate -- confirmed by both the outcome and the fact
@@ -172,52 +220,81 @@ class DuplicateEntityFixTests(unittest.TestCase):
         ('bob' vs 'robert' shares zero character trigrams) -- covered by
         the curated nickname table (`entity_blocking.NICKNAME_GROUPS`)
         added afterward specifically for this case."""
-        first = self.registry.resolve(context_id="ctx", surface="Robert", entity_type="person")
+        first = self.registry.resolve(
+            context_id="ctx", surface="Robert", entity_type="person"
+        )
         model = DeterministicEntityResolutionModel({"Bob": first.entity.graph_id})
-        second = self.registry.resolve(context_id="ctx", surface="Bob", entity_type="person", model=model)
+        second = self.registry.resolve(
+            context_id="ctx", surface="Bob", entity_type="person", model=model
+        )
         self.assertEqual(len(model.calls), 1)
         self.assertEqual(second.status, ResolutionStatus.MODEL_RESOLVED)
         self.assertEqual(second.entity.graph_id, first.entity.graph_id)
 
     def test_model_resolved_grows_the_alias_so_next_time_is_a_direct_hit(self) -> None:
-        first = self.registry.resolve(context_id="ctx", surface="Dave", entity_type="person")
+        first = self.registry.resolve(
+            context_id="ctx", surface="Dave", entity_type="person"
+        )
         model = DeterministicEntityResolutionModel({"David": first.entity.graph_id})
-        second = self.registry.resolve(context_id="ctx", surface="David", entity_type="person", model=model)
+        second = self.registry.resolve(
+            context_id="ctx", surface="David", entity_type="person", model=model
+        )
         self.assertIn("david", second.entity.aliases)  # canonicalized form recorded
 
-        third = self.registry.resolve(context_id="ctx", surface="David", entity_type="person", model=model)
+        third = self.registry.resolve(
+            context_id="ctx", surface="David", entity_type="person", model=model
+        )
         self.assertEqual(third.status, ResolutionStatus.EXACT_ALIAS)
-        self.assertEqual(len(model.calls), 1)  # still just the one call from `second` -- `third` never needed the model
+        self.assertEqual(
+            len(model.calls), 1
+        )  # still just the one call from `second` -- `third` never needed the model
 
-    def test_name_index_lets_a_later_turn_find_an_entity_created_by_an_earlier_turn(self) -> None:
+    def test_name_index_lets_a_later_turn_find_an_entity_created_by_an_earlier_turn(
+        self,
+    ) -> None:
         """Without `EntityRegistry._index_profile` keeping the name_index in
         sync, an entity created mid-run would never appear in
         `find_candidates` results for a later turn in the same run."""
-        first = self.registry.resolve(context_id="ctx", surface="David Smith", entity_type="person")
-        model = DeterministicEntityResolutionModel({"David Smith Jr": first.entity.graph_id})
+        first = self.registry.resolve(
+            context_id="ctx", surface="David Smith", entity_type="person"
+        )
+        model = DeterministicEntityResolutionModel(
+            {"David Smith Jr": first.entity.graph_id}
+        )
 
         # A close-enough repeat surface should surface the earlier entity as
         # a candidate via the (now-populated) name_index, reaching the model.
-        second = self.registry.resolve(context_id="ctx", surface="David Smith Jr", entity_type="person", model=model)
+        second = self.registry.resolve(
+            context_id="ctx",
+            surface="David Smith Jr",
+            entity_type="person",
+            model=model,
+        )
         self.assertEqual(len(model.calls), 1)
         self.assertEqual(second.entity.graph_id, first.entity.graph_id)
+
 
 class _SlowRecordingModel:
     """Records every call and sleeps a fixed duration per call -- lets a
     test prove calls actually ran concurrently (wall time << sum of sleeps)
     instead of just trusting the implementation."""
 
-    def __init__(self, selections: dict[str, int | None], delay_s: float = 0.15) -> None:
+    def __init__(
+        self, selections: dict[str, int | None], delay_s: float = 0.15
+    ) -> None:
         self._selections = selections
         self._delay_s = delay_s
         self.calls: list[str] = []
         self._lock = threading.Lock()
 
-    def resolve_entity(self, *, context_id: str, surface: str, candidates) -> int | None:
+    def resolve_entity(
+        self, *, context_id: str, surface: str, candidates
+    ) -> int | None:
         with self._lock:
             self.calls.append(surface)
         time.sleep(self._delay_s)
         return self._selections.get(surface)
+
 
 class ResolveManyTests(unittest.TestCase):
     """`EntityRegistry.resolve_many` -- parallelizes the LLM disambiguation
@@ -234,14 +311,20 @@ class ResolveManyTests(unittest.TestCase):
     def test_all_exact_matches_never_touch_the_model(self) -> None:
         self.registry.register(EntityProfile(7, "ctx", "max", "pet", ("my dog",)))
         model = DeterministicEntityResolutionModel()
-        results = self.registry.resolve_many("ctx", [("Max", "pet"), ("my dog", "pet")], model=model)
+        results = self.registry.resolve_many(
+            "ctx", [("Max", "pet"), ("my dog", "pet")], model=model
+        )
         self.assertEqual([r.graph_id for r in results], [7, 7])
         self.assertEqual(model.calls, [])
 
     def test_mixed_exact_and_model_needed_resolve_correctly(self) -> None:
         self.registry.register(EntityProfile(7, "ctx", "max", "pet"))
-        model = DeterministicEntityResolutionModel({"Robert": None})  # abstains -- genuinely new
-        results = self.registry.resolve_many("ctx", [("Max", "pet"), ("Robert", "person")], model=model)
+        model = DeterministicEntityResolutionModel(
+            {"Robert": None}
+        )  # abstains -- genuinely new
+        results = self.registry.resolve_many(
+            "ctx", [("Max", "pet"), ("Robert", "person")], model=model
+        )
         self.assertEqual(results[0].graph_id, 7)  # exact match, no call
         self.assertEqual(results[1].canonical_name, "robert")  # new entity minted
         self.assertNotEqual(results[1].graph_id, 7)
@@ -249,13 +332,21 @@ class ResolveManyTests(unittest.TestCase):
     def test_duplicate_identical_surface_in_one_batch_resolves_once(self) -> None:
         self.registry.register(EntityProfile(7, "ctx", "robert", "person"))
         model = DeterministicEntityResolutionModel({"Bob": 7})
-        results = self.registry.resolve_many("ctx", [("Bob", "person"), ("Bob", "person"), ("Bob", "person")], model=model)
+        results = self.registry.resolve_many(
+            "ctx",
+            [("Bob", "person"), ("Bob", "person"), ("Bob", "person")],
+            model=model,
+        )
         self.assertEqual([r.graph_id for r in results], [7, 7, 7])
-        self.assertEqual(len(model.calls), 1)  # one call for the repeated surface, not three
+        self.assertEqual(
+            len(model.calls), 1
+        )  # one call for the repeated surface, not three
 
     def test_new_entities_get_distinct_graph_ids(self) -> None:
         model = DeterministicEntityResolutionModel({})
-        results = self.registry.resolve_many("ctx", [("Alice", "person"), ("Zed", "person")], model=model)
+        results = self.registry.resolve_many(
+            "ctx", [("Alice", "person"), ("Zed", "person")], model=model
+        )
         self.assertNotEqual(results[0].graph_id, results[1].graph_id)
 
     def test_results_preserve_input_order_and_length(self) -> None:
@@ -267,12 +358,21 @@ class ResolveManyTests(unittest.TestCase):
         # assigned next.
         self.registry.register(EntityProfile(999, "ctx", "alpha", "other"))
         model = DeterministicEntityResolutionModel({})
-        mentions = [("Alpha", "other"), ("Beta", "other"), ("Alpha", "other"), ("Gamma", "other")]
+        mentions = [
+            ("Alpha", "other"),
+            ("Beta", "other"),
+            ("Alpha", "other"),
+            ("Gamma", "other"),
+        ]
         results = self.registry.resolve_many("ctx", mentions, model=model)
         self.assertEqual(len(results), 4)
         self.assertEqual(results[0].graph_id, 999)
-        self.assertEqual(results[2].graph_id, 999)  # second "Alpha" matches the first, same position semantics
-        self.assertNotEqual(results[1].graph_id, results[3].graph_id)  # Beta and Gamma got distinct new ids
+        self.assertEqual(
+            results[2].graph_id, 999
+        )  # second "Alpha" matches the first, same position semantics
+        self.assertNotEqual(
+            results[1].graph_id, results[3].graph_id
+        )  # Beta and Gamma got distinct new ids
 
     def test_calls_actually_run_concurrently(self) -> None:
         """The whole point of resolve_many -- real wall-clock proof, not
@@ -285,35 +385,60 @@ class ResolveManyTests(unittest.TestCase):
         self.registry.register(EntityProfile(2, "ctx", "william", "person"))
         self.registry.register(EntityProfile(3, "ctx", "richard", "person"))
         self.registry.register(EntityProfile(4, "ctx", "margaret", "person"))
-        model = _SlowRecordingModel({"Bob": 1, "Bill": 2, "Dick": 3, "Peggy": 4}, delay_s=0.15)
-        mentions = [("Bob", "person"), ("Bill", "person"), ("Dick", "person"), ("Peggy", "person")]
+        model = _SlowRecordingModel(
+            {"Bob": 1, "Bill": 2, "Dick": 3, "Peggy": 4}, delay_s=0.15
+        )
+        mentions = [
+            ("Bob", "person"),
+            ("Bill", "person"),
+            ("Dick", "person"),
+            ("Peggy", "person"),
+        ]
         t0 = time.perf_counter()
-        results = self.registry.resolve_many("ctx", mentions, model=model, max_workers=4)
+        results = self.registry.resolve_many(
+            "ctx", mentions, model=model, max_workers=4
+        )
         elapsed = time.perf_counter() - t0
         self.assertEqual(len(model.calls), 4)
         self.assertEqual([r.graph_id for r in results], [1, 2, 3, 4])
         # Sequential would take >= 4*0.15=0.6s; concurrent should be close to one delay, not four.
-        self.assertLess(elapsed, 0.35, f"expected concurrent calls to overlap, took {elapsed:.2f}s")
+        self.assertLess(
+            elapsed, 0.35, f"expected concurrent calls to overlap, took {elapsed:.2f}s"
+        )
 
-    def test_two_distinct_surfaces_in_one_batch_do_not_see_each_other_as_candidates(self) -> None:
+    def test_two_distinct_surfaces_in_one_batch_do_not_see_each_other_as_candidates(
+        self,
+    ) -> None:
         """The one documented tradeoff: within a single resolve_many call,
         a genuinely-equivalent nickname pair introduced for the first time
         together does NOT get merged with each other -- both mint new,
         distinct entities, since neither's candidate shortlist (generated
         before either mutates the registry) can see the other."""
         model = DeterministicEntityResolutionModel({"Robert": None, "Bob": None})
-        results = self.registry.resolve_many("ctx", [("Robert", "person"), ("Bob", "person")], model=model)
+        results = self.registry.resolve_many(
+            "ctx", [("Robert", "person"), ("Bob", "person")], model=model
+        )
         self.assertIsNotNone(results[0])
         self.assertIsNotNone(results[1])
-        self.assertNotEqual(results[0].graph_id, results[1].graph_id)  # NOT merged, even though genuinely equivalent
+        self.assertNotEqual(
+            results[0].graph_id, results[1].graph_id
+        )  # NOT merged, even though genuinely equivalent
 
         # The split is now permanent for THESE two exact surfaces -- a later
         # "Bob" exact-matches its OWN already-registered entity, not
         # "Robert"'s; exact match takes priority over blocking, so it never
         # gets a chance to re-ask the model about the two of them.
-        third = self.registry.resolve(context_id="ctx", surface="Bob", model=DeterministicEntityResolutionModel({"Bob": results[0].graph_id}))
-        self.assertEqual(third.status, ResolutionStatus.EXACT_CANONICAL)  # "bob" is its OWN canonical name, not an alias
-        self.assertEqual(third.entity.graph_id, results[1].graph_id)  # its own entity, still not Robert's
+        third = self.registry.resolve(
+            context_id="ctx",
+            surface="Bob",
+            model=DeterministicEntityResolutionModel({"Bob": results[0].graph_id}),
+        )
+        self.assertEqual(
+            third.status, ResolutionStatus.EXACT_CANONICAL
+        )  # "bob" is its OWN canonical name, not an alias
+        self.assertEqual(
+            third.entity.graph_id, results[1].graph_id
+        )  # its own entity, still not Robert's
 
         # What DOES still work: a third, different surface in the same
         # nickname group ("Bobby" -- robert/bob/bobby/rob/robbie) sees BOTH
@@ -321,18 +446,23 @@ class ResolveManyTests(unittest.TestCase):
         # to one of them -- the two entities never merge with each other,
         # but new references aren't stuck being permanently ambiguous either.
         bobby_model = DeterministicEntityResolutionModel({"Bobby": results[0].graph_id})
-        bobby = self.registry.resolve(context_id="ctx", surface="Bobby", model=bobby_model)
+        bobby = self.registry.resolve(
+            context_id="ctx", surface="Bobby", model=bobby_model
+        )
         self.assertEqual(bobby.status, ResolutionStatus.MODEL_RESOLVED)
         self.assertEqual(len(bobby_model.calls), 1)
         candidates_offered = bobby_model.calls[0][2]
         self.assertIn(results[0].graph_id, candidates_offered)
         self.assertIn(results[1].graph_id, candidates_offered)
 
+
 class _BatchRecordingEntityModel:
     """Implements resolve_entities; records batch composition so tests can
     assert on call count and index mapping."""
 
-    def __init__(self, selections_by_surface: dict[str, int | None] | None = None) -> None:
+    def __init__(
+        self, selections_by_surface: dict[str, int | None] | None = None
+    ) -> None:
         self._selections = selections_by_surface or {}
         self.batch_calls: list[list[str]] = []
         self.pairwise_calls: list[str] = []
@@ -343,7 +473,10 @@ class _BatchRecordingEntityModel:
 
     def resolve_entities(self, *, context_id, mentions):
         self.batch_calls.append([surface for surface, _ in mentions])
-        return {i: self._selections.get(surface) for i, (surface, _) in enumerate(mentions)}
+        return {
+            i: self._selections.get(surface) for i, (surface, _) in enumerate(mentions)
+        }
+
 
 class BatchedEntityResolutionTests(unittest.TestCase):
     """§14: one call for several mentions instead of one per mention."""
@@ -353,7 +486,9 @@ class BatchedEntityResolutionTests(unittest.TestCase):
         registry.register(EntityProfile(7, "ctx", "robert", "person"))
         registry.register(EntityProfile(8, "ctx", "bobby", "person"))
         model = _BatchRecordingEntityModel({"Bob": 7, "Rob": 8})
-        results = registry.resolve_many("ctx", [("Bob", "person"), ("Rob", "person")], model=model)
+        results = registry.resolve_many(
+            "ctx", [("Bob", "person"), ("Rob", "person")], model=model
+        )
         self.assertEqual(len(model.batch_calls), 1)
         self.assertEqual(model.pairwise_calls, [])
         self.assertEqual([r.graph_id if r else None for r in results], [7, 8])
@@ -363,7 +498,9 @@ class BatchedEntityResolutionTests(unittest.TestCase):
         registry.register(EntityProfile(7, "ctx", "robert", "person"))
         registry.register(EntityProfile(8, "ctx", "bobby", "person"))
         model = _BatchRecordingEntityModel({"Bob": 7, "Rob": 8})
-        registry.resolve_many("ctx", [("Bob", "person"), ("Rob", "person")], model=model)
+        registry.resolve_many(
+            "ctx", [("Bob", "person"), ("Rob", "person")], model=model
+        )
         self.assertEqual(model.batch_calls, [])
         self.assertEqual(sorted(model.pairwise_calls), ["Bob", "Rob"])
 
@@ -378,6 +515,7 @@ class BatchedEntityResolutionTests(unittest.TestCase):
         """Second mention is ambiguous, not exact -- two profiles share the
         same string "sam", so `_exact_match` abstains and it genuinely
         reaches the model via `_ambiguous_exact_matches`'s shortlist seed."""
+
         class _PartialModel(_BatchRecordingEntityModel):
             def resolve_entities(self, *, context_id, mentions):
                 self.batch_calls.append([s for s, _ in mentions])
@@ -388,9 +526,183 @@ class BatchedEntityResolutionTests(unittest.TestCase):
         registry.register(EntityProfile(20, "ctx", "sam", "person"))
         registry.register(EntityProfile(21, "ctx", "sam", "person"))
         model = _PartialModel()
-        results = registry.resolve_many("ctx", [("Bob", "person"), ("Sam", "person")], model=model)
+        results = registry.resolve_many(
+            "ctx", [("Bob", "person"), ("Sam", "person")], model=model
+        )
         self.assertEqual(len(model.batch_calls), 1)
         self.assertEqual(results[0].graph_id, 7)
         # index 1 got no answer -> treated as unresolved, same contract as
         # resolve_entity() returning None -- neither ambiguous candidate wins
         self.assertNotIn(results[1].graph_id if results[1] else None, (20, 21))
+
+
+class FakeEntityHydrator:
+    """Records every `fetch()` call (context_id, in order) so tests can
+    assert on hydration frequency, and can be told to sleep (proving
+    concurrent first-requests hydrate once, not once each) or raise
+    (proving a failed hydration degrades to a cold context)."""
+
+    def __init__(
+        self,
+        entities_by_context: dict[str, list[HydratedEntity]] | None = None,
+        raises: bool = False,
+        sleep_s: float = 0.0,
+    ) -> None:
+        self._entities_by_context = entities_by_context or {}
+        self._raises = raises
+        self._sleep_s = sleep_s
+        self.fetch_calls: list[str] = []
+        self._lock = threading.Lock()
+
+    def fetch(self, context_id: str) -> list[HydratedEntity]:
+        with self._lock:
+            self.fetch_calls.append(context_id)
+        if self._sleep_s:
+            time.sleep(self._sleep_s)
+        if self._raises:
+            raise RuntimeError("hydration boom")
+        return list(self._entities_by_context.get(context_id, []))
+
+
+class HydrationTests(unittest.TestCase):
+    """Lazy per-context hydration of `EntityRegistry`/`EntityNameIndex` from
+    durable storage (docs/BEGINNER_BUILD_FLOW.md item 51)."""
+
+    def test_hydration_is_a_noop_when_hydrator_not_configured(self) -> None:
+        """Regression guard: every pre-existing call site constructs
+        `EntityRegistry` without a `hydrator`, and must behave exactly as
+        before this feature existed."""
+        registry = EntityRegistry(InMemoryGraphIdAllocator())
+        result = registry.resolve(context_id="ctx", surface="Shrek")
+        self.assertEqual(result.status, ResolutionStatus.NEW_ENTITY)
+
+    def test_first_resolve_triggers_hydration_exactly_once_per_context(self) -> None:
+        hydrator = FakeEntityHydrator({"ctx-a": []})
+        registry = EntityRegistry(InMemoryGraphIdAllocator(), hydrator=hydrator)
+        registry.resolve(context_id="ctx-a", surface="X")
+        registry.resolve(context_id="ctx-a", surface="Y")
+        registry.resolve(context_id="ctx-b", surface="Z")
+        self.assertEqual(hydrator.fetch_calls, ["ctx-a", "ctx-b"])
+
+    def test_hydrated_alias_resolves_via_exact_alias_match_without_model(self) -> None:
+        hydrator = FakeEntityHydrator(
+            {"ctx": [HydratedEntity(7, "lord farquaad", "person", ("farquaad",))]}
+        )
+        registry = EntityRegistry(InMemoryGraphIdAllocator(), hydrator=hydrator)
+        model = DeterministicEntityResolutionModel()
+        result = registry.resolve(context_id="ctx", surface="Farquaad", model=model)
+        self.assertEqual(result.status, ResolutionStatus.EXACT_ALIAS)
+        self.assertEqual(result.entity.graph_id, 7)
+        self.assertEqual(model.calls, [])
+
+    def test_hydration_populates_name_index_for_fuzzy_blocking(self) -> None:
+        """Proves `rebuild_from_entities` actually ran during hydration --
+        "Holmes" is neither the hydrated canonical name nor a hydrated
+        alias, so it can only reach the model via the embedding index."""
+        hydrator = FakeEntityHydrator(
+            {"ctx": [HydratedEntity(7, "sherlock holmes", "person", ())]}
+        )
+        name_index = EntityNameIndex(model=_FakeSentenceModel())
+        registry = EntityRegistry(
+            InMemoryGraphIdAllocator(), name_index=name_index, hydrator=hydrator
+        )
+        model = DeterministicEntityResolutionModel({"Holmes": 7})
+        result = registry.resolve(
+            context_id="ctx", surface="Holmes", entity_type="person", model=model
+        )
+        self.assertEqual(len(model.calls), 1)
+        self.assertEqual(result.entity.graph_id, 7)
+
+    def test_hydration_failure_degrades_to_cold_context(self) -> None:
+        hydrator = FakeEntityHydrator(raises=True)
+        registry = EntityRegistry(InMemoryGraphIdAllocator(), hydrator=hydrator)
+        result = registry.resolve(context_id="ctx", surface="Shrek")
+        self.assertEqual(result.status, ResolutionStatus.NEW_ENTITY)
+
+    def test_concurrent_first_resolve_for_same_context_hydrates_once(self) -> None:
+        hydrator = FakeEntityHydrator({"ctx": []}, sleep_s=0.05)
+        registry = EntityRegistry(InMemoryGraphIdAllocator(), hydrator=hydrator)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [
+                pool.submit(registry.resolve, context_id="ctx", surface=f"entity-{i}")
+                for i in range(8)
+            ]
+            for future in futures:
+                future.result()
+        self.assertEqual(hydrator.fetch_calls, ["ctx"])
+
+    def test_hydration_marker_eviction_reruns_hydration_for_lru_evicted_context(
+        self,
+    ) -> None:
+        hydrator = FakeEntityHydrator({"ctx-a": [], "ctx-b": [], "ctx-c": []})
+        registry = EntityRegistry(
+            InMemoryGraphIdAllocator(), hydrator=hydrator, max_hydrated_contexts=2
+        )
+        registry.resolve(context_id="ctx-a", surface="A")
+        registry.resolve(context_id="ctx-b", surface="B")
+        registry.resolve(
+            context_id="ctx-c", surface="C"
+        )  # evicts ctx-a, the oldest marker
+        registry.resolve(context_id="ctx-a", surface="A2")  # re-hydrates
+        self.assertEqual(hydrator.fetch_calls.count("ctx-a"), 2)
+        self.assertEqual(hydrator.fetch_calls.count("ctx-b"), 1)
+        self.assertEqual(hydrator.fetch_calls.count("ctx-c"), 1)
+
+
+class RestartSimulationTests(unittest.TestCase):
+    """Reproduces the CRIT-03 restart scenario end to end: a learned alias
+    survives a process restart when hydration is wired, and does not when
+    it isn't -- the negative control proves this test actually exercises
+    the bug being fixed."""
+
+    def test_alias_learned_before_restart_resolves_without_minting_a_duplicate(
+        self,
+    ) -> None:
+        allocator = InMemoryGraphIdAllocator()
+
+        # "Process 1": resolves the canonical mention, then learns an alias
+        # via a model-mediated call. name_index needed so "Farquaad" (not a
+        # curated nickname, not an exact match) reaches the model at all --
+        # same requirement DuplicateEntityFixTests establishes above.
+        registry_1 = EntityRegistry(
+            allocator, name_index=EntityNameIndex(model=_FakeSentenceModel())
+        )
+        first = registry_1.resolve(
+            context_id="ctx", surface="Lord Farquaad", entity_type="person"
+        )
+        model = DeterministicEntityResolutionModel({"Farquaad": first.entity.graph_id})
+        registry_1.resolve(
+            context_id="ctx", surface="Farquaad", entity_type="person", model=model
+        )
+        learned = registry_1._profiles[first.entity.graph_id]
+        self.assertIn("farquaad", learned.aliases)
+
+        # Durable state a real HydraDB write would have produced for that profile.
+        hydrated = [
+            HydratedEntity(
+                learned.graph_id,
+                learned.canonical_name,
+                learned.entity_type,
+                learned.aliases,
+            )
+        ]
+
+        # "Process 2" (restart, hydration wired): fresh registry, same
+        # durable allocator + hydrator sees the same durable state.
+        registry_2 = EntityRegistry(
+            allocator, hydrator=FakeEntityHydrator({"ctx": hydrated})
+        )
+        result = registry_2.resolve(
+            context_id="ctx", surface="Farquaad", entity_type="person"
+        )
+        self.assertEqual(result.status, ResolutionStatus.EXACT_ALIAS)
+        self.assertEqual(result.entity.graph_id, learned.graph_id)
+
+        # Negative control -- same restart, hydration NOT wired (today's
+        # behavior without this fix): mints a duplicate for the alias surface.
+        registry_3 = EntityRegistry(allocator)
+        result_cold = registry_3.resolve(
+            context_id="ctx", surface="Farquaad", entity_type="person"
+        )
+        self.assertEqual(result_cold.status, ResolutionStatus.NEW_ENTITY)
+        self.assertNotEqual(result_cold.entity.graph_id, learned.graph_id)

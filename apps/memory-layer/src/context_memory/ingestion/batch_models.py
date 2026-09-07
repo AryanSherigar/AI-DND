@@ -15,7 +15,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+
+from context_memory.core.models import BatchStatus
 
 
 @dataclass(frozen=True)
@@ -49,10 +50,5 @@ def dedupe_turn_entries(*groups: Iterable[TurnBatchEntry]) -> list[TurnBatchEntr
     return list(by_turn.values())
 
 
-@dataclass(frozen=True)
-class BatchStatus:
-    batch_id: str
-    status: Literal["pending", "succeeded", "failed", "partial"]
-    facts_created: int
-    error: str | None = None
-    retryable: bool = False
+__all__ = ["BatchStatus", "TurnBatchEntry", "dedupe_turn_entries"]
+

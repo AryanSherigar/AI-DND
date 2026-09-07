@@ -10,10 +10,11 @@ prevent.
 from __future__ import annotations
 
 import json
+from typing import Protocol
 
 from context_memory.core.llm_client import LLMClient
 from context_memory.core.logging import get_logger, timed_operation
-from context_memory.core.tool_executor import GuardedToolExecutor, ToolDeniedError, ToolNotFoundError
+from context_memory.core.tool_executor import GuardedToolExecutor
 from context_memory.core.tools import ToolRegistry
 
 logger = get_logger(__name__)
@@ -24,6 +25,43 @@ class ToolLoopExhaustedError(RuntimeError):
     Raised rather than returned as if it were a real answer -- a caller
     silently treating an exhausted loop as a normal response would hide a
     genuine runaway-tool-use failure."""
+
+
+class _FunctionCall(Protocol):
+    name: str
+    arguments: str
+
+
+class _ToolCall(Protocol):
+    id: str
+    function: _FunctionCall
+
+
+def _execute_tool_call(executor: GuardedToolExecutor, tool_call: _ToolCall) -> str:
+    try:
+        args = json.loads(tool_call.function.arguments or "{}")
+        result = executor.execute(tool_call.function.name, args)
+        return json.dumps(result)
+    except Exception as error:
+        logger.warning(
+            "Tool execution failed for %s: %s",
+            tool_call.function.name,
+            error,
+            exc_info=True,
+        )
+        return json.dumps({"error": f"{type(error).__name__}: {error}"})
+
+
+def _process_tool_calls(
+    executor: GuardedToolExecutor, tool_calls: list[_ToolCall]
+) -> list[dict[str, object]]:
+    tool_messages: list[dict[str, object]] = []
+    for tool_call in tool_calls:
+        content = _execute_tool_call(executor, tool_call)
+        tool_messages.append(
+            {"role": "tool", "tool_call_id": tool_call.id, "content": content}
+        )
+    return tool_messages
 
 
 def run_tool_loop(
@@ -44,35 +82,41 @@ def run_tool_loop(
     ]
     tools = registry.to_openai_tools()
 
-    with timed_operation(logger, "tool_loop.run", {"max_iterations": max_iterations}) as ctx:
+    with timed_operation(
+        logger, "tool_loop.run", {"max_iterations": max_iterations}
+    ) as ctx:
         for iteration in range(max_iterations):
             response = client.chat_with_tools(
-                messages, tools or None, temperature=temperature, max_tokens=max_tokens, timeout=timeout,
+                messages,
+                tools or None,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
             )
             message = response.choices[0].message
             if not message.tool_calls:
                 ctx["iterations"] = iteration + 1
                 return message.content or ""
 
-            messages.append({
-                "role": "assistant", "content": message.content,
-                "tool_calls": [
-                    {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                    for tc in message.tool_calls
-                ],
-            })
-            for tool_call in message.tool_calls:
-                try:
-                    args = json.loads(tool_call.function.arguments or "{}")
-                    result = executor.execute(tool_call.function.name, args)
-                    content = json.dumps(result)
-                except (ToolNotFoundError, ToolDeniedError, json.JSONDecodeError) as error:
-                    # Fed back to the model as the tool's own result, not
-                    # raised -- a real agent loop routes a bad call back to
-                    # the model to retry or explain, the same way a human
-                    # tool-user would see "permission denied" and adjust,
-                    # rather than crashing the whole turn.
-                    content = json.dumps({"error": str(error)})
-                messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": content})
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": message.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in message.tool_calls
+                    ],
+                }
+            )
+            messages.extend(_process_tool_calls(executor, message.tool_calls))
 
-        raise ToolLoopExhaustedError(f"model still calling tools after {max_iterations} iterations")
+        raise ToolLoopExhaustedError(
+            f"model still calling tools after {max_iterations} iterations"
+        )

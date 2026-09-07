@@ -14,22 +14,32 @@ flowchart LR
         Browser["User Browser / Client"]
     end
 
-    subgraph ComposeNet["aidnd-net (Docker Bridge Network)"]
+    subgraph FrontendNet["frontend-net (Bridge Network)"]
         Frontend["aidnd-frontend<br/>Port 80 (Prod) / 5173 (Dev)<br/>Nginx / Node:20"]
+    end
+
+    subgraph DualNet["Dual-Attached Services"]
         CoreAPI["aidnd-core-api<br/>Port 8000<br/>Python 3.11-slim (FastAPI)"]
         TRS["aidnd-trs<br/>Port 8001<br/>Python 3.11-slim (FastAPI)"]
+    end
+
+    subgraph BackendNet["backend-net (Bridge Network)"]
         Postgres[("aidnd-postgres<br/>Port 5432<br/>postgres:16-alpine")]
+        PostgresMem[("aidnd-postgres-memory<br/>Port 5432<br/>pgvector:0.8.6")]
+        HydraDB[("aidnd-hydradb<br/>Ports 7687, 8443, 9090")]
+        MemLayer["aidnd-memory-layer<br/>Port 8002"]
     end
 
     Browser -->|HTTP Port 80 / 5173| Frontend
-    Browser -->|HTTP REST Port 8000| CoreAPI
-    Browser -->|HTTP SSE Port 8001| TRS
-
-    Frontend -.->|API Requests| CoreAPI
-    Frontend -.->|Turn Streams| TRS
+    Frontend -->|Reverse Proxy /api/| CoreAPI
+    Frontend -->|Reverse Proxy /trs/| TRS
 
     CoreAPI -->|AsyncPG Connection Pool| Postgres
+    CoreAPI -->|HTTP REST| MemLayer
     TRS -->|AsyncPG Connection Pool| Postgres
+    TRS -->|HTTP REST| MemLayer
+    MemLayer -->|AsyncPG Connection Pool| PostgresMem
+    MemLayer -->|HTTP / Bolt| HydraDB
 ```
 
 ---
@@ -43,7 +53,7 @@ flowchart LR
   - `core-api`: FastAPI backend container running on port `8000`. Configured with `depends_on: postgres: condition: service_healthy` to guarantee database readiness before startup.
   - `turn-resolution-service`: Stateful turn execution engine running on port `8001`. Depends on healthy Postgres.
   - `frontend`: Production Nginx container serving static SPA assets on port `80`. Depends on both `core-api` and `turn-resolution-service`.
-- **Dependencies & Interactions:** Joins all services onto the shared bridge network `aidnd-net`. Reads environment defaults from root `.env` or system environment.
+- **Dependencies & Interactions:** Joins services across two segregated bridge networks: `frontend-net` (public ingress reverse-proxy routing) and `backend-net` (private database & internal service tier), enforcing defense-in-depth perimeter isolation. Reads environment defaults from root `.env` or system environment.
 - **Architecture Rules & Invariants:**
   - Neither Python API service may accept traffic before Postgres health checks pass.
   - Port bindings use parameterized defaults (e.g. `${CORE_API_PORT:-8000}`) to avoid host conflicts.

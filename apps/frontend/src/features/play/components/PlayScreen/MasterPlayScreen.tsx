@@ -8,6 +8,7 @@ import { EBookBottomBar } from "./EBook/EBookBottomBar";
 import { EBookCanvas } from "./EBook/EBookCanvas";
 import { EBookCodexDrawer } from "./EBook/EBookCodexDrawer";
 import { EBookHeader } from "./EBook/EBookHeader";
+import { PlaythroughEndedBanner } from "./PlaythroughEndedBanner";
 import { Toast } from "@/shared/components/feedback/Toast";
 
 export function MasterPlayScreen() {
@@ -44,6 +45,7 @@ export function MasterPlayScreen() {
 
   if (!playthrough) return null;
 
+  const isEnded = Boolean(playthrough.ended_outcome_tag);
   const isSepia = theme === "antique-sepia";
   const containerTheme = isSepia
     ? "bg-[#f4ebd9] text-[#2c2217] selection:bg-[#e2d5be]"
@@ -70,6 +72,7 @@ export function MasterPlayScreen() {
         hasTurns={playthrough.turns.length > 0}
         canAct={playthrough.can_act}
         waitingOnLabel={playthrough.next_actor_label}
+        isEnded={isEnded}
         onTakeAction={openActionDrawer}
         onContinue={continueTurn}
         onRetry={retryLastTurn}
@@ -109,6 +112,15 @@ export function MasterPlayScreen() {
           message={degradedMessage}
           type="error"
           onClose={clearDegradedMessage}
+        />
+      )}
+
+      {isEnded && playthrough.ended_outcome_tag && (
+        <PlaythroughEndedBanner
+          outcomeTag={playthrough.ended_outcome_tag}
+          outcomeTitle={playthrough.ended_outcome_title ?? "The End"}
+          outcomeText={playthrough.ended_outcome_text ?? ""}
+          onBackToLibrary={() => navigate("/play")}
         />
       )}
     </div>
