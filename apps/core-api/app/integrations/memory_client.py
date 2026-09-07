@@ -195,9 +195,16 @@ def _build_template_ingest_body(
     world_data on the wire -- master-mode entities/facts are folded into
     world_data, keyed by canonical_name (mem1 has no notion of this
     product's entity UUIDs).
+
+    Newbie mode: mem1 requires world_data.lore_text, but Studio's authoring
+    payload stores that prose under worldLore. Map it here rather than in
+    mem1 or Studio, since this file is the only permitted mem1 wire boundary.
     """
     if request.mode == "newbie":
-        world_data = request.world_data
+        world_data = {
+            **request.world_data,
+            "lore_text": request.world_data.get("worldLore"),
+        }
     else:
         canonical_names = {e.entity_id: e.canonical_name for e in request.entities}
         world_data = {

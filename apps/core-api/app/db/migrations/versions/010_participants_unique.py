@@ -1,6 +1,6 @@
 """participants unique constraints
 
-Revision ID: 010_participants_unique_constraints
+Revision ID: 010_participants_unique
 Revises: 009_turn_logs_unique_constraint
 Create Date: 2026-09-07
 
@@ -13,7 +13,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "010_participants_unique_constraints"
+revision: str = "010_participants_unique"
 down_revision: str | None = "009_turn_logs_unique_constraint"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

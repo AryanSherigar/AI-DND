@@ -6,6 +6,7 @@ import { NarratorPersonaEditor } from "../NarratorPersonaEditor/NarratorPersonaE
 import { NarrationFontPicker } from "../NarrationFontPicker/NarrationFontPicker";
 import { ActionChipsEditor } from "../ActionChipsEditor/ActionChipsEditor";
 import { RulesEditor } from "../RulesEditor/RulesEditor";
+import { PublishFlow } from "../PublishFlow/PublishFlow";
 import { StudioSetupPanelProps } from "./MasterModeStudioLayout.types";
 
 export const StudioSetupPanel: React.FC<StudioSetupPanelProps> = ({
@@ -19,5 +20,6 @@ export const StudioSetupPanel: React.FC<StudioSetupPanelProps> = ({
     <NarrationFontPicker scenarioId={scenarioId} />
     <ActionChipsEditor scenarioId={scenarioId} />
     <RulesEditor scenarioId={scenarioId} />
+    <PublishFlow scenarioId={scenarioId} />
   </div>
 );
