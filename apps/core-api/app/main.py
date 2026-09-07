@@ -2,9 +2,11 @@
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.db.connection import close_db_connection
@@ -71,6 +73,10 @@ app.include_router(share.router)
 app.include_router(logs.router)
 app.include_router(uploads.router)
 app.include_router(users.router)
+
+upload_dir = Path(settings.local_upload_dir)
+upload_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(upload_dir)), name="uploads")
 
 
 @app.get("/health")

@@ -5,10 +5,12 @@ import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
 import { extractErrorMessage } from "@/shared/lib/extractErrorMessage";
 import { createScenario } from "../../api/scenarios.api";
+import { CoverImageUploader } from "../CoverImageUploader/CoverImageUploader";
 
 export const MasterModeCreateFlow: React.FC = () => {
   const navigate = useNavigate();
   const [title, setTitle] = useState("");
+  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -16,6 +18,7 @@ export const MasterModeCreateFlow: React.FC = () => {
         title: title.trim(),
         mode: "master",
         complexity_tier: "master",
+        cover_image_url: coverImageUrl || undefined,
       }),
     onSuccess: (scenario) => {
       navigate(`/studio/${scenario.scenario_id}/edit`);
@@ -45,6 +48,12 @@ export const MasterModeCreateFlow: React.FC = () => {
           placeholder="Scenario title"
           aria-label="Scenario title"
           autoFocus
+        />
+        <CoverImageUploader
+          label="Cover Image (Optional)"
+          value={coverImageUrl}
+          onChange={setCoverImageUrl}
+          className="text-left"
         />
         <Button
           type="submit"

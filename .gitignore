@@ -90,3 +90,7 @@ tmp/
 
 # ...except memory-layer's actual migration source, not a local dump.
 !apps/memory-layer/db/migrations/*.sql
+
+# Local uploads
+apps/core-api/uploads/
+

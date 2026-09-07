@@ -59,4 +59,50 @@ describe("ScenarioMetaForm", () => {
     const payload = savedPayload as { title: string };
     expect(payload.title).toBe("The Deeper Cairn");
   });
+
+  it("loads and saves cover image url updates", async () => {
+    let savedPayload: unknown = null;
+    server.use(
+      http.get(`${API_URL}/v1/scenarios/${SCENARIO_ID}`, () =>
+        HttpResponse.json({
+          scenario_id: SCENARIO_ID,
+          title: "The Hollow Cairn",
+          logline: "A dungeon of forgotten kings.",
+          genre_tags: [],
+          complexity_tier: "master",
+          content_tag: "teen",
+          player_count_support: "solo",
+          cover_image_url:
+            "http://localhost:8000/uploads/scenario-covers/old.png",
+        }),
+      ),
+      http.patch(
+        `${API_URL}/v1/scenarios/${SCENARIO_ID}`,
+        async ({ request }) => {
+          savedPayload = await request.json();
+          return HttpResponse.json({
+            scenario_id: SCENARIO_ID,
+            ...(savedPayload as Record<string, unknown>),
+          });
+        },
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderForm();
+
+    const preview = await screen.findByAltText("Scenario cover preview");
+    expect(preview).toHaveAttribute(
+      "src",
+      "http://localhost:8000/uploads/scenario-covers/old.png",
+    );
+
+    const removeBtn = screen.getByRole("button", { name: /remove image/i });
+    await user.click(removeBtn);
+
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    const payload = savedPayload as Record<string, unknown>;
+    expect(payload.cover_image_url).toBeUndefined();
+  });
 });

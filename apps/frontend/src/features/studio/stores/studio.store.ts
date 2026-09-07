@@ -90,6 +90,19 @@ const defaultDraft: NewbieDraft = {
   narrativeStyle: "",
 };
 
+export interface ScenarioDraftHydration {
+  title?: string;
+  logline?: string | null;
+  genre_tags?: string[];
+  complexity_tier?: "newbie" | "intermediate" | "master";
+  player_count_support?: "solo" | "multiplayer" | "both";
+  estimated_playtime?: string | null;
+  cover_image_url?: string | null;
+  narrator_persona?: string | null;
+  world_data?: Record<string, unknown>;
+  setup_schema?: SetupInputField[];
+}
+
 interface StudioState {
   mode: "newbie" | "master";
   setMode: (mode: "newbie" | "master") => void;
@@ -99,6 +112,7 @@ interface StudioState {
 
   newbieDraft: NewbieDraft;
   updateNewbieDraft: (updates: Partial<NewbieDraft>) => void;
+  hydrateFromScenario: (scenario: ScenarioDraftHydration) => void;
   resetDraft: () => void;
 
   lastSaved: Date | null;
@@ -123,6 +137,29 @@ export const useStudioStore = create<StudioState>((set) => ({
   updateNewbieDraft: (updates) =>
     set((state) => ({
       newbieDraft: { ...state.newbieDraft, ...updates },
+    })),
+  hydrateFromScenario: (scenario) =>
+    set((state) => ({
+      newbieDraft: {
+        ...state.newbieDraft,
+        title: scenario.title ?? state.newbieDraft.title,
+        logline: scenario.logline ?? state.newbieDraft.logline,
+        genre_tags: scenario.genre_tags ?? state.newbieDraft.genre_tags,
+        complexity_tier:
+          scenario.complexity_tier ?? state.newbieDraft.complexity_tier,
+        player_count_support:
+          scenario.player_count_support ??
+          state.newbieDraft.player_count_support,
+        estimated_playtime:
+          scenario.estimated_playtime ?? state.newbieDraft.estimated_playtime,
+        cover_image_url:
+          scenario.cover_image_url ?? state.newbieDraft.cover_image_url,
+        setupInputs: scenario.setup_schema?.length
+          ? scenario.setup_schema
+          : state.newbieDraft.setupInputs,
+        aiInstructions:
+          scenario.narrator_persona ?? state.newbieDraft.aiInstructions,
+      },
     })),
   resetDraft: () =>
     set({

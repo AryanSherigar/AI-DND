@@ -10,6 +10,7 @@ export interface ScenarioMetaFormState {
   complexityTier: ScenarioComplexityTier;
   contentTag: string | null;
   playerCountSupport: ScenarioPlayerCountSupport;
+  coverImageUrl: string | null;
 }
 
 export interface ScenarioMetaFormProps {

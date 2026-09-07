@@ -15,6 +15,7 @@ import {
 } from "../../types/scenario.types";
 import { ContentTagPicker } from "../PublishFlow/ContentTagPicker";
 import { GenreTagsPicker } from "./GenreTagsPicker";
+import { CoverImageUploader } from "../CoverImageUploader/CoverImageUploader";
 import {
   ScenarioMetaFormProps,
   ScenarioMetaFormState,
@@ -39,6 +40,7 @@ const buildInitialState = (
   complexityTier: scenario.complexity_tier,
   contentTag: scenario.content_tag,
   playerCountSupport: scenario.player_count_support,
+  coverImageUrl: scenario.cover_image_url,
 });
 
 export const ScenarioMetaForm: React.FC<ScenarioMetaFormProps> = ({
@@ -59,11 +61,14 @@ export const ScenarioMetaForm: React.FC<ScenarioMetaFormProps> = ({
       complexity_tier: form.complexityTier,
       content_tag: form.contentTag ?? undefined,
       player_count_support: form.playerCountSupport,
+      cover_image_url: form.coverImageUrl ?? undefined,
     });
   };
 
   if (isLoading || !form) {
-    return <p className="text-sm text-content-faint">Loading scenario details...</p>;
+    return (
+      <p className="text-sm text-content-faint">Loading scenario details...</p>
+    );
   }
 
   return (
@@ -97,6 +102,11 @@ export const ScenarioMetaForm: React.FC<ScenarioMetaFormProps> = ({
           onChange={(e) => setForm({ ...form, logline: e.target.value })}
         />
       </div>
+      <CoverImageUploader
+        label="Cover Image"
+        value={form.coverImageUrl}
+        onChange={(url) => setForm({ ...form, coverImageUrl: url })}
+      />
       <div className="space-y-1">
         <label className="text-xs text-content-faint">Genre Tags</label>
         <GenreTagsPicker
@@ -118,7 +128,9 @@ export const ScenarioMetaForm: React.FC<ScenarioMetaFormProps> = ({
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-content-faint">Player Count Support</label>
+        <label className="text-xs text-content-faint">
+          Player Count Support
+        </label>
         <Select
           options={PLAYER_COUNT_SUPPORT_OPTIONS}
           value={form.playerCountSupport}

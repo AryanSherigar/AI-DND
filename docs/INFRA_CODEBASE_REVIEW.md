@@ -489,3 +489,164 @@ gantt
 2. **Harden Web Server**: Add security headers and immutable asset caching to `apps/frontend/nginx.conf`.
 3. **Streamline Dev Stack**: Fix port 80/5173 collisions and eliminate redundant `npm install` runs in `docker-compose.dev.yml`.
 4. **Standardize Monorepo Runtimes**: Align all Python services to the same base image version.
+
+
+   Comprehensive Docker & Docker Compose Audit Report 
+
+  An in-depth analysis was conducted across all Dockerfiles, Compose specifications, networking topologies, database migrations, and build configs in the repository without making code modifications or starting containers.
+  ──────
+  ## Executive Summary
+   Target Stack                                                    |   Ready to Run?    | Key Verdict
+  -----------------------------------------------------------------|--------------------|------------------------------------------------------------------------------------------------------------------------------------------
+   Development Stack (docker-compose.yml + docker-compose.dev.yml) |        YES         | Syntactically and structurally sound. Clean config validation. Ready for docker compose -f docker-compose.yml -f docker-compose.dev.yml
+                                                                   |                    | up --build.
+   Production / Base Stack (docker-compose.yml)                    | YES (with caveats) | Valid, but binds privileged host Port 80 directly.
+   Isolated Memory Backing Stack (apps/memory-layer/compose.yaml)  |        YES         | Valid standalone compose file for pgvector + hydradb.
+  All TypeScript code compiles cleanly without errors (frontend), production asset bundling succeeds (frontend), npm ci lockfiles are synchronized, and all Python services (core-api, turn-resolution-service, and memory-layer)
+  import without dependency conflicts.
+  ──────
+  ## 1. Inventory of Inspected Files
+
+  1. Compose Manifests:
+      • docker-compose.yml (Root production / integration compose file)
+      • docker-compose.dev.yml (Local hot-reloading development overrides)
+      • compose.yaml (Standalone memory database fixture)
+  2. Dockerfiles & Web Server Configurations:
+      • Dockerfile
+      • Dockerfile
+      • Dockerfile
+      • Dockerfile & nginx.conf
+      • Dockerfile.dev
+  3. Context Filtering & Environment:
+      • .dockerignore, .dockerignore, .dockerignore, .dockerignore
+      • .env and .env.example
+
+  ──────
+  ## 2. Detailed Findings & Prerequisites to Solve
+
+  ### 1. Privileged Host Port 80 in Base docker-compose.yml
+
+  • Location: docker-compose.yml:204
+  • Detail:
+    ports:
+      - "80:8080"
+  The production compose file binds directly to host port 80.
+  • Potential Issue:
+      • On Linux, ports < 1024 are privileged. If running rootless Docker, or if another service (such as system Apache, system Nginx, or Caddy) is running on port 80, starting docker compose up will fail with bind: permission
+      denied or bind: address already in use. (Note: Checking the current host showed port 80 is currently unoccupied).
+      • Unlike docker-compose.dev.yml (which uses ${FRONTEND_PORT:-5173}:5173), port 80 is hardcoded in the base file rather than parameterized.
+  • Action Required: If you run the production stack (docker compose up), ensure you have appropriate rights to bind port 80 or parameterize it (e.g. ${FRONTEND_PROD_PORT:-80}:8080).
+  ──────
+  ### 2. Docker Compose CLI Version (Tag !override)
+
+  • Location: docker-compose.dev.yml:41 & docker-compose.dev.yml:51
+  • Detail:
+  docker-compose.dev.yml utilizes the YAML merge tag !override:
+    frontend:
+      build: !override
+        ...
+      ports: !override
+        - "${FRONTEND_PORT:-5173}:5173"
+
+  • Potential Issue:
+  !override was added in Docker Compose v2.20.0 (mid-2023). Any environment running an older version of docker compose or legacy Python docker-compose v1.x will crash with:
+  yaml: unknown tag !override.
+  • Status on Your System: Your system has Docker Compose v5.5.0 (Docker CLI v2 Compose Plugin), which parsed and validated this cleanly. Ensure any CI/CD or collaborator environments also run Compose v2.20.0+.
+  ──────
+  ### 3. Outbound Internet Requirement on First Boot (Hugging Face & HydraDB)
+
+  • Location: server.py:41 & Dockerfile:17
+  • Detail:
+  During the startup lifespan of aidnd-memory-layer, build_memory_engine executes:
+    embedder = SentenceTransformerEmbedder(model_name=config.embedding_model_name)
+  This loads sentence-transformers/all-MiniLM-L6-v2, downloading weights (~90MB) into HF_HOME=/app/.cache/huggingface.
+  • Potential Issue:
+      • The container must have outbound internet connectivity on initial startup. If behind an offline environment or strict proxy, startup will hang or error out.
+      • /app/.cache/huggingface is currently stored in the container's ephemeral root filesystem. If the container is destroyed (docker compose down or rebuilt), the weights will be redownloaded on the next start.
+  • Recommendation: If you want to avoid redownloading on rebuilds, consider mounting a named volume for hf_cache:/app/.cache/huggingface.
+  ──────
+  ### 4. Anonymous Volume Shadowing for frontend/node_modules
+
+  • Location: docker-compose.dev.yml:48-50
+  • Detail:
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules
+
+  • Behavior to Note:
+  Mounting ./apps/frontend to /app with an anonymous volume /app/node_modules prevents host node_modules from clobbering container Linux binaries.
+  However, if you add or upgrade an npm dependency on the host in package.json, the existing anonymous volume inside Docker will not automatically receive the new package.
+  • Action Required: Whenever packages in apps/frontend change, restart with docker compose down -v or rebuild with --build.
+  ──────
+  ### 5. UID / GID Defaults in Dockerfile.dev
+
+  • Location: Dockerfile.dev:3-13 and docker-compose.dev.yml:45-46
+  • Detail:
+    args:
+      UID: ${UID:-1000}
+      GID: ${GID:-1000}
+
+  • Behavior to Note:
+  In standard Linux shells, $UID is an internal shell variable that is not exported to subprocesses, and $GID is unset. Docker Compose evaluates both to 1000.
+  • Status on Your System: Checked with id on your system: uid=1000, gid=1000. This matches the defaults perfectly. (If another developer runs this whose host UID is 1001+, they must specify UID and GID in .env to prevent
+  permission errors on bind-mounted directories).
+  ──────
+  ### 6. Vite envDir Resolution in Development Container
+
+  • Location: vite.config.ts:8-12
+  • Detail:
+    const MONOREPO_ROOT = path.resolve(__dirname, "../..");
+    ...
+    envDir: MONOREPO_ROOT,
+
+  • Behavior to Note:
+  Inside the development container, ./apps/frontend is mounted to /app. path.resolve("/app", "../..") resolves to / (the root filesystem inside the container).
+  Because the root .env file is not mounted into the dev container, Vite does not find a .env file at /.
+  However, docker-compose.dev.yml explicitly injects all required VITE_* keys into environment::
+    VITE_CORE_API_URL: http://localhost:8000
+    VITE_TRS_URL: http://localhost:8001
+    ...
+  Vite correctly picks them up via process.env.
+  • Note: Any changes to .env while running the dev container will require restarting the container, as Vite cannot hot-watch the host's .env file.
+  ──────
+  ### 7. Alembic & Memory Migrations Sequencing
+
+  • Core API Migrations:
+  docker-compose.yml cleanly runs migration-runner (alembic upgrade head) before starting core-api, using depends_on: migration-runner: condition: service_completed_successfully.
+  • Memory Layer Migrations:
+  memory-layer-migration-runner runs python scripts/run_migrations.py against postgres-memory before memory-layer starts.
+  • Verification: Both migration suites have valid paths and models configured.
+  ──────
+  ## 3. Recommended Commands to Run
+
+  When you are ready to launch, use the appropriate command:
+
+  ### For Development (with Hot Reloading & Live Mounts):
+
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+  Services will be available at:
+
+  • Frontend: http://localhost:5173
+  • Core API: http://localhost:8000 (Docs: /docs, Health: /health)
+  • Turn Resolution Service: http://localhost:8001 (Health: /health)
+  • Memory Layer: http://localhost:8002
+  • PostgreSQL: localhost:5432
+
+  ### For Production / Base Simulation:
+
+    docker compose up --build
+
+  Services will be available at:
+
+  • Unified Ingress (Nginx): http://localhost:80
+      • Routes /api/* to core-api:8000
+      • Routes /trs/* to turn-resolution-service:8001 (with unbuffered SSE streaming enabled)
+      • Routes /* to built static React SPA bundle
+
+  ──────
+  ## Conclusion
+
+  The Docker configurations are correctly structured and passed dry-run validation. No code modifications are strictly required for the development stack to run. You can proceed with running the development stack whenever
+  ready.
+

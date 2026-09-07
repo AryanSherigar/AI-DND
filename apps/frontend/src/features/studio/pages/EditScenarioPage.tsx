@@ -9,10 +9,16 @@ export const EditScenarioPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { scenario, isLoading, error } = useScenario(id ?? null);
   const setMode = useStudioStore((s) => s.setMode);
+  const hydrateFromScenario = useStudioStore((s) => s.hydrateFromScenario);
 
   useEffect(() => {
-    if (scenario) setMode(scenario.mode);
-  }, [scenario, setMode]);
+    if (scenario) {
+      setMode(scenario.mode);
+      if (scenario.mode === "newbie") {
+        hydrateFromScenario(scenario);
+      }
+    }
+  }, [scenario, setMode, hydrateFromScenario]);
 
   if (!id) {
     return (
