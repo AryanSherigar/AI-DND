@@ -1,38 +1,28 @@
-# Git & version control
-.git
-.gitignore
-.gitattributes
-
-# Dependencies (prevent host node_modules from overwriting container npm ci)
+# Dependencies (prevents overwriting npm ci in container & saves 1.3GB context)
 node_modules/
 
-# Build artifacts & local caches
+# Production build output
 dist/
-dist-ssr/
-*.local
-.cache/
-.parcel-cache/
 
-# Secrets and local environment configs (preserve example templates)
+# Environment files (prevent baking secrets into static assets)
 .env
 .env.*
 !.env.example
 
-# Test caches, reports, and coverage
+# Testing & Coverage
 coverage/
 .vitest/
-*.lcov
 
-# Logs
+# Git & Repository metadata
+.git/
+.gitignore
+
+# System & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-
-# Documentation & IDE
-*.md
-.idea/
-.vscode/
-*.swp
-*.swo
-.DS_Store

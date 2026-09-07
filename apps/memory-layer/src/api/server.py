@@ -48,17 +48,14 @@ app = FastAPI(title="Context Memory API", lifespan=lifespan)
 # CORSMiddleware reflects the request's own Origin header back (rather than
 # a literal "*") whenever credentials are allowed, so this combination
 # actually permitted credentialed cross-origin requests from ANY origin, not
-# a harmless wildcard. `CONTEXT_MEMORY_ALLOWED_ORIGINS` (comma-separated) is
-# empty by default -- no browser origin is allowed, and credentials are
+# a harmless wildcard. `CONTEXT_MEMORY_ALLOWED_ORIGINS` (a JSON array string)
+# is empty by default -- no browser origin is allowed, and credentials are
 # never enabled, until an operator explicitly configures real origins.
 # Non-browser server-to-server callers (AI-DND's own backend services) are
 # unaffected either way -- CORS only restricts browser-issued cross-origin
 # requests, never direct API calls.
-_allowed_origins = [
-    o.strip()
-    for o in os.environ.get("CONTEXT_MEMORY_ALLOWED_ORIGINS", "").split(",")
-    if o.strip()
-]
+_raw_allowed_origins = os.environ.get("CONTEXT_MEMORY_ALLOWED_ORIGINS", "").strip()
+_allowed_origins = json.loads(_raw_allowed_origins) if _raw_allowed_origins else []
 
 app.add_middleware(
     CORSMiddleware,

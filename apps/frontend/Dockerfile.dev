@@ -1,0 +1,23 @@
+FROM node:20-alpine
+
+ARG UID=1000
+ARG GID=1000
+
+# NOTE: node:20-alpine ships a built-in "node" user at 1000:1000. Only
+# recreate it when the host UID/GID differs, so bind-mounted files stay
+# owned by the host user instead of root.
+RUN if [ "$UID" != "1000" ] || [ "$GID" != "1000" ]; then \
+      deluser node 2>/dev/null || true; \
+      delgroup node 2>/dev/null || true; \
+      addgroup -g "$GID" node && adduser -D -u "$UID" -G node node; \
+    fi
+
+WORKDIR /app
+RUN chown node:node /app
+
+USER node
+
+COPY --chown=node:node package.json package-lock.json ./
+RUN npm ci
+
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]

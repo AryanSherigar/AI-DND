@@ -35,7 +35,7 @@ Overall, the pipeline architecture is cleanly separated into step modules, but l
 
 ## P0 — Critical Severity Findings
 
-### [P0-SEC-1] Broken Object Level Authorization (BOLA / IDOR) in Turn Submission Endpoint
+### [P0-SEC-1] Broken Object Level Authorization (BOLA / IDOR) in Turn Submission Endpoint(Solved)
 - **Category:** Security & Authorization
 - **Location:** [`app/routers/turn.py:L18-25`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/app/routers/turn.py#L18-L25), [`app/turn/pipeline.py:L85-96`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/app/turn/pipeline.py#L85-L96), [`app/turn/steps/request_receiver.py:L30-70`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/app/turn/steps/request_receiver.py#L30-L70)
 - **Root Cause:** In [`turn.py:L18-23`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/app/routers/turn.py#L18-L23), `_user: Annotated[CurrentUser, Depends(get_current_user)]` is injected into the endpoint dependency. However, `_user` is never passed into `run_turn(turn_input, session)`. In [`request_receiver.py:L30-70`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/app/turn/steps/request_receiver.py#L30-L70), the request intake step checks whether `acting_participant = _find_participant(participants, turn_input.participant_id)` exists within `participants`, but **never checks whether `acting_participant.user_id == current_user.user_id`**.
@@ -47,7 +47,7 @@ Overall, the pipeline architecture is cleanly separated into step modules, but l
 
 ---
 
-### [P0-SEC-2] Server-Side Request Forgery (SSRF) via Unvalidated Minigame Replit URL Pre-warm
+### [P0-SEC-2] Server-Side Request Forgery (SSRF) via Unvalidated Minigame Replit URL Pre-warm(Solved)
 - **Category:** Security & Authorization
 - **Location:** [`app/turn/pipeline.py:L283-306`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/app/turn/pipeline.py#L283-L306), [`app/turn/steps/minigame_trigger_evaluator.py:L76`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/app/turn/steps/minigame_trigger_evaluator.py#L76)
 - **Root Cause:** When a master-mode turn matches a minigame trigger of type `replit_embed`, `_stamp_pending_minigame` invokes `_prewarm_replit_url(str(replit_embed_url))`. In [`_prewarm_replit_url:L290-306`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/app/turn/pipeline.py#L290-L306), `httpx.AsyncClient` executes an unvalidated HTTP GET request directly to the scenario-supplied URL:

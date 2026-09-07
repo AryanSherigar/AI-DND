@@ -1,49 +1,32 @@
-# Git & version control
-.git
-.gitignore
-.gitattributes
-
-# Submodules and nested services (hydradb has its own independent build context)
-hydradb/
-
-# Python bytecode and cache
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.import_linter_cache/
-.coverage
-htmlcov/
-.tox/
-.nox/
-
-# Virtual environments
+# Virtual environments (saves 5.7GB context)
 .venv/
 venv/
 env/
-ENV/
 
-# Secrets and local environment configs (preserve example templates)
+# Python cache & compiled bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# HydraDB Rust crate directory (memory-layer Python container does not need hydradb source)
+hydradb/
+
+# Testing & Benchmark artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.cache/
+
+# Environment & Secrets
 .env
 .env.*
+src/.env
 !.env.example
+!src/.env.example
 
-# Documentation, scripts, and local compose
-docs/
-scripts/
-compose.yaml
-*.md
-
-# Tests
-tests/
-src/tests/
-
-# IDE & OS
-.idea/
+# Git & Editor files
+.git/
+.gitignore
 .vscode/
-*.swp
-*.swo
-.DS_Store
+.idea/
+*.log

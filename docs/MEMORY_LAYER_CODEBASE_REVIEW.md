@@ -141,7 +141,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [CRIT-03] Volatile In-Memory Entity Registry Minting Duplicate Broken Entities Across Restarts & Replicas
+### [CRIT-03] Volatile In-Memory Entity Registry Minting Duplicate Broken Entities Across Restarts & Replicas (Solved)
 - **Severity**: Critical (P0)
 - **Category**: State Management / Knowledge Graph Corruption
 - **Location**: [`src/context_memory/ingestion/entity_registry.py:33-60, 117-124`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/ingestion/entity_registry.py#L33-L60), [`src/context_memory/composition.py:117-121`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/composition.py#L117-L121)
@@ -171,7 +171,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [CRIT-04] Master-Mode & Template Facts Omitted from Postgres Vector & BM25 Indexes (Permanent Retrieval Abstention)
+### [CRIT-04] Master-Mode & Template Facts Omitted from Postgres Vector & BM25 Indexes (Permanent Retrieval Abstention) (Solved)
 - **Severity**: Critical (P0)
 - **Category**: Retrieval Pipeline Failure / Core Feature Break
 - **Location**: [`src/context_memory/ingestion/direct_authoring.py:134-238`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/ingestion/direct_authoring.py#L134-L238), [`src/context_memory/cloning/template_clone.py:77-136`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/cloning/template_clone.py#L77-L136), [`src/context_memory/retrieval/seeder.py:26-99`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/retrieval/seeder.py#L26-L99)
@@ -197,7 +197,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [CRIT-05] Single Unpooled Postgres Connection in `StepJournal` Causing Permanent Silent Journal Outage on Connection Drops
+### [CRIT-05] Single Unpooled Postgres Connection in `StepJournal` Causing Permanent Silent Journal Outage on Connection Drops(Solved)
 - **Severity**: Critical (P0)
 - **Category**: Reliability / Concurrency / Silent Failure
 - **Location**: [`src/context_memory/composition.py:207-208`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/composition.py#L207-L208), [`src/context_memory/core/journal.py:141-205`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/core/journal.py#L141-L205)
@@ -240,7 +240,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [CRIT-06] Direct-Authored Facts Completely Ignored by Rollback Service (State Desynchronization & Silent Corruption)
+### [CRIT-06] Direct-Authored Facts Completely Ignored by Rollback Service (State Desynchronization & Silent Corruption)(Solved)
 - **Severity**: Critical (P0)
 - **Category**: State Management / Data Integrity
 - **Location**: [`src/context_memory/ingestion/rollback.py:142-154, 178-189`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/ingestion/rollback.py#L142-L154)
@@ -278,7 +278,7 @@ pie title Findings Distribution by Category
 
 ## Severity 1: High Risks & Structural Deficiencies
 
-### [HIGH-01] Unsynchronized Lazy Initialization of `_GLOBAL_ENGINE` Leaking DB Pools, Models & Causing Migration Collisions
+### [HIGH-01] Unsynchronized Lazy Initialization of `_GLOBAL_ENGINE` Leaking DB Pools, Models & Causing Migration Collisions(Solved)
 - **Severity**: High (P1)
 - **Category**: Concurrency / Race Condition
 - **Location**: [`src/api/routes.py:36-44`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/api/routes.py#L36-L44), [`src/context_memory/composition.py:165-253`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/composition.py#L165-L253)
@@ -300,7 +300,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [HIGH-02] Synchronous Health Checks Blocking AnyIO Worker Threads on DB/Network Latency (`/health` & `/v1/health`)
+### [HIGH-02] Synchronous Health Checks Blocking AnyIO Worker Threads on DB/Network Latency (`/health` & `/v1/health`) (solved)
 - **Severity**: High (P1)
 - **Category**: Performance / Thread Pool Starvation
 - **Location**: [`src/api/routes.py:353-384`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/api/routes.py#L353-L384), [`src/api/server.py:72-74`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/api/server.py#L72-L74)
@@ -335,7 +335,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [HIGH-04] Partial Ingestion Failure Leaves Orphaned Graph Writes in HydraDB Without Compensation or Reversion
+### [HIGH-04] Partial Ingestion Failure Leaves Orphaned Graph Writes in HydraDB Without Compensation or Reversion(Solved)
 - **Severity**: High (P1)
 - **Category**: Data Consistency / Knowledge Graph Corruption
 - **Location**: [`src/context_memory/ingestion/orchestrator.py:203-228, 378-400`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/ingestion/orchestrator.py#L203-L228)
@@ -353,7 +353,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [HIGH-05] Ephemeral ThreadPool Spawning & N+1 HTTP Calls in Graph Expansion Destroying Keep-Alive Caches
+### [HIGH-05] Ephemeral ThreadPool Spawning & N+1 HTTP Calls in Graph Expansion Destroying Keep-Alive Caches(solved)
 - **Severity**: High (P1)
 - **Category**: Performance Bottleneck / Resource Exhaustion
 - **Location**: [`src/context_memory/retrieval/graph_expander.py:123-165`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/retrieval/graph_expander.py#L123-L165), [`src/context_memory/retrieval/engine.py:349-375`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/retrieval/engine.py#L349-L375), [`src/context_memory/client/hydradb_http.py:108-123`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/client/hydradb_http.py#L108-L123)
@@ -372,7 +372,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [HIGH-06] Multi-Process Temp File Race Condition & Cache Eviction in `JsonFileRewriteCache`
+### [HIGH-06] Multi-Process Temp File Race Condition & Cache Eviction in `JsonFileRewriteCache`(solved)
 - **Severity**: High (P1)
 - **Category**: Concurrency / Data Loss
 - **Location**: [`src/context_memory/retrieval/query_rewriter.py:20-60`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/retrieval/query_rewriter.py#L20-L60)
@@ -393,7 +393,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [HIGH-07] Circular / Reverse Architectural Layer Dependency (`persistence.postgres` -> `ingestion.batch_models`)
+### [HIGH-07] Circular / Reverse Architectural Layer Dependency (`persistence.postgres` -> `ingestion.batch_models`)(solved)
 - **Severity**: High (P1)
 - **Category**: Architecture Violation / Contract Drift
 - **Location**: [`src/context_memory/persistence/postgres.py:24`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/persistence/postgres.py#L24), [`pyproject.toml:53-62`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/pyproject.toml#L53-L62)
@@ -421,7 +421,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [HIGH-08] Missing PostgreSQL Advisory Locks in Schema Migration Runner (`apply_migrations`)
+### [HIGH-08] Missing PostgreSQL Advisory Locks in Schema Migration Runner (`apply_migrations`)(solved)
 - **Severity**: High (P1)
 - **Category**: Database Concurrency / Race Condition
 - **Location**: [`src/context_memory/persistence/migrations.py:65-88`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/persistence/migrations.py#L65-L88)
@@ -444,7 +444,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [HIGH-09] Direct Authoring Self-Supersession Infinite Loop on Fact Triple Collisions
+### [HIGH-09] Direct Authoring Self-Supersession Infinite Loop on Fact Triple Collisions(solved)
 - **Severity**: High (P1)
 - **Category**: Logic Bug / State Corruption
 - **Location**: [`src/context_memory/ingestion/direct_authoring.py:163-224, 241-248`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/ingestion/direct_authoring.py#L163-L224)
@@ -462,7 +462,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [HIGH-10] Silently Dropped Edges When Authoring Facts Before Entities in OpenCypher Execution
+### [HIGH-10] Silently Dropped Edges When Authoring Facts Before Entities in OpenCypher Execution(solved)
 - **Severity**: High (P1)
 - **Category**: Logic Bug / Silent Data Loss
 - **Location**: [`src/context_memory/ingestion/direct_authoring.py:180-193`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/ingestion/direct_authoring.py#L180-L193), [`src/context_memory/ingestion/graph_writer.py:194-197`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/ingestion/graph_writer.py#L194-L197)
@@ -481,7 +481,7 @@ pie title Findings Distribution by Category
 
 ---
 
-### [HIGH-11] Unguarded Tool Handler Exceptions Crashing Entire Agent Turns in `run_tool_loop`
+### [HIGH-11] Unguarded Tool Handler Exceptions Crashing Entire Agent Turns in `run_tool_loop`(SOlved)
 - **Severity**: High (P1)
 - **Category**: Robustness / Unhandled Crash
 - **Location**: [`src/context_memory/core/tool_loop.py:65-76`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/core/tool_loop.py#L65-L76)

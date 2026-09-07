@@ -1,39 +1,26 @@
-# Git & version control
-.git
-.gitignore
-.gitattributes
-
-# Python bytecode and cache
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.coverage
-htmlcov/
-.tox/
-.nox/
-
-# Virtual environments
+# Virtual environments (saves 175MB context)
 .venv/
 venv/
 env/
-ENV/
 
-# Secrets and local environment configs (preserve example templates)
+# Python cache & compiled bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment & Secrets
 .env
 .env.*
 !.env.example
 
-# Tests & test assets
-tests/
-
-# Documentation & IDE
-*.md
-.idea/
+# Git & Editor files
+.git/
+.gitignore
 .vscode/
-*.swp
-*.swo
-.DS_Store
+.idea/
+*.log

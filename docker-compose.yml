@@ -111,10 +111,7 @@ services:
       - backend-net
 
   hydradb:
-    build:
-      context: ./apps/memory-layer/hydradb
-      dockerfile: Dockerfile
-      target: runtime
+    image: ghcr.io/hydra-db/hydradb:${HYDRADB_IMAGE_TAG:-sha-02a4002}
     container_name: aidnd-hydradb
     restart: unless-stopped
     entrypoint: ["sh", "-c", "mkdir -p /tmp/graph /var/cache/slatedb && echo '${HYDRADB_API_KEY:-context-memory-local-smoke-token-32b}' > /tmp/graph/auth-token && exec graph-node"]

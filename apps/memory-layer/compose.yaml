@@ -14,11 +14,7 @@ services:
       retries: 15
 
   hydradb:
-    build:
-      context: ./hydradb
-      dockerfile: Dockerfile
-      target: runtime
-    image: hydradb-graph-node:local
+    image: ghcr.io/hydra-db/hydradb:${HYDRADB_IMAGE_TAG:-sha-02a4002}
     entrypoint: ["sh", "-c", "mkdir -p /tmp/graph /var/cache/slatedb && echo 'context-memory-local-smoke-token-32b' > /tmp/graph/auth-token && exec graph-node"]
     environment:
       CLOUD_PROVIDER: local

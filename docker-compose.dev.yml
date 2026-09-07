@@ -38,14 +38,17 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
 
   frontend:
-    build: !reset []
-    image: node:20-alpine
+    build: !override
+      context: ./apps/frontend
+      dockerfile: Dockerfile.dev
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
     container_name: aidnd-frontend-dev
-    working_dir: /app
     volumes:
       - ./apps/frontend:/app
       - /app/node_modules
-    ports:
+    ports: !override
       - "${FRONTEND_PORT:-5173}:5173"
     environment:
       # Hardcoded: the dev Vite server talks to core-api/TRS directly, not
@@ -59,4 +62,3 @@ services:
       VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-}
       VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
       VITE_MEASUREMENT_ID: ${VITE_MEASUREMENT_ID:-}
-    command: ["sh", "-c", "npm install && npm run dev -- --host 0.0.0.0 --port 5173"]
