@@ -517,6 +517,7 @@ class PlaythroughService:
         conditions = await self.condition_repo.list_by_scenario(scenario_id)
         return [
             {
+                "condition_id": str(c.condition_id),
                 "label": c.label,
                 "condition_expression": c.condition_expression,
                 "narrator_instruction": c.narrator_instruction,

@@ -54,3 +54,33 @@ async def test_load_state_raises_when_playthrough_missing() -> None:
 
     with pytest.raises(PlaythroughNotActiveError):
         await load_state(uuid.uuid4(), playthrough_repo)
+
+
+async def test_load_state_deepcopies_playthrough_state() -> None:
+    original_state: dict[str, object] = {
+        "player": {"health": 100, "inventory": ["torch"]},
+        "discovered_location_ids": ["loc_1"],
+    }
+    playthrough_repo = AsyncMock()
+    playthrough_repo.get_by_id.return_value = SimpleNamespace(
+        scenario_id=uuid.uuid4(),
+        scenario_snapshot={},
+        state=original_state,
+        turn_count=1,
+        checkpoint=None,
+        is_playtest=False,
+    )
+
+    loaded = await load_state(uuid.uuid4(), playthrough_repo)
+
+    # Mutate loaded state deeply
+    player_dict = loaded.state.get("player")
+    assert isinstance(player_dict, dict)
+    player_dict["health"] = 50
+
+    inv_list = player_dict.get("inventory")
+    assert isinstance(inv_list, list)
+    inv_list.append("sword")
+
+    # Original state must be completely unaffected
+    assert original_state["player"] == {"health": 100, "inventory": ["torch"]}

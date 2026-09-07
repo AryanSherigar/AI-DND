@@ -82,13 +82,57 @@ async def test_create_invariant_applies_to_player(
             invariant_expression={
                 "field": "player.health",
                 "op": "<=",
-                "value": "player.max_health",
+                "ref": "player.max_health",
             },
             applies_to="player",
             narrator_text="Health can never be restored beyond its maximum.",
         ),
     )
     assert result.applies_to == "player"
+
+
+@pytest.mark.asyncio
+async def test_create_invariant_multiple_connectives_rejected(
+    invariant_service: InvariantService, master_scenario, creator: User
+):
+    with pytest.raises(InvariantValidationError):
+        await invariant_service.create_invariant(
+            master_scenario.scenario_id,
+            creator.user_id,
+            InvariantCreate(
+                label="Multiple connectives",
+                invariant_expression={
+                    "field": "player.health",
+                    "op": ">=",
+                    "value": 0,
+                    "AND": {"field": "player.health", "op": "<=", "value": 100},
+                    "OR": {"field": "flags.entered_cairn", "op": "==", "value": True},
+                },
+                applies_to="player",
+                narrator_text="x",
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_invariant_unknown_ref_rejected(
+    invariant_service: InvariantService, master_scenario, creator: User
+):
+    with pytest.raises(InvariantValidationError):
+        await invariant_service.create_invariant(
+            master_scenario.scenario_id,
+            creator.user_id,
+            InvariantCreate(
+                label="Unknown ref",
+                invariant_expression={
+                    "field": "player.health",
+                    "op": "<=",
+                    "ref": "unknown.cap",
+                },
+                applies_to="player",
+                narrator_text="x",
+            ),
+        )
 
 
 @pytest.mark.asyncio

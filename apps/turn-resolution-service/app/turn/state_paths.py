@@ -70,6 +70,26 @@ def _set_nested(node: dict[str, object], keys: list[str], value: object) -> None
     node[key] = child
 
 
+def _is_integer(target_value: object) -> bool:
+    return isinstance(target_value, int) and not isinstance(target_value, bool)
+
+
+def _apply_numeric_op(current: object, value: object, op: str) -> int | float:
+    base_value = 0 if current is None else current
+    if _is_integer(base_value) and _is_integer(value):
+        int_current = int(base_value)  # type: ignore[arg-type]
+        int_delta = int(value)  # type: ignore[arg-type]
+        return int_current + int_delta if op == "increment" else int_current - int_delta
+
+    float_current = float(base_value or 0)  # type: ignore[arg-type]
+    float_delta = float(value or 0)  # type: ignore[arg-type]
+    return (
+        float_current + float_delta
+        if op == "increment"
+        else float_current - float_delta
+    )
+
+
 def apply_mutation(
     state: dict[str, object], path: str, op: str, value: object
 ) -> dict[str, object]:
@@ -84,11 +104,8 @@ def apply_mutation(
     if op == "set":
         new_value = value
     elif op in ("increment", "decrement"):
-        current = get_field_value(state, path) or 0
-        delta = float(value or 0)
-        new_value = (
-            float(current) + delta if op == "increment" else float(current) - delta
-        )
+        current = get_field_value(state, path)
+        new_value = _apply_numeric_op(current, value, op)
     else:
         return state
     return set_field_value(state, path, new_value)

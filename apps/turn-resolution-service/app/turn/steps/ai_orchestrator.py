@@ -8,6 +8,7 @@ function-calling in a round-trip loop, validating each proposed mutation via
 state_validator.py before continuing the same generation (ADR-4).
 """
 
+import copy
 import time
 from collections.abc import AsyncIterator
 
@@ -215,7 +216,9 @@ async def _generate_master_mode(
         types.Content(role="user", parts=[types.Part(text=prompt)])
     ]
     working_state = (
-        dict(result_sink.final_state) if result_sink else dict(loaded_state.state)
+        copy.deepcopy(result_sink.final_state)
+        if result_sink
+        else copy.deepcopy(loaded_state.state)
     )
     scenario_snapshot = loaded_state.scenario_snapshot
 

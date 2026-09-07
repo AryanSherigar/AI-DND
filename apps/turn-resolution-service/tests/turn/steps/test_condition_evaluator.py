@@ -209,3 +209,61 @@ def test_list_active_condition_labels_skips_non_dict_entries() -> None:
 
 def test_list_active_condition_labels_empty_for_no_conditions() -> None:
     assert condition_evaluator.list_active_condition_labels([], {}) == []
+
+
+def test_previously_active_condition_fires_even_when_unrelated_field_changed() -> None:
+    """[P1-LOGIC-3] Conditions active on previous turn must not disappear when
+    unrelated fields change on the current turn."""
+    poison_condition = {
+        "label": "Poisoned",
+        "condition_expression": {
+            "field": "flags.is_poisoned",
+            "op": "==",
+            "value": True,
+        },
+        "narrator_instruction": "Venom pulses through the player's veins.",
+    }
+    loaded_state = _loaded_state(
+        {
+            "player": {"sanity": 100},
+            "flags": {"is_poisoned": True},
+            "_last_changed_fields": ["player.sanity"],
+            "_active_conditions": ["Poisoned"],
+        },
+        [poison_condition],
+        turn_count=2,
+    )
+    result = condition_evaluator.evaluate_conditions(loaded_state)
+
+    assert result.active_instructions == ["Venom pulses through the player's veins."]
+    assert result.state["_active_conditions"] == ["Poisoned"]
+
+
+def test_previously_active_condition_stops_firing_when_condition_becomes_false() -> (
+    None
+):
+    """When a condition becomes false, it ceases to be active and is removed
+    from _active_conditions."""
+    poison_condition = {
+        "label": "Poisoned",
+        "condition_expression": {
+            "field": "flags.is_poisoned",
+            "op": "==",
+            "value": True,
+        },
+        "narrator_instruction": "Venom pulses through the player's veins.",
+    }
+    loaded_state = _loaded_state(
+        {
+            "player": {"sanity": 100},
+            "flags": {"is_poisoned": False},
+            "_last_changed_fields": ["flags.is_poisoned"],
+            "_active_conditions": ["Poisoned"],
+        },
+        [poison_condition],
+        turn_count=3,
+    )
+    result = condition_evaluator.evaluate_conditions(loaded_state)
+
+    assert result.active_instructions == []
+    assert result.state["_active_conditions"] == []

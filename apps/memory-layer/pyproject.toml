@@ -38,6 +38,9 @@ root_packages = ["api", "chat", "context_memory", "evaluation"]
 # never on each other -- api/evaluation/chat are independent composition
 # roots (routes.py::get_engine, benchmark_runner.py::create_pipeline,
 # interactive_chat.py), each wiring its own instance of the same engine.
+# scripts/run_migrations.py is a fourth, migration-only composition root
+# (calls composition.run_migrations directly); it lives outside src/ and
+# outside root_packages, so it isn't covered by the contract below.
 [[tool.importlinter.contracts]]
 name = "Entry points depend on context_memory, not each other"
 type = "layers"

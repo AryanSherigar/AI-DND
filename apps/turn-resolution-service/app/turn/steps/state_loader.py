@@ -1,5 +1,6 @@
 """Loads the frozen scenario snapshot and narrative state for a turn (ADR-8)."""
 
+import copy
 import time
 import uuid
 
@@ -36,7 +37,7 @@ async def load_state(
     return LoadedState(
         scenario_id=playthrough.scenario_id,
         scenario_snapshot=playthrough.scenario_snapshot,
-        state=playthrough.state,
+        state=copy.deepcopy(playthrough.state),
         turn_count=playthrough.turn_count,
         checkpoint=playthrough.checkpoint,
         is_playtest=playthrough.is_playtest,

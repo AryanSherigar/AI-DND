@@ -2,6 +2,7 @@
 
 import uuid
 
+from app.exceptions.turn_exceptions import MemoryLayerUnavailableError
 from app.models.memory import Fact, MemoryQueryResponse
 from app.models.turn import LoadedState, TurnRequest
 from app.turn.steps import context_retrieval
@@ -252,3 +253,35 @@ async def test_retrieve_context_keeps_facts_with_no_when_active(monkeypatch) -> 
     result = await context_retrieval.retrieve_context(_turn_request(), _loaded_state())
 
     assert result.facts == [ungated_fact]
+
+
+async def test_retrieve_context_degrades_gracefully_on_memory_unavailable(
+    monkeypatch,
+) -> None:
+    async def fake_query_memory(request):
+        raise MemoryLayerUnavailableError("memory layer timed out")
+
+    monkeypatch.setattr(
+        context_retrieval.memory_client, "query_memory", fake_query_memory
+    )
+
+    result = await context_retrieval.retrieve_context(_turn_request(), _loaded_state())
+
+    assert result.abstained is True
+    assert result.facts == []
+
+
+async def test_retrieve_context_degrades_gracefully_on_unexpected_exception(
+    monkeypatch,
+) -> None:
+    async def fake_query_memory(request):
+        raise RuntimeError("Unexpected memory connection failure")
+
+    monkeypatch.setattr(
+        context_retrieval.memory_client, "query_memory", fake_query_memory
+    )
+
+    result = await context_retrieval.retrieve_context(_turn_request(), _loaded_state())
+
+    assert result.abstained is True
+    assert result.facts == []

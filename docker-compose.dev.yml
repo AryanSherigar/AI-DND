@@ -2,20 +2,40 @@ name: ai-dnd
 
 services:
   core-api:
-    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"]
+    command: ["uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${CORE_API_PORT:-8000}:8000"
+    volumes:
+      - ./apps/core-api:/app
+
+  migration-runner:
     volumes:
       - ./apps/core-api:/app
 
   turn-resolution-service:
     command: ["uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8001"]
+    ports:
+      - "${TRS_PORT:-8001}:8001"
     volumes:
       - ./apps/turn-resolution-service:/app
 
   memory-layer:
     command: ["uvicorn", "api.server:app", "--reload", "--host", "0.0.0.0", "--port", "8002"]
+    ports:
+      - "${MEMORY_LAYER_PORT:-8002}:8002"
     volumes:
       - ./apps/memory-layer/src:/app/src
       - ./apps/memory-layer/db:/app/db
+
+  memory-layer-migration-runner:
+    volumes:
+      - ./apps/memory-layer/src:/app/src
+      - ./apps/memory-layer/db:/app/db
+      - ./apps/memory-layer/scripts:/app/scripts
+
+  postgres:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
 
   frontend:
     build: !reset []
@@ -28,8 +48,10 @@ services:
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     environment:
-      VITE_CORE_API_URL: ${VITE_CORE_API_URL:-http://localhost:8000}
-      VITE_TRS_URL: ${VITE_TRS_URL:-http://localhost:8001}
+      # Hardcoded: the dev Vite server talks to core-api/TRS directly, not
+      # through nginx, so it must ignore the /api, /trs prod defaults in .env.
+      VITE_CORE_API_URL: http://localhost:8000
+      VITE_TRS_URL: http://localhost:8001
       VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
       VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
       VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}

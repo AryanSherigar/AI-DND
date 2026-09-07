@@ -2,6 +2,8 @@
 
 import uuid
 
+import pytest
+
 from app.turn.expression_evaluator import evaluate, extract_field_paths
 
 
@@ -96,14 +98,34 @@ def test_evaluate_string_match() -> None:
 
 
 def test_evaluate_cross_field_value_reference() -> None:
-    """A dotted-string value resolving to a known field is a cross-field
-    reference (docs/specs/master-mode-demo-scenario.md §7's invariant)."""
+    """An explicit 'ref' resolves to a known field path (cross-field reference)."""
     state = {"player": {"health": 90, "max_health": 100}}
-    expr = {"field": "player.health", "op": "<=", "value": "player.max_health"}
+    expr = {"field": "player.health", "op": "<=", "ref": "player.max_health"}
     assert evaluate(expr, state) is True
 
     over_cap_state = {"player": {"health": 120, "max_health": 100}}
     assert evaluate(expr, over_cap_state) is False
+
+
+def test_evaluate_literal_string_with_dot_not_treated_as_reference() -> None:
+    state = {
+        "player": {"filename": "scroll.txt"},
+        "scroll": {"txt": "wrong_value"},
+    }
+    expr = {"field": "player.filename", "op": "==", "value": "scroll.txt"}
+    assert evaluate(expr, state) is True
+
+
+def test_evaluate_multiple_connectives_raises_value_error() -> None:
+    expr = {
+        "field": "player.health",
+        "op": "<",
+        "value": 5,
+        "AND": {"field": "flags.cave", "op": "==", "value": True},
+        "OR": {"field": "flags.forest", "op": "==", "value": True},
+    }
+    with pytest.raises(ValueError, match="at most one connective"):
+        evaluate(expr, {"player": {"health": 3}})
 
 
 def test_evaluate_entity_scoped_field_path() -> None:
@@ -126,6 +148,11 @@ def test_extract_field_paths_collects_all_referenced_fields() -> None:
         "AND": {"field": "flags.entered_cave", "op": "==", "value": True},
     }
     assert extract_field_paths(expr) == {"player.health", "flags.entered_cave"}
+
+
+def test_extract_field_paths_includes_ref() -> None:
+    expr = {"field": "player.health", "op": "<=", "ref": "player.max_health"}
+    assert extract_field_paths(expr) == {"player.health", "player.max_health"}
 
 
 def test_extract_field_paths_empty_expression() -> None:

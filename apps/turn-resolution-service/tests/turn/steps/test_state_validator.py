@@ -24,7 +24,7 @@ _SNAPSHOT = {
             "invariant_expression": {
                 "field": "player.health",
                 "op": "<=",
-                "value": "player.max_health",
+                "ref": "player.max_health",
             },
             "narrator_text": "Health can never be restored beyond its maximum.",
         }
@@ -187,3 +187,45 @@ def test_validate_mutation_entity_scoped_attribute() -> None:
     )
     rejected = state_validator.validate_mutation(over_max, state, snapshot)
     assert rejected.is_valid is False
+
+
+def test_validate_mutation_enum_field() -> None:
+    snapshot = {
+        "state_schema": {
+            "player": {
+                "type": "object",
+                "fields": {
+                    "stance": {
+                        "type": "enum",
+                        "options": ["defensive", "aggressive"],
+                        "initial": "defensive",
+                    }
+                },
+            }
+        },
+        "entities": [],
+        "rule_invariants": [],
+    }
+    state = {"player": {"stance": "defensive"}}
+
+    valid_mutation = ProposedMutation(
+        tool_name="set_field",
+        op="set",
+        path="player.stance",
+        value="aggressive",
+    )
+    valid_result = state_validator.validate_mutation(valid_mutation, state, snapshot)
+    assert valid_result.is_valid is True
+    assert valid_result.updated_state["player"]["stance"] == "aggressive"
+
+    invalid_mutation = ProposedMutation(
+        tool_name="set_field",
+        op="set",
+        path="player.stance",
+        value="flying",
+    )
+    invalid_result = state_validator.validate_mutation(
+        invalid_mutation, state, snapshot
+    )
+    assert invalid_result.is_valid is False
+    assert "stance" in (invalid_result.error_message or "")

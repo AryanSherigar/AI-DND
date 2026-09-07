@@ -42,17 +42,37 @@ def evaluate(expression: dict[str, object] | None, state: dict[str, object]) -> 
     if "field" in expression:
         result = _evaluate_leaf(expression, state)
 
-    if "AND" in expression:
-        sub = evaluate(expression["AND"], state)  # type: ignore[arg-type]
-        result = sub if result is None else (result and sub)
-    if "OR" in expression:
-        sub = evaluate(expression["OR"], state)  # type: ignore[arg-type]
-        result = sub if result is None else (result or sub)
-    if "NOT" in expression:
-        sub = not evaluate(expression["NOT"], state)  # type: ignore[arg-type]
-        result = sub if result is None else (result and sub)
+    connectives = [c for c in _CONNECTIVES if c in expression]
+    if len(connectives) > 1:
+        raise ValueError(
+            f"An expression node may contain at most one connective, found: {connectives}"
+        )
+
+    if connectives:
+        return _evaluate_connective(connectives[0], expression, state, result)
 
     return bool(result) if result is not None else False
+
+
+def _evaluate_connective(
+    connective: str,
+    expression: dict[str, object],
+    state: dict[str, object],
+    result: bool | None,
+) -> bool:
+    sub_expr = expression[connective]
+    if not isinstance(sub_expr, dict):
+        raise TypeError(f"Connective '{connective}' must be an expression object")
+
+    if connective == "AND":
+        sub = evaluate(sub_expr, state)
+        return (result and sub) if result is not None else sub
+    if connective == "OR":
+        sub = evaluate(sub_expr, state)
+        return (result or sub) if result is not None else sub
+
+    sub = not evaluate(sub_expr, state)
+    return (result and sub) if result is not None else sub
 
 
 def extract_field_paths(expression: dict[str, object] | None) -> set[str]:
@@ -63,6 +83,8 @@ def extract_field_paths(expression: dict[str, object] | None) -> set[str]:
     paths: set[str] = set()
     if "field" in expression:
         paths.add(str(expression["field"]))
+    if "ref" in expression:
+        paths.add(str(expression["ref"]))
     for connective in _CONNECTIVES:
         nested = expression.get(connective)
         if isinstance(nested, dict):
@@ -77,22 +99,14 @@ def _evaluate_leaf(expression: dict[str, object], state: dict[str, object]) -> b
     if comparator is None:
         return False
     actual = state_paths.get_field_value(state, field_path)
-    expected = _resolve_operand(expression.get("value"), state)
+    if "ref" in expression:
+        expected = state_paths.get_field_value(state, str(expression["ref"]))
+    else:
+        expected = expression.get("value")
     try:
         return bool(comparator(actual, expected))
     except TypeError:
         return False
-
-
-def _resolve_operand(value: object, state: dict[str, object]) -> object:
-    """A dotted-string value that resolves to a known field is treated as a
-    cross-field reference (e.g. "player.max_health" in an invariant);
-    otherwise it's a literal. See master-mode-demo-scenario.md §7."""
-    if isinstance(value, str) and "." in value:
-        resolved = state_paths.get_field_value(state, value)
-        if resolved is not None:
-            return resolved
-    return value
 
 
 def _safe_num(value: object) -> float:

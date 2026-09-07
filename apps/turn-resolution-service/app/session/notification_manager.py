@@ -8,6 +8,10 @@ module-level memory.
 import asyncio
 import uuid
 
+import structlog
+
+logger = structlog.get_logger()
+
 _subscribers: dict[tuple[uuid.UUID, uuid.UUID], asyncio.Queue] = {}
 
 
@@ -32,8 +36,16 @@ async def notify_next_turn(
     is derived independently, so this push is a convenience, not a dependency.
     """
     queue = _subscribers.get((playthrough_id, next_participant_id))
-    if queue:
-        await queue.put(("your_turn", ""))
+    if queue is None:
+        return
+    try:
+        queue.put_nowait(("your_turn", ""))
+    except asyncio.QueueFull:
+        logger.warning(
+            "notification_queue_full_dropping_turn",
+            playthrough_id=str(playthrough_id),
+            participant_id=str(next_participant_id),
+        )
 
 
 async def notify_playthrough_ended(
@@ -46,6 +58,17 @@ async def notify_playthrough_ended(
     no-op per participant with no open connection; they discover the ended
     status on their next GET /v1/playthroughs/{id} poll.
     """
-    for (subscribed_playthrough_id, _), queue in _subscribers.items():
-        if subscribed_playthrough_id == playthrough_id:
-            await queue.put(("playthrough_ended", outcome_title))
+    subscribers_snapshot = [
+        queue
+        for (subscribed_playthrough_id, _), queue in list(_subscribers.items())
+        if subscribed_playthrough_id == playthrough_id
+    ]
+    for queue in subscribers_snapshot:
+        try:
+            queue.put_nowait(("playthrough_ended", outcome_title))
+        except asyncio.QueueFull:
+            logger.warning(
+                "notification_queue_full_dropping_ended",
+                playthrough_id=str(playthrough_id),
+                outcome_title=outcome_title,
+            )

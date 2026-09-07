@@ -14,7 +14,12 @@ from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
 from app.db.models.turn_log import TurnLog
 from app.db.models.user import User
-from app.exceptions.turn_exceptions import OptimisticLockError, StateWriteError
+from app.exceptions.turn_exceptions import (
+    MemoryLayerUnavailableError,
+    OptimisticLockError,
+    StateWriteError,
+)
+from app.integrations import memory_client
 from app.models.auth import CurrentUser
 from app.models.turn import TurnRequestInput
 from app.session import notification_manager, spectator_manager
@@ -603,3 +608,39 @@ async def test_run_turn_streams_mood_event_and_relays_to_spectator(
         assert ("narration", "An ambush strikes from the dark!") in spectator_events
     finally:
         spectator_manager.unsubscribe(playthrough.playthrough_id, spectator_queue)
+
+
+async def test_run_turn_succeeds_when_memory_query_fails(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    async def fake_query_memory(request):
+        raise MemoryLayerUnavailableError("Memory service down")
+
+    monkeypatch.setattr(memory_client, "query_memory", fake_query_memory)
+
+    async def fake_stream(system_instruction: str, prompt: str, timeout_seconds: int):
+        yield "The story continues despite memory failure."
+
+    monkeypatch.setattr(ai_orchestrator.gemini_client, "stream_narration", fake_stream)
+
+    playthrough, participant = await _seed_playthrough(db_session)
+    turn_input = TurnRequestInput(
+        playthrough_id=playthrough.playthrough_id,
+        participant_id=participant.participant_id,
+        action_text="I push forward into the mist.",
+    )
+    response = await pipeline.run_turn(
+        turn_input,
+        db_session,
+        CurrentUser(user_id=participant.user_id, token_version=1),
+    )
+    events = [event async for event in response.body_iterator]
+
+    event_types = [event.event for event in events]
+    assert "narration" in event_types
+    assert "done" in event_types
+    narration_event = next(e for e in events if e.event == "narration")
+    assert narration_event.data == "The story continues despite memory failure."
+
+    await db_session.refresh(playthrough)
+    assert playthrough.turn_count == 1

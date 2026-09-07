@@ -26,6 +26,9 @@ _COMPARISON_OPS = {
 }
 
 
+_CONNECTIVES = ("AND", "OR", "NOT")
+
+
 def list_active_condition_labels(
     scenario_conditions: list[object], state: dict[str, object]
 ) -> list[str]:
@@ -52,17 +55,38 @@ def _evaluate(expression: object, state: dict[str, object]) -> bool:
     result: bool | None = None
     if "field" in expression:
         result = _evaluate_leaf(expression, state)
-    for connective, combine in (
-        ("AND", lambda r, s: s if r is None else (r and s)),
-        ("OR", lambda r, s: s if r is None else (r or s)),
-    ):
-        if connective in expression:
-            result = combine(result, _evaluate(expression[connective], state))
-    if "NOT" in expression:
-        negated = not _evaluate(expression["NOT"], state)
-        result = negated if result is None else (result and negated)
+
+    connectives = [c for c in _CONNECTIVES if c in expression]
+    if len(connectives) > 1:
+        raise ValueError(
+            f"An expression node may contain at most one connective, found: {connectives}"
+        )
+
+    if connectives:
+        return _evaluate_connective(connectives[0], expression, state, result)
 
     return bool(result) if result is not None else False
+
+
+def _evaluate_connective(
+    connective: str,
+    expression: dict[str, object],
+    state: dict[str, object],
+    result: bool | None,
+) -> bool:
+    sub_expr = expression[connective]
+    if not isinstance(sub_expr, dict):
+        raise TypeError(f"Connective '{connective}' must be an expression object")
+
+    if connective == "AND":
+        sub = _evaluate(sub_expr, state)
+        return (result and sub) if result is not None else sub
+    if connective == "OR":
+        sub = _evaluate(sub_expr, state)
+        return (result or sub) if result is not None else sub
+
+    sub = not _evaluate(sub_expr, state)
+    return (result and sub) if result is not None else sub
 
 
 def _evaluate_leaf(expression: dict[str, object], state: dict[str, object]) -> bool:
@@ -71,19 +95,14 @@ def _evaluate_leaf(expression: dict[str, object], state: dict[str, object]) -> b
     if comparator is None:
         return False
     actual = _get_field_value(state, field_path)
-    expected = _resolve_operand(expression.get("value"), state)
+    if "ref" in expression:
+        expected = _get_field_value(state, str(expression["ref"]))
+    else:
+        expected = expression.get("value")
     try:
         return bool(comparator(actual, expected))
     except TypeError:
         return False
-
-
-def _resolve_operand(value: object, state: dict[str, object]) -> object:
-    if isinstance(value, str) and "." in value:
-        resolved = _get_field_value(state, value)
-        if resolved is not None:
-            return resolved
-    return value
 
 
 def _get_field_value(state: dict[str, object], path: str) -> object:

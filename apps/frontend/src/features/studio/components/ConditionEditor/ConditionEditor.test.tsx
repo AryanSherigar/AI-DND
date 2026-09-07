@@ -154,4 +154,30 @@ describe("ConditionEditor", () => {
       },
     });
   });
+
+  it("enforces at most one connective per clause level", async () => {
+    mockBaseHandlers();
+    const user = userEvent.setup();
+    renderConditionEditor();
+
+    await user.click(
+      await screen.findByRole("button", { name: /new condition/i }),
+    );
+
+    expect(screen.getAllByRole("button", { name: /\+ and/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /\+ or/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /\+ not/i })).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: /\+ and/i }));
+    // Active connective block appears with Remove button
+    expect(screen.getByText("AND")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^remove$/i })).toBeInTheDocument();
+    // Parent no longer renders + OR, only the nested child has + OR (total still 1, not 2)
+    expect(screen.getAllByRole("button", { name: /\+ or/i })).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: /^remove$/i }));
+    expect(screen.queryByText("AND")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^remove$/i })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /\+ and/i })).toHaveLength(1);
+  });
 });

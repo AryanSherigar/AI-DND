@@ -4,8 +4,15 @@ import tempfile
 import unittest
 from contextlib import nullcontext
 from pathlib import Path
+from unittest.mock import patch
 
-from context_memory.persistence.migrations import MigrationError, apply_migrations, discover_migrations
+from context_memory.composition import run_migrations
+from context_memory.core.config import Config
+from context_memory.persistence.migrations import (
+    MigrationError,
+    apply_migrations,
+    discover_migrations,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS = ROOT / "db" / "migrations"
@@ -55,8 +62,20 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(
             [migration.version for migration in migrations],
             [
-                "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012",
-                "0013", "0014",
+                "0001",
+                "0002",
+                "0003",
+                "0004",
+                "0005",
+                "0006",
+                "0007",
+                "0008",
+                "0009",
+                "0010",
+                "0011",
+                "0012",
+                "0013",
+                "0014",
             ],
         )
         self.assertIn("evidence_chunks", migrations[0].sql)
@@ -79,8 +98,20 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(
             apply_migrations(connection, MIGRATIONS),
             (
-                "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012",
-                "0013", "0014",
+                "0001",
+                "0002",
+                "0003",
+                "0004",
+                "0005",
+                "0006",
+                "0007",
+                "0008",
+                "0009",
+                "0010",
+                "0011",
+                "0012",
+                "0013",
+                "0014",
             ),
         )
         self.assertEqual(apply_migrations(connection, MIGRATIONS), ())
@@ -103,3 +134,27 @@ class MigrationTests(unittest.TestCase):
             (directory / "0001_second.sql").write_text("SELECT 2;", encoding="utf-8")
             with self.assertRaisesRegex(MigrationError, "duplicate migration version"):
                 discover_migrations(directory)
+
+
+class RunMigrationsTests(unittest.TestCase):
+    """`run_migrations` (composition.py) is the standalone entry point
+    `scripts/run_migrations.py` calls -- unlike `build_memory_engine`, it
+    opens its own dedicated connection rather than the shared pool."""
+
+    def test_run_migrations_opens_its_own_connection_and_applies(self) -> None:
+        fake_connection = FakeConnection()
+        with patch("context_memory.composition.psycopg.connect") as mock_connect:
+            mock_connect.return_value.__enter__.return_value = fake_connection
+            applied = run_migrations(Config(database_url="postgresql://unused"))
+        mock_connect.assert_called_once_with("postgresql://unused", autocommit=True)
+        self.assertEqual(len(applied), 14)
+
+    def test_run_migrations_returns_empty_tuple_without_touching_db(self) -> None:
+        with patch("context_memory.composition.Path") as mock_path:
+            mock_path.return_value.resolve.return_value.parents.__getitem__.return_value = Path(
+                tempfile.mkdtemp()
+            )
+            with patch("context_memory.composition.psycopg.connect") as mock_connect:
+                applied = run_migrations(Config(database_url="postgresql://unused"))
+        mock_connect.assert_not_called()
+        self.assertEqual(applied, ())

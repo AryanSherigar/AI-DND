@@ -9,8 +9,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-aidnd_db}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -18,6 +18,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - aidnd-net
+
+  migration-runner:
+    build:
+      context: ./apps/core-api
+      dockerfile: Dockerfile
+    container_name: aidnd-migration-runner
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: ${CORE_API_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/aidnd_db}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - aidnd-net
 
@@ -41,11 +56,13 @@ services:
       PYTHONPATH: /app
       MEMORY_SERVICE_URL: http://memory-layer:8002
       MEMORY_SERVICE_API_KEY: ${MEMORY_SERVICE_API_KEY:-dev-memory-layer-key-change-in-production}
-    ports:
-      - "${CORE_API_PORT:-8000}:8000"
+    expose:
+      - "8000"
     depends_on:
       postgres:
         condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
     networks:
       - aidnd-net
 
@@ -65,8 +82,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       MEMORY_SERVICE_URL: http://memory-layer:8002
       MEMORY_SERVICE_API_KEY: ${MEMORY_SERVICE_API_KEY:-dev-memory-layer-key-change-in-production}
-    ports:
-      - "${TRS_PORT:-8001}:8001"
+    expose:
+      - "8001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -124,6 +141,21 @@ services:
     networks:
       - aidnd-net
 
+  memory-layer-migration-runner:
+    build:
+      context: ./apps/memory-layer
+      dockerfile: Dockerfile
+    container_name: aidnd-memory-layer-migration-runner
+    command: ["python", "scripts/run_migrations.py"]
+    environment:
+      CONTEXT_MEMORY_DATABASE_URL: ${MEMORY_LAYER_DATABASE_URL:-postgresql://context_memory:context_memory@postgres-memory:5432/context_memory}
+    restart: "no"
+    depends_on:
+      postgres-memory:
+        condition: service_healthy
+    networks:
+      - aidnd-net
+
   memory-layer:
     build:
       context: ./apps/memory-layer
@@ -141,13 +173,15 @@ services:
       LLM_MODEL: ${LLM_MODEL:-gemini-3.5-flash-lite}
       LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    ports:
-      - "${MEMORY_LAYER_PORT:-8002}:8002"
+    expose:
+      - "8002"
     depends_on:
       postgres-memory:
         condition: service_healthy
       hydradb:
         condition: service_healthy
+      memory-layer-migration-runner:
+        condition: service_completed_successfully
     networks:
       - aidnd-net
 
@@ -155,10 +189,20 @@ services:
     build:
       context: ./apps/frontend
       dockerfile: Dockerfile
+      args:
+        VITE_CORE_API_URL: ${VITE_CORE_API_URL:-/api}
+        VITE_TRS_URL: ${VITE_TRS_URL:-/trs}
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
+        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
+        VITE_MEASUREMENT_ID: ${VITE_MEASUREMENT_ID:-}
     container_name: aidnd-frontend
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "80:8080"
     depends_on:
       - core-api
       - turn-resolution-service

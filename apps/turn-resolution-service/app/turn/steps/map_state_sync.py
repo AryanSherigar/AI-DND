@@ -25,10 +25,11 @@ def sync_discovered_locations(
     if current_location is None or current_location == previous_location:
         return set()
 
-    discovered = working_state.setdefault(STATE_KEY_DISCOVERED_LOCATIONS, [])
+    raw_discovered = working_state.get(STATE_KEY_DISCOVERED_LOCATIONS)
+    discovered = list(raw_discovered) if isinstance(raw_discovered, list) else []
     if current_location in discovered:
         return set()
 
-    discovered.append(current_location)
+    working_state[STATE_KEY_DISCOVERED_LOCATIONS] = [*discovered, current_location]
     logger.info(EVENT_LOCATION_DISCOVERED, location_entity_id=current_location)
     return {STATE_KEY_DISCOVERED_LOCATIONS}

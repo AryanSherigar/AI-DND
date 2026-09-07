@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import BaseModel, Field, create_model
 
@@ -72,7 +73,9 @@ def _field_to_pydantic_type(
 
     if field_type in _TYPE_MAP:
         return _primitive_field(str(field_type), field_def)
-    if field_type in ("enum", "entity_ref"):
+    if field_type == "enum":
+        return _enum_field(field_def)
+    if field_type == "entity_ref":
         return (str | None, Field(default=field_def.get("initial")))
     if field_type == "list":
         return _list_field(field_def)
@@ -84,6 +87,28 @@ def _field_to_pydantic_type(
     # against its declared type here; state_validator.py is what rejects it
     # as a direct tool-call target.
     return (object | None, Field(default=field_def.get("initial")))
+
+
+def _extract_enum_options(options_raw: object) -> list[str]:
+    if not isinstance(options_raw, list):
+        return []
+    valid_options: list[str] = []
+    for option_item in options_raw:
+        if isinstance(option_item, str):
+            valid_options.append(option_item)
+        elif isinstance(option_item, dict) and "value" in option_item:
+            valid_options.append(str(option_item["value"]))
+    return valid_options
+
+
+def _enum_field(field_def: dict[str, object]) -> tuple[type, object]:
+    valid_options = _extract_enum_options(field_def.get("options"))
+    initial_value = field_def.get("initial")
+    if not valid_options:
+        return (str | None, Field(default=initial_value))
+
+    enum_type = Literal[tuple(valid_options)]  # type: ignore[valid-type]
+    return (enum_type | None, Field(default=initial_value))
 
 
 def _primitive_field(

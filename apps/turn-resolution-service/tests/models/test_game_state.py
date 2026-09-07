@@ -77,3 +77,45 @@ def test_get_entity_attribute_model_validates_one_entitys_attributes() -> None:
     model = get_entity_attribute_model(attrs_schema)
     validated = model.model_validate({"health": 120, "awareness": "10"})
     assert validated.model_dump() == {"health": 120.0, "awareness": 10.0}
+
+
+def test_get_state_model_validates_enum_options() -> None:
+    schema: dict[str, object] = {
+        "status": {
+            "type": "enum",
+            "options": ["peaceful", "hostile", "neutral"],
+            "initial": "neutral",
+        }
+    }
+    model = get_state_model(schema)
+    validated = model.model_validate({"status": "peaceful"})
+    assert validated.model_dump()["status"] == "peaceful"
+
+    with pytest.raises(ValidationError):
+        model.model_validate({"status": "invalid_status"})
+
+
+def test_get_state_model_validates_enum_dict_options() -> None:
+    schema: dict[str, object] = {
+        "alignment": {
+            "type": "enum",
+            "options": [
+                {"value": "good", "label": "Good"},
+                {"value": "evil", "label": "Evil"},
+            ],
+            "initial": "good",
+        }
+    }
+    model = get_state_model(schema)
+    validated = model.model_validate({"alignment": "evil"})
+    assert validated.model_dump()["alignment"] == "evil"
+
+    with pytest.raises(ValidationError):
+        model.model_validate({"alignment": "neutral"})
+
+
+def test_get_state_model_enum_empty_options_fallback_to_str() -> None:
+    schema: dict[str, object] = {"custom_tag": {"type": "enum", "initial": "default"}}
+    model = get_state_model(schema)
+    validated = model.model_validate({"custom_tag": "arbitrary_string"})
+    assert validated.model_dump()["custom_tag"] == "arbitrary_string"

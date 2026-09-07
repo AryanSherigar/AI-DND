@@ -6,6 +6,7 @@ role-specific clients for entity resolution, then temporal resolver/query rewrit
 then rerank -- each found only by manual comparison). This is the one place that
 wiring happens now; both callers delegate to it.
 """
+
 from __future__ import annotations
 
 from dataclasses import replace
@@ -22,9 +23,11 @@ from context_memory.core.llm_client import LLMClient
 from context_memory.core.tracing import configure_tracing
 from context_memory.engine import MemoryEngine
 from context_memory.ingestion.embedding import SentenceTransformerEmbedder
+from context_memory.ingestion.entity_name_index import EntityNameIndex
+from context_memory.ingestion.entity_registry import EntityRegistry
 from context_memory.ingestion.extraction import ExtractionService
-from context_memory.ingestion.fact_projection import FactProjectionWriter
 from context_memory.ingestion.fact_lookup import HydraFactLookup
+from context_memory.ingestion.fact_projection import FactProjectionWriter
 from context_memory.ingestion.graph_plan_builder import GraphPlanBuilder
 from context_memory.ingestion.graph_writer import GraphWriter
 from context_memory.ingestion.model_adapters import (
@@ -35,9 +38,7 @@ from context_memory.ingestion.model_adapters import (
 from context_memory.ingestion.orchestrator import IngestionOrchestrator
 from context_memory.ingestion.ports import Extractor
 from context_memory.ingestion.rollback import RollbackService, SavePointStore
-from context_memory.ingestion.entity_registry import EntityRegistry
 from context_memory.ingestion.temporal_update import TemporalUpdateClassifier
-from context_memory.ingestion.entity_name_index import EntityNameIndex
 from context_memory.persistence.migrations import apply_migrations
 from context_memory.persistence.postgres import (
     PostgresChunkStore,
@@ -50,11 +51,17 @@ from context_memory.persistence.postgres import (
 from context_memory.retrieval import HybridRetrievalEngine
 
 
-def _journaled(client: LLMClient, journal: StepJournal | None, call_role: str) -> LLMClient:
+def _journaled(
+    client: LLMClient, journal: StepJournal | None, call_role: str
+) -> LLMClient:
     """`JournaledLLMClient` is duck-typed to the same two-method shape as
     `LLMClient` -- wrapping is a no-op when `journal` is None, so every call
     site below reads the same whether journaling is on or off."""
-    return JournaledLLMClient(client, journal, call_role) if journal is not None else client  # type: ignore[return-value]
+    return (
+        JournaledLLMClient(client, journal, call_role)
+        if journal is not None
+        else client
+    )  # type: ignore[return-value]
 
 
 def build_ingestion_and_retrieval(
@@ -85,7 +92,9 @@ def build_ingestion_and_retrieval(
     ext_store = extraction_store or PostgresExtractionStore(pool)
 
     if extractor is None:
-        extractor = LLMExtractor(_journaled(config.get_extractor_client(), journal, "extractor"), config)
+        extractor = LLMExtractor(
+            _journaled(config.get_extractor_client(), journal, "extractor"), config
+        )
     extraction_service = ExtractionService(extractor, ext_store)
 
     # AI-DND memory-layer contract: a second, narrative-prompted extractor
@@ -104,12 +113,14 @@ def build_ingestion_and_retrieval(
         batched_fact_extraction_system_prompt=config.batched_narrative_fact_extraction_system_prompt,
     )
     narrative_extractor = LLMExtractor(
-        _journaled(config.get_extractor_client(), journal, "extractor"), narrative_config
+        _journaled(config.get_extractor_client(), journal, "extractor"),
+        narrative_config,
     )
     narrative_extraction_service = ExtractionService(narrative_extractor, ext_store)
 
     entity_resolution_model = LLMEntityResolutionModel(
-        _journaled(config.get_entity_resolution_client(), journal, "entity_resolution"), config
+        _journaled(config.get_entity_resolution_client(), journal, "entity_resolution"),
+        config,
     )
     # `EntityNameIndex.find_candidates` and `EntityRegistry.resolve` both
     # filter on `context_id`, so sharing this index across every request in
@@ -117,18 +128,23 @@ def build_ingestion_and_retrieval(
     # other's candidates. See docs/fixes_and_evaluation_findings.md §4.
     entity_name_index = EntityNameIndex()
     entity_registry = EntityRegistry(
-        allocator=chunk_store, name_index=entity_name_index,
-        model=entity_resolution_model, batch_enabled=config.entity_resolution_batch_enabled,
+        allocator=chunk_store,
+        name_index=entity_name_index,
+        model=entity_resolution_model,
+        batch_enabled=config.entity_resolution_batch_enabled,
     )
     plan_builder = GraphPlanBuilder(allocator=chunk_store)
     graph_writer = GraphWriter(manifest_store=manifest_store, transport=hydra_transport)
 
     temporal_model = LLMTemporalUpdateModel(
-        _journaled(config.get_temporal_update_client(), journal, "temporal_update"), config
+        _journaled(config.get_temporal_update_client(), journal, "temporal_update"),
+        config,
     )
     update_classifier = TemporalUpdateClassifier(
-        temporal_model, batch_enabled=config.temporal_update_batch_enabled,
-        embedder=embedder, similarity_threshold=config.temporal_update_similarity_threshold,
+        temporal_model,
+        batch_enabled=config.temporal_update_batch_enabled,
+        embedder=embedder,
+        similarity_threshold=config.temporal_update_similarity_threshold,
     )
     fact_lookup = HydraFactLookup(hydra_transport)
 
@@ -155,20 +171,38 @@ def build_ingestion_and_retrieval(
         pool=pool,
         hydra_client=hydra_transport,
         config=config,
-        temporal_resolver_client=_journaled(config.get_temporal_resolver_client(), journal, "temporal_resolver"),
-        query_rewriter_client=_journaled(config.get_query_rewriter_client(), journal, "query_rewriter"),
+        temporal_resolver_client=_journaled(
+            config.get_temporal_resolver_client(), journal, "temporal_resolver"
+        ),
+        query_rewriter_client=_journaled(
+            config.get_query_rewriter_client(), journal, "query_rewriter"
+        ),
         rerank_client=_journaled(config.get_rerank_client(), journal, "rerank"),
     )
 
     return orchestrator, retrieval_engine, extractor
 
 
+def run_migrations(config: Config | None = None) -> tuple[str, ...]:
+    """Standalone migration entry point for scripts/run_migrations.py, run by
+    the memory-layer-migration-runner compose service before memory-layer
+    starts -- kept out of build_memory_engine() so the engine factory never
+    touches migrations."""
+    config = config or Config()
+    migrations_dir = Path(__file__).resolve().parents[2] / "db" / "migrations"
+    if not migrations_dir.exists():
+        return ()
+    with psycopg.connect(config.database_url, autocommit=True) as conn:
+        return apply_migrations(conn, migrations_dir)
+
+
 def build_memory_engine(config: Config | None = None) -> MemoryEngine:
     """Connects to the real Postgres/HydraDB instances named by `config` and
     returns a fully-wired `MemoryEngine`. The one place a caller that just
     wants a working engine (an API server, a CLI tool, a benchmark script)
-    should look, instead of reimplementing connection setup + migrations +
-    `build_ingestion_and_retrieval`."""
+    should look, instead of reimplementing connection setup +
+    `build_ingestion_and_retrieval`. Does not run migrations -- see
+    `run_migrations`."""
     config = config or Config()
     # Phase 7: no-op unless OTEL_EXPORTER_OTLP_ENDPOINT (or _TRACES_ENDPOINT) is
     # set -- the standard OTel env vars, not a mem1-specific one, so this is
@@ -188,10 +222,6 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
         open=True,
     )
     pool.wait(timeout=config.postgres_pool_timeout_seconds)
-    migrations_dir = Path(__file__).resolve().parents[2] / "db" / "migrations"
-    if migrations_dir.exists():
-        with pool.connection() as conn:
-            apply_migrations(conn, migrations_dir)
 
     hydra_transport = HydraHttpTransport(
         base_url=hydra_url,
@@ -205,8 +235,14 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
     # concurrency shape than the pool's per-call acquisition), so folding it
     # into the shared pool would add nothing and would complicate its
     # single-connection design for no benefit.
-    journal_connection = psycopg.connect(config.database_url, autocommit=True) if config.step_journal_enabled else None
-    journal = StepJournal(journal_connection) if journal_connection is not None else None
+    journal_connection = (
+        psycopg.connect(config.database_url, autocommit=True)
+        if config.step_journal_enabled
+        else None
+    )
+    journal = (
+        StepJournal(journal_connection) if journal_connection is not None else None
+    )
 
     orchestrator, retrieval_engine, _extractor = build_ingestion_and_retrieval(
         pool=pool,
@@ -246,7 +282,10 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
     # already doubles as the GraphIdAllocator, so it doubles again here as
     # the FactProjectionWriter's ChunkStore.
     fact_projection_writer = FactProjectionWriter(
-        embedder, PostgresEmbeddingStore(pool), PostgresSearchIndexStore(pool), authoring_allocator,
+        embedder,
+        PostgresEmbeddingStore(pool),
+        PostgresSearchIndexStore(pool),
+        authoring_allocator,
     )
 
     return MemoryEngine(

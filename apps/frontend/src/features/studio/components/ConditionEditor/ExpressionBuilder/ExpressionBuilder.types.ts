@@ -4,7 +4,8 @@ export type ExpressionOperator =
 export interface FieldExpression {
   field: string;
   op: ExpressionOperator;
-  value: string | number | boolean;
+  value?: string | number | boolean;
+  ref?: string;
   AND?: FieldExpression;
   OR?: FieldExpression;
   NOT?: FieldExpression;

@@ -9,6 +9,10 @@ decoupled, in-process design.
 import asyncio
 import uuid
 
+import structlog
+
+logger = structlog.get_logger()
+
 _subscribers: dict[uuid.UUID, list[asyncio.Queue]] = {}
 
 
@@ -24,9 +28,19 @@ def unsubscribe(playthrough_id: uuid.UUID, queue: asyncio.Queue) -> None:
     subscribers = _subscribers.get(playthrough_id)
     if subscribers and queue in subscribers:
         subscribers.remove(queue)
+        if not subscribers:
+            _subscribers.pop(playthrough_id, None)
 
 
 async def publish(playthrough_id: uuid.UUID, event_name: str, data: str) -> None:
     """Relay a turn event to every spectator currently watching this playthrough."""
-    for queue in _subscribers.get(playthrough_id, []):
-        await queue.put((event_name, data))
+    subscribers_snapshot = list(_subscribers.get(playthrough_id, []))
+    for queue in subscribers_snapshot:
+        try:
+            queue.put_nowait((event_name, data))
+        except asyncio.QueueFull:
+            logger.warning(
+                "spectator_queue_full_dropping_event",
+                playthrough_id=str(playthrough_id),
+                event_name=event_name,
+            )

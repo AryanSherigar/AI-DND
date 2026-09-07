@@ -34,11 +34,21 @@ def validate_expression_field_references(
     if not expression:
         return
 
+    connectives = [c for c in _CONNECTIVES if c in expression]
+    if len(connectives) > 1:
+        raise error_factory(
+            "An expression node may contain at most one connective ('AND', 'OR', 'NOT')"
+        )
+
     field = expression.get("field")
     if field is not None:
         _validate_field_path(str(field), state_schema, entities_by_id, error_factory)
 
-    for connective in _CONNECTIVES:
+    ref = expression.get("ref")
+    if ref is not None:
+        _validate_field_path(str(ref), state_schema, entities_by_id, error_factory)
+
+    for connective in connectives:
         nested = expression.get(connective)
         if isinstance(nested, dict):
             validate_expression_field_references(
