@@ -29,3 +29,17 @@ export const uploadMapImage = async (
   );
   return response.data;
 };
+
+/** Upload creator-selected Dodge music through the same authenticated flow. */
+export const uploadScenarioAudio = async (
+  file: File,
+): Promise<ImageUploadResponse> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await apiClient.post<ImageUploadResponse>(
+    "/v1/uploads/scenario-audio",
+    formData,
+    { headers: { "Content-Type": undefined } },
+  );
+  return response.data;
+};

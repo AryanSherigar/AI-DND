@@ -8,13 +8,16 @@ timeout_mutation/narrator_instruction_template — those stay server-side
 only, never sent to the client (§3.6 "Always" boundary).
 """
 
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, StrictInt
 
 
 class MinigameEventPayload(BaseModel):
     """The play-time config handed to the client when a minigame triggers."""
 
     minigame_id: str
+    attempt_id: str
     minigame_type: str
     label: str
     dodge_config: dict[str, object] | None = None
@@ -26,5 +29,7 @@ class MinigameResultInput(BaseModel):
     """A player's submitted minigame outcome, as TurnRequestInput.minigame_result."""
 
     minigame_id: str
-    outcome_tag: str
-    score: int | None = None
+    outcome_tag: Literal["win", "lose", "timeout"]
+    # Strict prevents bools and lossy numeric coercion from selecting a tier.
+    score: StrictInt | None = None
+    attempt_id: str | None = None

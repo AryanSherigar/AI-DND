@@ -49,6 +49,34 @@ async def test_upload_map_image_success(async_client: AsyncClient, mock_upload_i
 
 
 @pytest.mark.asyncio
+async def test_upload_scenario_audio_success(async_client: AsyncClient, mock_upload_image):
+    headers = {"x-dev-user-id": str(uuid.uuid4())}
+    files = {"file": ("ashfall.ogg", b"OggS" + b"0" * 100, "audio/ogg")}
+
+    resp = await async_client.post(
+        "/v1/uploads/scenario-audio", headers=headers, files=files
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["url"].startswith(
+        "https://storage.googleapis.com/fake-bucket/scenario-audio/"
+    )
+
+
+@pytest.mark.asyncio
+async def test_upload_scenario_audio_rejects_non_audio(
+    async_client: AsyncClient, mock_upload_image
+):
+    headers = {"x-dev-user-id": str(uuid.uuid4())}
+    resp = await async_client.post(
+        "/v1/uploads/scenario-audio",
+        headers=headers,
+        files={"file": ("not-audio.txt", b"text", "text/plain")},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_local_dev_upload_saves_to_disk(
     async_client: AsyncClient, monkeypatch, tmp_path
 ):

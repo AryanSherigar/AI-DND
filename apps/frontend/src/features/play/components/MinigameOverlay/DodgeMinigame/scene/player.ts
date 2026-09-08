@@ -6,6 +6,7 @@
 
 import { BlurFilter, Container, Graphics } from "pixi.js";
 import { PLAYER_RADIUS } from "../difficultyPresets";
+import type { DodgePlayerStyle } from "@/shared/types/minigame.types";
 
 const PLAYER_CORE_COLOR = 0xe8f6ff;
 const PLAYER_GLOW_COLOR = 0x7ec8ff;
@@ -34,7 +35,7 @@ export interface PlayerScene {
   advance: (deltaMs: number, isInvulnerable: boolean) => void;
 }
 
-export function buildPlayer(): PlayerScene {
+export function buildPlayer(style: DodgePlayerStyle = "soul"): PlayerScene {
   const container = new Container();
 
   const outerGlow = new Graphics()
@@ -47,7 +48,24 @@ export function buildPlayer(): PlayerScene {
     .fill({ color: PLAYER_GLOW_COLOR, alpha: INNER_GLOW_ALPHA });
   innerGlow.filters = [new BlurFilter({ strength: INNER_GLOW_BLUR_STRENGTH })];
 
-  const core = new Graphics().circle(0, 0, PLAYER_RADIUS).fill(PLAYER_CORE_COLOR);
+  const core = new Graphics();
+  if (style === "heart") {
+    // Visual only: the fixed circular PLAYER_RADIUS collision remains in the loop.
+    core
+      .moveTo(0, PLAYER_RADIUS * 0.8)
+      .bezierCurveTo(-PLAYER_RADIUS * 2, -PLAYER_RADIUS * 0.35, -PLAYER_RADIUS * 0.65, -PLAYER_RADIUS * 1.4, 0, -PLAYER_RADIUS * 0.45)
+      .bezierCurveTo(PLAYER_RADIUS * 0.65, -PLAYER_RADIUS * 1.4, PLAYER_RADIUS * 2, -PLAYER_RADIUS * 0.35, 0, PLAYER_RADIUS * 0.8)
+      .fill(PLAYER_CORE_COLOR);
+  } else if (style === "spark") {
+    core.poly([
+      0, -PLAYER_RADIUS, PLAYER_RADIUS * 0.38, -PLAYER_RADIUS * 0.3,
+      PLAYER_RADIUS, 0, PLAYER_RADIUS * 0.38, PLAYER_RADIUS * 0.3,
+      0, PLAYER_RADIUS, -PLAYER_RADIUS * 0.38, PLAYER_RADIUS * 0.3,
+      -PLAYER_RADIUS, 0, -PLAYER_RADIUS * 0.38, -PLAYER_RADIUS * 0.3,
+    ]).fill(PLAYER_CORE_COLOR);
+  } else {
+    core.circle(0, 0, PLAYER_RADIUS).fill(PLAYER_CORE_COLOR);
+  }
 
   container.addChild(outerGlow, innerGlow, core);
 

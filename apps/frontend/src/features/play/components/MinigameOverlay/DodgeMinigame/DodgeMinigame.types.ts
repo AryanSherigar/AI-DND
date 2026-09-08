@@ -1,5 +1,15 @@
-export interface DodgeMinigameConfig {
-  difficulty: number; // 1-5
+import type { DodgeConfigShape } from "@/shared/types/minigame.types";
+
+export interface DodgeMinigameConfig extends DodgeConfigShape {
+  /** Optional bounded overrides from newer scenario snapshots. */
+  duration_ms?: number;
+  duration_seconds?: number;
+  hit_points?: number;
+  health?: number;
+  invulnerability_ms?: number;
+  instructions?: string;
+  start_text?: string;
+  result_copy?: string;
 }
 
 export interface DodgeMinigameOutcome {

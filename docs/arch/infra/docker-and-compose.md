@@ -63,7 +63,7 @@ flowchart LR
 - **Key Overrides:**
   - `core-api`: Mounts host `./apps/core-api` to `/app` for live reload; startup executes `alembic upgrade head` before launching `uvicorn app.main:app --reload`.
   - `turn-resolution-service`: Mounts host `./apps/turn-resolution-service` to `/app` with `uvicorn --reload`.
-  - `frontend`: Replaces production Nginx build with a live `node:20-alpine` development container. Mounts `./apps/frontend` to `/app`, runs `npm install`, and launches `npm run dev -- --host 0.0.0.0 --port 5173` with Vite HMR.
+  - `frontend`: Replaces production Nginx build with a live `node:22-alpine` development container. Mounts `./apps/frontend` to `/app`, runs `npm install`, and launches `npm run dev -- --host 0.0.0.0 --port 5173` with Vite HMR.
 - **Dependencies & Interactions:** Injects developer-facing `VITE_*` environment variables for Firebase client authentication and service URLs directly into Vite runtime.
 - **Architecture Rules & Invariants:**
   - Preserves container-isolated `/app/node_modules` volume to prevent host/container operating system binary mismatches.
@@ -95,7 +95,7 @@ flowchart LR
 ### `apps/frontend/Dockerfile` & `apps/frontend/nginx.conf`
 - **Purpose & Layer:** Production multi-stage build and web server configuration for the React single-page application.
 - **Key Build Stages:**
-  - **Stage 1 (`builder`)**: `node:20-alpine`. Copies `package.json` and `package-lock.json`, runs `npm ci`, copies source files, and builds static bundles via `npm run build`.
+  - **Stage 1 (`builder`)**: `node:22-alpine`. Copies `package.json` and `package-lock.json`, runs `npm ci`, copies source files, and builds static bundles via `npm run build`.
   - **Stage 2 (`runner`)**: `nginx:alpine`. Copies built assets from `/app/dist` to `/usr/share/nginx/html` and installs custom `nginx.conf`.
 - **Key Configuration (`nginx.conf`):**
   - Listens on port `80`.

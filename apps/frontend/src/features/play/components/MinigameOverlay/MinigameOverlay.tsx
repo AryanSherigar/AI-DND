@@ -12,19 +12,23 @@ import { DodgeMinigame } from "./DodgeMinigame/DodgeMinigame";
  *
  * No AI narration happens while this is showing (locked design,
  * docs/specs/master-mode-minigames.spec.md §2 step 6): both minigame kinds
- * resolve locally, then hand their outcome to onResolve, which closes the
- * overlay immediately and submits the result — narration streams into the
- * normal view afterward, like any other turn.
+ * resolve locally, then hand their outcome to onResolve. The overlay remains
+ * mounted until the server confirms the result, so a failed submission can be
+ * retried without losing the completed encounter.
  */
 export function MinigameOverlay() {
   const activeMinigame = usePlayStore((s) => s.active_minigame);
-  const { submit, clear } = useMinigameResult();
+  const pendingResult = usePlayStore((s) => s.pending_minigame_result);
+  const { submit, retry, submitTimeoutFallback } = useMinigameResult();
 
   if (!activeMinigame) return null;
 
   const handleResolve = (result: MinigameOutcomeResult): void => {
-    clear();
-    submit({ minigame_id: activeMinigame.minigame_id, ...result });
+    submit({
+      minigame_id: activeMinigame.minigame_id,
+      attempt_id: activeMinigame.attempt_id,
+      ...result,
+    });
   };
 
   return (
@@ -44,6 +48,48 @@ export function MinigameOverlay() {
             onComplete={handleResolve}
           />
         )}
+      {pendingResult && (
+        <div
+          className="absolute inset-0 flex items-center justify-center bg-black/80 p-6 text-center text-white"
+          role="status"
+          aria-live="assertive"
+        >
+          <div className="max-w-md space-y-4 rounded border border-white/30 bg-zinc-950 p-6">
+            <p className="font-semibold">
+              {pendingResult.status === "reconciling"
+                ? "Checking the server…"
+                : pendingResult.status === "submitting"
+                ? "Saving your result…"
+                : pendingResult.status === "retryable"
+                  ? "We could not save your result."
+                  : "Result saving timed out."}
+            </p>
+            <p className="text-sm text-zinc-300">
+              {pendingResult.status === "terminal"
+                ? "Your encounter remains open. Resolve it safely as a timeout, or reload to reconcile with the server."
+                : "Your completed result is retained and will not be lost."}
+            </p>
+            {pendingResult.status === "retryable" && (
+              <button
+                type="button"
+                className="rounded bg-white px-4 py-2 text-black"
+                onClick={retry}
+              >
+                Retry save
+              </button>
+            )}
+            {pendingResult.status === "terminal" && (
+              <button
+                type="button"
+                className="rounded bg-white px-4 py-2 text-black"
+                onClick={submitTimeoutFallback}
+              >
+                Resolve as timeout
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

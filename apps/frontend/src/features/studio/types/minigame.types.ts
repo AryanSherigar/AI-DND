@@ -10,6 +10,8 @@ import type {
   TieredOutcomeRange,
 } from "@/shared/types/minigame.types";
 
+export { DEFAULT_DODGE_CONFIG } from "@/shared/types/minigame.types";
+
 export type {
   DodgeConfigShape,
   MinigameOutcomeTag,

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { AmbientSoundtrackController } from "../ambient-soundtrack";
 
 describe("AmbientSoundtrackController", () => {
@@ -35,6 +35,20 @@ describe("AmbientSoundtrackController", () => {
     const unmuted = controller.toggleMute();
     expect(unmuted).toBe(false);
     expect(controller.getIsMuted()).toBe(false);
+  });
+
+  it("notifies isolated audio consumers when global preferences change", () => {
+    const listener = vi.fn();
+    const unsubscribe = controller.onAudioPreferenceChange(listener);
+
+    controller.setVolume(0.4);
+    controller.toggleMute();
+    unsubscribe();
+    controller.setVolume(0.8);
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenNthCalledWith(1, { volume: 0.4, isMuted: false });
+    expect(listener).toHaveBeenNthCalledWith(2, { volume: 0.4, isMuted: true });
   });
 
   it("transitions to new mood and ignores duplicate transitions", () => {

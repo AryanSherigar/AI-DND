@@ -139,6 +139,15 @@ def _validate_minigame_result_submission(
     )
     if submitted_id != pending_minigame.get("minigame_id"):
         raise MinigameResultMismatchError()
+    # Old pending records predate attempt ids and remain compatible. New
+    # records require the server-issued id, preventing a stale overlay from
+    # resolving a later encounter with the same minigame definition.
+    pending_attempt_id = pending_minigame.get("attempt_id")
+    submitted_attempt_id = (
+        turn_input.minigame_result.attempt_id if turn_input.minigame_result else None
+    )
+    if pending_attempt_id is not None and submitted_attempt_id != pending_attempt_id:
+        raise MinigameResultMismatchError()
 
 
 def _not_active_message(playthrough: PlaythroughModel | None) -> str:

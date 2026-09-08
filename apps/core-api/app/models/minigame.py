@@ -5,9 +5,13 @@ single-definition rule in practice (docs/specs/master-mode-minigames.spec.md).
 """
 
 import uuid
+import re
+from typing import Literal
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.config import settings
 from app.models.condition import StateMutation
 
 MINIGAME_TYPES = ("dodge", "replit_embed")
@@ -15,6 +19,60 @@ _MINIGAME_TYPE_PATTERN = "^(" + "|".join(MINIGAME_TYPES) + ")$"
 
 OUTCOME_MODES = ("binary", "tiered")
 _OUTCOME_MODE_PATTERN = "^(" + "|".join(OUTCOME_MODES) + ")$"
+_UPLOADED_IMAGE_PATH = re.compile(
+    r"^/uploads/(?:scenario-covers|scenario-maps)/"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    r"\.(?:jpg|png|webp)$",
+    re.IGNORECASE,
+)
+_UPLOADED_AUDIO_PATH = re.compile(
+    r"^/uploads/scenario-audio/"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    r"\.(?:mp3|ogg|wav)$",
+    re.IGNORECASE,
+)
+
+
+def _is_uploaded_reference(value: str, path_pattern: re.Pattern[str]) -> bool:
+    """Accept only URLs emitted by the application's current image uploader.
+
+    Development storage emits ``CORE_API_PUBLIC_URL/uploads/<known-prefix>/``
+    and GCS emits a public bucket URL. A substring check would let an
+    arbitrary third-party URL masquerade as an upload.
+    """
+    parsed = urlparse(value)
+    if parsed.query or parsed.fragment:
+        return False
+    if not parsed.scheme and not parsed.netloc:
+        return bool(path_pattern.fullmatch(parsed.path))
+
+    core_api = urlparse(settings.core_api_public_url)
+    if (
+        parsed.scheme == core_api.scheme
+        and parsed.netloc == core_api.netloc
+        and path_pattern.fullmatch(parsed.path)
+    ):
+        return True
+    # GCS stores object keys without the local "/uploads" path. It is handled
+    # explicitly rather than permitting arbitrary public hosts.
+    return (
+        parsed.scheme == "https"
+        and parsed.netloc == "storage.googleapis.com"
+        and bool(settings.gcs_bucket_name)
+        and bool(
+            path_pattern.fullmatch(
+                "/uploads/" + parsed.path.removeprefix(f"/{settings.gcs_bucket_name}/")
+            )
+        )
+    )
+
+
+def _is_uploaded_image_reference(value: str) -> bool:
+    return _is_uploaded_reference(value, _UPLOADED_IMAGE_PATH)
+
+
+def _is_uploaded_audio_reference(value: str) -> bool:
+    return _is_uploaded_reference(value, _UPLOADED_AUDIO_PATH)
 
 
 class TieredOutcomeRange(BaseModel):
@@ -24,11 +82,96 @@ class TieredOutcomeRange(BaseModel):
     max_score: int
     mutation: StateMutation
 
+    @model_validator(mode="after")
+    def _validate_bounds(self) -> "TieredOutcomeRange":
+        if self.min_score > self.max_score:
+            raise ValueError("min_score cannot exceed max_score")
+        return self
+
+
+class DodgePerformanceThresholds(BaseModel):
+    excellent_min_health: int = Field(default=3, ge=0, le=10)
+    survive_min_health: int = Field(default=1, ge=0, le=10)
+
+    @model_validator(mode="after")
+    def _validate_order(self) -> "DodgePerformanceThresholds":
+        if self.survive_min_health > self.excellent_min_health:
+            raise ValueError("survive_min_health cannot exceed excellent_min_health")
+        return self
+
+
+class DodgeAudioSettings(BaseModel):
+    music_asset_url: str | None = Field(default=None, max_length=1024)
+    volume: float = Field(default=0.7, ge=0, le=1)
+    muted: bool = False
+
+    @field_validator("music_asset_url")
+    @classmethod
+    def _asset_is_storage_reference(cls, value: str | None) -> str | None:
+        if value is not None and not _is_uploaded_audio_reference(value):
+            raise ValueError("asset must be an application upload reference, not an external URL")
+        return value
+
+
+class DodgeCopy(BaseModel):
+    instructions: str = Field(default="Survive the ashfall. Move with WASD and avoid hazards.", min_length=1, max_length=1000)
+    start_text: str = Field(default="Start", min_length=1, max_length=80)
+    win_text: str = Field(default="Survived!", min_length=1, max_length=160)
+    lose_text: str = Field(default="Defeated...", min_length=1, max_length=160)
+
 
 class DodgeConfig(BaseModel):
-    """Play-time configuration for the built-in dodge/survival minigame."""
+    """Safe, presentation-focused configuration for Ashfall Dodge.
 
-    difficulty: int = Field(..., ge=1, le=5)
+    Defaults intentionally live here rather than in clients so JSON written by
+    older Studio versions (which only contained ``difficulty``) remains valid.
+    Unknown future fields are ignored by older APIs for a version-tolerant
+    snapshot/event contract. Collision geometry is not represented here.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    version: int = Field(default=1, ge=1, le=1)
+    difficulty: int = Field(default=3, ge=1, le=5)
+    duration_seconds: int = Field(default=15, ge=10, le=120)
+    health: int = Field(default=3, ge=1, le=10)
+    invulnerability_ms: int = Field(default=1000, ge=250, le=3000)
+    enabled_patterns: list[Literal["rain", "ring", "beam", "homing"]] = Field(
+        default_factory=lambda: ["rain", "ring", "beam", "homing"], min_length=1
+    )
+    pattern_order: list[Literal["rain", "ring", "beam", "homing"]] = Field(
+        default_factory=lambda: ["rain", "ring", "beam", "homing"], min_length=1
+    )
+    performance_thresholds: DodgePerformanceThresholds = Field(default_factory=DodgePerformanceThresholds)
+    player_style: Literal["soul", "heart", "spark"] = "soul"
+    obstacle_style: Literal["ash", "neon", "crystal"] = "ash"
+    obstacle_color: str = Field(default="#ff8a65", pattern=r"^#[0-9a-fA-F]{6}$")
+    background: Literal["void", "ember", "midnight"] = "void"
+    texture: Literal["none", "grain", "stars"] = "none"
+    palette: Literal["ashfall", "ember", "aurora"] = "ashfall"
+    background_asset_url: str | None = Field(default=None, max_length=1024)
+    audio: DodgeAudioSettings = Field(default_factory=DodgeAudioSettings)
+    copy: DodgeCopy = Field(default_factory=DodgeCopy)
+
+    @field_validator("enabled_patterns", "pattern_order")
+    @classmethod
+    def _patterns_are_unique(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("dodge patterns must not contain duplicates")
+        return value
+
+    @field_validator("background_asset_url")
+    @classmethod
+    def _asset_is_storage_reference(cls, value: str | None) -> str | None:
+        if value is not None and not _is_uploaded_image_reference(value):
+            raise ValueError("asset must be an application upload reference, not an external URL")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_pattern_order(self) -> "DodgeConfig":
+        if set(self.enabled_patterns) != set(self.pattern_order):
+            raise ValueError("pattern_order must contain each enabled pattern exactly once")
+        return self
 
 
 class MinigameCreate(BaseModel):
@@ -155,3 +298,9 @@ def _validate_outcome_mutation_pairing(
         raise ValueError(
             "tiered outcome_mode requires at least one tiered_outcomes entry"
         )
+    if outcome_mode == "tiered":
+        ordered_ranges = sorted(tiered_outcomes, key=lambda item: item.min_score)
+        for previous, current in zip(ordered_ranges, ordered_ranges[1:]):
+            # Score endpoints are inclusive, so 10..20 and 20..30 overlap.
+            if current.min_score <= previous.max_score:
+                raise ValueError("tiered_outcomes score ranges must not overlap")

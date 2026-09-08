@@ -62,7 +62,7 @@
   - Health checks pass for API containers.
 
 ### 3.6. Boundaries (Three-Tier Model)
-- ✅ **Always:** Use non-root/slim images; pin main software versions (`python:3.11-slim`, `postgres:16-alpine`, `node:20-alpine`); expose explicit port mappings.
+- ✅ **Always:** Use non-root/slim images; pin main software versions (`python:3.11-slim`, `postgres:16-alpine`, `node:22-alpine`); expose explicit port mappings.
 - ⚠️ **Ask First:** Adding extra infrastructure containers (Redis, LocalStack, etc.).
 - 🚫 **Never:** Commit secret credentials or production keys inside Dockerfiles or compose configs; use `latest` unpinned image tags.
 

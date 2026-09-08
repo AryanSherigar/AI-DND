@@ -15,6 +15,7 @@ rather than reimplementing op-handling a second time.
 """
 
 import structlog
+import math
 
 from app.turn import state_paths
 from app.turn.steps import state_validator
@@ -25,8 +26,10 @@ EVENT_MINIGAME_RESOLVED = "minigame_resolved"
 EVENT_MINIGAME_NOT_FOUND = "minigame_not_found_in_snapshot"
 EVENT_MINIGAME_MUTATION_INVALID = "minigame_mutation_invalid"
 EVENT_MINIGAME_SCORE_UNRANGED = "minigame_score_unranged"
+EVENT_MINIGAME_OUTCOME_INVALID = "minigame_outcome_invalid"
 STATE_KEY_PENDING_MINIGAME = "_pending_minigame"
 FALLBACK_INSTRUCTION = "The trial concludes."
+VALID_OUTCOME_TAGS = frozenset(("win", "lose", "timeout"))
 
 
 class MinigameResolution:
@@ -63,6 +66,10 @@ def resolve_result(
     minigame = _find_minigame(minigames, minigame_id)
     if minigame is None:
         logger.warning(EVENT_MINIGAME_NOT_FOUND, minigame_id=minigame_id)
+        return MinigameResolution(state, FALLBACK_INSTRUCTION, set())
+
+    if outcome_tag not in VALID_OUTCOME_TAGS:
+        logger.warning(EVENT_MINIGAME_OUTCOME_INVALID, outcome_tag=outcome_tag)
         return MinigameResolution(state, FALLBACK_INSTRUCTION, set())
 
     mutation = _select_mutation(minigame, outcome_tag, score)
@@ -123,7 +130,17 @@ def _score_in_tier(tier: dict[str, object], score: int) -> bool:
     min_score, max_score = tier.get("min_score"), tier.get("max_score")
     if min_score is None or max_score is None:
         return False
-    return float(min_score) <= score <= float(max_score)
+    # The persisted snapshot can be malformed even though request validation
+    # is strict; do not let NaN/Infinity/coercion choose an arbitrary tier.
+    if isinstance(score, bool) or not isinstance(score, int):
+        return False
+    try:
+        lower, upper = float(min_score), float(max_score)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if not math.isfinite(lower) or not math.isfinite(upper):
+        return False
+    return lower <= score <= upper
 
 
 def _apply_selected_mutation(

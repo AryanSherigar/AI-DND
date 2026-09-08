@@ -25,6 +25,7 @@ from app.exceptions.scenario_exceptions import (
 from app.integrations import memory_client
 from app.logging_config import log_audit_event
 from app.models.memory import MemoryTemplateCloneRequest
+from app.models.minigame import DodgeConfig
 from app.models.playthrough import (
     ParticipantSummary,
     PlaythroughCharacterUpdate,
@@ -560,7 +561,15 @@ class PlaythroughService:
                 "tiered_outcomes": m.tiered_outcomes,
                 "timeout_mutation": m.timeout_mutation,
                 "narrator_instruction_template": m.narrator_instruction_template,
-                "dodge_config": m.dodge_config,
+                # Parse persisted legacy JSON through the config model before
+                # freezing it into a playthrough snapshot. This gives old
+                # scenarios all current safe defaults while retaining every
+                # nested authoring setting in the runtime event path.
+                "dodge_config": (
+                    DodgeConfig.model_validate(m.dodge_config).model_dump(mode="json")
+                    if m.minigame_type == "dodge" and m.dodge_config is not None
+                    else m.dodge_config
+                ),
                 "replit_embed_url": m.replit_embed_url,
             }
             for m in minigames

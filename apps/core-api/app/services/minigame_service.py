@@ -144,6 +144,11 @@ class MinigameService:
         if validated.minigame_type == "replit_embed" and validated.replit_embed_url:
             await self._check_replit_reachable(validated.replit_embed_url)
 
+        # JSONB columns need plain JSON values. In particular, dodge_config is
+        # a nested Pydantic model when supplied by PATCH; preserving its full
+        # dump keeps the contract intact across update/snapshot/runtime paths.
+        if "dodge_config" in update_dict:
+            update_dict["dodge_config"] = _dump_model(update_dict["dodge_config"])
         for field, value in update_dict.items():
             setattr(minigame, field, value)
         updated = await self.minigame_repo.update(minigame)

@@ -59,14 +59,16 @@ def test_matches_trigger_and_returns_play_time_payload() -> None:
     )
 
     assert matched is not None
-    assert matched.payload == {
+    assert matched.payload | {"attempt_id": None} == {
         "minigame_id": _DODGE_MINIGAME["minigame_id"],
+        "attempt_id": None,
         "minigame_type": "dodge",
         "label": "Warden's Onslaught",
         "dodge_config": {"difficulty": 3},
         "replit_embed_url": None,
         "timeout_seconds": 20,
     }
+    assert uuid.UUID(str(matched.payload["attempt_id"]))
 
 
 def test_payload_never_contains_mutation_or_instruction_keys() -> None:

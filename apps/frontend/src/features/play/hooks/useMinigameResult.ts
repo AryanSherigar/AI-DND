@@ -10,6 +10,7 @@ import { usePlayStore } from "../stores/play.store";
  */
 export function useMinigameResult() {
   const submit = usePlayStore((s) => s.submitMinigameResult);
-  const clear = usePlayStore((s) => s.clearActiveMinigame);
-  return { submit, clear };
+  const retry = usePlayStore((s) => s.retryMinigameResult);
+  const submitTimeoutFallback = usePlayStore((s) => s.submitMinigameTimeoutFallback);
+  return { submit, retry, submitTimeoutFallback };
 }

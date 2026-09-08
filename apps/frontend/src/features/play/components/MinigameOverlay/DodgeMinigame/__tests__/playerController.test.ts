@@ -19,7 +19,7 @@ function stateWith(
 
 describe("computeVelocity — keyboard input", () => {
   it("holding right produces a velocity vector pointing purely right at max speed", () => {
-    const state = stateWith({ keysDown: new Set(["ArrowRight"]) });
+    const state = stateWith({ keysDown: new Set(["d"]) });
     const { vx, vy } = computeVelocity(state, 100, 100, MAX_SPEED);
     expect(vx).toBeCloseTo(MAX_SPEED);
     expect(vy).toBeCloseTo(0);
@@ -33,14 +33,14 @@ describe("computeVelocity — keyboard input", () => {
   });
 
   it("holding two opposing keys cancels out to zero velocity", () => {
-    const state = stateWith({ keysDown: new Set(["ArrowLeft", "ArrowRight"]) });
+    const state = stateWith({ keysDown: new Set(["a", "d"]) });
     const { vx, vy } = computeVelocity(state, 100, 100, MAX_SPEED);
     expect(vx).toBeCloseTo(0);
     expect(vy).toBeCloseTo(0);
   });
 
   it("diagonal input (up + right) is normalized to max speed, not max speed on each axis", () => {
-    const state = stateWith({ keysDown: new Set(["ArrowUp", "ArrowRight"]) });
+    const state = stateWith({ keysDown: new Set(["w", "d"]) });
     const { vx, vy } = computeVelocity(state, 100, 100, MAX_SPEED);
     const magnitude = Math.hypot(vx, vy);
     expect(magnitude).toBeCloseTo(MAX_SPEED);
@@ -54,51 +54,12 @@ describe("computeVelocity — keyboard input", () => {
   });
 });
 
-describe("computeVelocity — mouse input", () => {
-  it("seeks the cursor target, capped at max speed", () => {
-    const state = stateWith({ mouseTarget: { x: 400, y: 100 } });
-    const { vx, vy } = computeVelocity(state, 100, 100, MAX_SPEED);
-    expect(vy).toBeCloseTo(0);
-    expect(vx).toBeCloseTo(MAX_SPEED);
-  });
-
-  it("seeks diagonally toward the target, magnitude capped at max speed", () => {
-    const state = stateWith({ mouseTarget: { x: 500, y: 500 } });
-    const { vx, vy } = computeVelocity(state, 100, 100, MAX_SPEED);
-    const magnitude = Math.hypot(vx, vy);
-    expect(magnitude).toBeCloseTo(MAX_SPEED);
-    expect(vx).toBeGreaterThan(0);
-    expect(vy).toBeGreaterThan(0);
-  });
-
-  it("produces zero velocity when already at the mouse target", () => {
-    const state = stateWith({ mouseTarget: { x: 100, y: 100 } });
+describe("computeVelocity — WASD-only", () => {
+  it("ignores arrow keys and unsupported input", () => {
+    const state = stateWith({ keysDown: new Set(["ArrowRight"]) });
     const { vx, vy } = computeVelocity(state, 100, 100, MAX_SPEED);
     expect(vx).toBe(0);
     expect(vy).toBe(0);
-  });
-});
-
-describe("computeVelocity — blended input", () => {
-  it("keyboard alone remains fully sufficient when the mouse target is within the seek deadzone", () => {
-    const state = stateWith({
-      keysDown: new Set(["ArrowRight"]),
-      mouseTarget: { x: 100, y: 100 },
-    });
-    const { vx, vy } = computeVelocity(state, 100, 100, MAX_SPEED);
-    expect(vx).toBeCloseTo(MAX_SPEED);
-    expect(vy).toBeCloseTo(0);
-  });
-
-  it("blending both inputs in the same direction does not exceed max speed", () => {
-    const state = stateWith({
-      keysDown: new Set(["ArrowRight"]),
-      mouseTarget: { x: 400, y: 100 },
-    });
-    const { vx, vy } = computeVelocity(state, 100, 100, MAX_SPEED);
-    const magnitude = Math.hypot(vx, vy);
-    expect(magnitude).toBeCloseTo(MAX_SPEED);
-    expect(vx).toBeGreaterThan(0);
   });
 });
 

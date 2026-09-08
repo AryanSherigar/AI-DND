@@ -8,6 +8,8 @@ already priority-ascending, per playthrough_service._snapshot_minigames),
 mirroring end_condition_evaluator.py exactly.
 """
 
+import uuid
+
 import structlog
 
 from app.turn.expression_evaluator import evaluate
@@ -70,6 +72,9 @@ def _build_payload(
     leave the server, per §3.6's "Always" boundary."""
     return {
         "minigame_id": str(minigame["minigame_id"]),
+        # This is persisted in _pending_minigame and is therefore stable over
+        # a browser reload, while being fresh for every trigger.
+        "attempt_id": str(uuid.uuid4()),
         "minigame_type": str(minigame["minigame_type"]),
         "label": str(minigame["label"]),
         "dodge_config": minigame.get("dodge_config"),

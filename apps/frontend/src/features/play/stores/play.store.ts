@@ -24,6 +24,7 @@ import {
 } from "@/shared/types/minigame.types";
 import { MINIGAME_RESULT_ACTION_TEXT } from "../constants/minigame.constants";
 import { READER_FONT_STORAGE_KEY } from "@/shared/constants/narration-fonts";
+import { getPlaythrough } from "../api/playthroughs.api";
 
 const TRS_BASE_URL = import.meta.env.VITE_TRS_URL || "http://localhost:8001";
 
@@ -35,6 +36,39 @@ interface TurnStreamBody {
   action_text: string;
   action_kind: "narrative" | "minigame_result";
   minigame_result?: MinigameResultPayload;
+}
+
+type MinigameResultStatus =
+  | "reconciling"
+  | "submitting"
+  | "retryable"
+  | "terminal";
+
+interface PendingMinigameResult {
+  result: MinigameResultPayload;
+  attempts: number;
+  status: MinigameResultStatus;
+  fallback_used: boolean;
+}
+
+const MAX_MINIGAME_RESULT_ATTEMPTS = 3;
+
+function pendingMinigameFromServer(
+  state: Record<string, unknown>,
+): MinigameEventPayload | null {
+  const pending = state._pending_minigame;
+  if (!pending || typeof pending !== "object") return null;
+  const payload = pending as Partial<MinigameEventPayload>;
+  return typeof payload.minigame_id === "string" ? (payload as MinigameEventPayload) : null;
+}
+
+function isSamePendingAttempt(
+  pending: MinigameEventPayload | null,
+  result: MinigameResultPayload,
+): boolean {
+  if (!pending || pending.minigame_id !== result.minigame_id) return false;
+  // Pending records written before attempt ids deliberately remain replayable.
+  return !pending.attempt_id || pending.attempt_id === result.attempt_id;
 }
 
 interface PlayStoreState {
@@ -50,6 +84,9 @@ interface PlayStoreState {
   last_submitted_action: string;
   degraded_message: string | null;
   cancel_stream_fn: (() => void) | null;
+  // Monotonic ownership token: callbacks from a cancelled/replaced SSE
+  // connection must never overwrite newer play state.
+  stream_generation: number;
   // Master mode: set when a `turn_summary` SSE event arrives, held until the
   // in-flight turn commits so the chapter summary strip only ever renders
   // from a turn already in playthrough.turns (never mid-stream).
@@ -66,6 +103,9 @@ interface PlayStoreState {
   // resumed on reload from PlaythroughData.pending_minigame. Null renders
   // nothing (MinigameOverlay is an unconditional, guarded no-op mount).
   active_minigame: MinigameEventPayload | null;
+  // Kept until the server's terminal "done" event confirms the pending
+  // encounter was consumed. This makes failed submissions recoverable.
+  pending_minigame_result: PendingMinigameResult | null;
   reader_font_override: string | null;
 
   // Actions
@@ -85,6 +125,8 @@ interface PlayStoreState {
   closeChronicleModal: () => void;
   submitTurn: (actionText: string) => void;
   submitMinigameResult: (result: MinigameResultPayload) => void;
+  retryMinigameResult: () => void;
+  submitMinigameTimeoutFallback: () => void;
   clearActiveMinigame: () => void;
   continueTurn: () => void;
   stopGeneration: () => void;
@@ -119,10 +161,12 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   last_submitted_action: "",
   degraded_message: null,
   cancel_stream_fn: null,
+  stream_generation: 0,
   pending_chapter_delta: null,
   pending_minigame_trigger: null,
   pending_playthrough_ended: null,
   active_minigame: null,
+  pending_minigame_result: null,
   reader_font_override:
     typeof window !== "undefined"
       ? localStorage.getItem(READER_FONT_STORAGE_KEY)
@@ -154,9 +198,14 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       ambientSoundtrack.transitionTo(initialMood, true);
       // Resume a minigame the player left mid-resolution — reload must not
       // require a fresh SSE "minigame" event to show the overlay again.
-      if (data.pending_minigame) {
-        set({ active_minigame: data.pending_minigame });
-      }
+    }
+    // The API snapshot is authoritative. In particular, this reconciles an
+    // ambiguous network failure: if the server consumed the result, dismiss
+    // the retained local result; otherwise restore the unresolved encounter.
+    if (data.pending_minigame) {
+      set({ active_minigame: data.pending_minigame });
+    } else {
+      set({ active_minigame: null, pending_minigame_result: null });
     }
   },
   setAudioVolume: (vol: number) => {
@@ -201,8 +250,9 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   },
 
   submitTurn: (actionText: string) => {
-    const { playthrough } = get();
+    const { playthrough, active_minigame } = get();
     if (!playthrough || !actionText.trim() || playthrough.is_spectator) return;
+    if (active_minigame) return;
     if (!playthrough.participant_id) return;
     if (playthrough.ended_outcome_tag) return;
 
@@ -218,10 +268,158 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   },
 
   submitMinigameResult: (result: MinigameResultPayload) => {
-    const { playthrough } = get();
+    const { playthrough, active_minigame, pending_minigame_result } = get();
     if (!playthrough || playthrough.is_spectator) return;
     if (!playthrough.participant_id) return;
+    if (!active_minigame || active_minigame.minigame_id !== result.minigame_id) return;
+    // Exactly once at the client boundary. The retry action below deliberately
+    // resubmits this same immutable payload/attempt id.
+    if (pending_minigame_result) return;
 
+    const payload: MinigameResultPayload = {
+      ...result,
+      attempt_id: result.attempt_id ?? active_minigame.attempt_id,
+    };
+    set({
+      pending_minigame_result: {
+        result: payload,
+        attempts: 1,
+        status: "submitting",
+        fallback_used: false,
+      },
+    });
+    get()._startTurnStream(
+      {
+        playthrough_id: playthrough.playthrough_id,
+        participant_id: playthrough.participant_id,
+        action_text: MINIGAME_RESULT_ACTION_TEXT,
+        action_kind: "minigame_result",
+        minigame_result: payload,
+      },
+      MINIGAME_RESULT_ACTION_TEXT,
+    );
+  },
+
+  retryMinigameResult: async () => {
+    const { playthrough, pending_minigame_result } = get();
+    if (
+      !playthrough ||
+      !playthrough.participant_id ||
+      !pending_minigame_result ||
+      pending_minigame_result.status !== "retryable" ||
+      pending_minigame_result.attempts >= MAX_MINIGAME_RESULT_ATTEMPTS
+    ) return;
+    // A dropped SSE can mean the server committed successfully. Never replay
+    // an outcome until a fresh authoritative read proves this attempt is still
+    // pending; this also makes the timeout fallback safe after a lost "done".
+    set({
+      pending_minigame_result: {
+        ...pending_minigame_result,
+        status: "reconciling",
+      },
+    });
+    try {
+      const serverPlaythrough = await getPlaythrough(playthrough.playthrough_id);
+      const serverPending = pendingMinigameFromServer(serverPlaythrough.state);
+      void queryClient.setQueryData(
+        ["playthrough", playthrough.playthrough_id],
+        serverPlaythrough,
+      );
+      if (!isSamePendingAttempt(serverPending, pending_minigame_result.result)) {
+        set({
+          active_minigame: serverPending,
+          pending_minigame_result: null,
+          is_narrating: false,
+        });
+        return;
+      }
+    } catch {
+      // Reconciliation itself failed. Keep the outcome rather than gambling
+      // on a duplicate POST; the player can safely retry this check.
+      set((s) => ({
+        pending_minigame_result:
+          s.pending_minigame_result &&
+          s.pending_minigame_result.result === pending_minigame_result.result
+            ? { ...s.pending_minigame_result, status: "retryable" }
+            : s.pending_minigame_result,
+      }));
+      return;
+    }
+
+    const attempts = pending_minigame_result.attempts + 1;
+    set((s) => ({
+      pending_minigame_result:
+        s.pending_minigame_result &&
+        s.pending_minigame_result.result === pending_minigame_result.result
+          ? { ...s.pending_minigame_result, attempts, status: "submitting" }
+          : s.pending_minigame_result,
+    }));
+    get()._startTurnStream(
+      {
+        playthrough_id: playthrough.playthrough_id,
+        participant_id: playthrough.participant_id,
+        action_text: MINIGAME_RESULT_ACTION_TEXT,
+        action_kind: "minigame_result",
+        minigame_result: pending_minigame_result.result,
+      },
+      MINIGAME_RESULT_ACTION_TEXT,
+    );
+  },
+
+  submitMinigameTimeoutFallback: async () => {
+    const { playthrough, pending_minigame_result } = get();
+    if (
+      !playthrough ||
+      !playthrough.participant_id ||
+      !pending_minigame_result ||
+      pending_minigame_result.status !== "terminal" ||
+      pending_minigame_result.fallback_used
+    ) return;
+    set({
+      pending_minigame_result: {
+        ...pending_minigame_result,
+        status: "reconciling",
+      },
+    });
+    try {
+      const serverPlaythrough = await getPlaythrough(playthrough.playthrough_id);
+      const serverPending = pendingMinigameFromServer(serverPlaythrough.state);
+      void queryClient.setQueryData(
+        ["playthrough", playthrough.playthrough_id],
+        serverPlaythrough,
+      );
+      if (!isSamePendingAttempt(serverPending, pending_minigame_result.result)) {
+        set({
+          active_minigame: serverPending,
+          pending_minigame_result: null,
+          is_narrating: false,
+        });
+        return;
+      }
+    } catch {
+      set((s) => ({
+        pending_minigame_result:
+          s.pending_minigame_result &&
+          s.pending_minigame_result.result === pending_minigame_result.result
+            ? { ...s.pending_minigame_result, status: "terminal" }
+            : s.pending_minigame_result,
+      }));
+      return;
+    }
+    const result = {
+      ...pending_minigame_result.result,
+      outcome_tag: "timeout" as const,
+      score: undefined,
+    };
+    set({
+      pending_minigame_result: {
+        ...pending_minigame_result,
+        result,
+        attempts: 1,
+        status: "submitting",
+        fallback_used: true,
+      },
+    });
     get()._startTurnStream(
       {
         playthrough_id: playthrough.playthrough_id,
@@ -234,7 +432,8 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     );
   },
 
-  clearActiveMinigame: () => set({ active_minigame: null }),
+  clearActiveMinigame: () =>
+    set({ active_minigame: null, pending_minigame_result: null }),
 
   stopGeneration: () => {
     const { cancel_stream_fn } = get();
@@ -248,6 +447,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       pending_chapter_delta: null,
       pending_minigame_trigger: null,
       pending_playthrough_ended: null,
+      stream_generation: get().stream_generation + 1,
     });
   },
 
@@ -292,20 +492,48 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     const { cancel_stream_fn } = get();
     if (cancel_stream_fn) cancel_stream_fn();
 
+    const generation = get().stream_generation + 1;
     set({
       is_narrating: true,
       streaming_text: "",
       last_submitted_action: actionTextForLog,
       degraded_message: null,
       is_action_drawer_open: false,
+      stream_generation: generation,
     });
 
     const token = useAuthStore.getState().accessToken;
     const requestId = generateRequestId();
     setCurrentRequestId(requestId);
     let reachedTerminalEvent = false;
+    const ownsStream = () => get().stream_generation === generation;
+    const failMinigameResult = (message: string) => {
+      if (!ownsStream()) return;
+      const pending = get().pending_minigame_result;
+      if (body.action_kind !== "minigame_result" || !pending) {
+        get()._degradeCurrentTurn(message);
+        return;
+      }
+      const terminal =
+        pending.fallback_used ||
+        pending.attempts >= MAX_MINIGAME_RESULT_ATTEMPTS;
+      set({
+        is_narrating: false,
+        streaming_text: "",
+        cancel_stream_fn: null,
+        pending_chapter_delta: null,
+        pending_minigame_trigger: null,
+        pending_playthrough_ended: null,
+        degraded_message: null,
+        pending_minigame_result: {
+          ...pending,
+          status: terminal ? "terminal" : "retryable",
+        },
+      });
+    };
     const handlers: SSEHandlers = {
       onEvent: (eventName: string, data: string) => {
+        if (!ownsStream()) return;
         if (eventName === "mood") {
           const mood = data as ScenarioMood;
           ambientSoundtrack.transitionTo(mood);
@@ -335,12 +563,12 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
           get()._commitStreamedTurn(actionTextForLog);
         } else if (eventName === "degraded") {
           reachedTerminalEvent = true;
-          get()._degradeCurrentTurn(data);
+          failMinigameResult(data);
         }
       },
       onError: () => {
         reachedTerminalEvent = true;
-        get()._degradeCurrentTurn(
+        failMinigameResult(
           "Connection lost. Your turn may not have saved — you can try again.",
         );
       },
@@ -350,7 +578,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
         // already sent. Without this, the UI would hang on "thinking"
         // forever with no way for the player to recover.
         if (!reachedTerminalEvent) {
-          get()._degradeCurrentTurn(
+          failMinigameResult(
             "The narrator stopped responding unexpectedly. Please try again.",
           );
         }
@@ -365,7 +593,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       requestId,
     );
 
-    set({ cancel_stream_fn: cancelFn });
+    if (ownsStream()) set({ cancel_stream_fn: cancelFn });
   },
 
   _commitStreamedTurn: (actionText: string) => {
@@ -413,6 +641,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       pending_chapter_delta: null,
       pending_minigame_trigger: null,
       pending_playthrough_ended: null,
+      pending_minigame_result: null,
       // Promote the buffered trigger into the overlay-driving field now that
       // the triggering turn is fully committed — mirrors pending_chapter_delta
       // being attached to newTurn above. When nothing triggered this turn,

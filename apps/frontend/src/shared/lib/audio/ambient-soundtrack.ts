@@ -13,6 +13,10 @@ interface AudioChannel {
 }
 
 export type MoodListener = (mood: ScenarioMood) => void;
+export type AudioPreferenceListener = (preferences: {
+  volume: number;
+  isMuted: boolean;
+}) => void;
 
 export class AmbientSoundtrackController {
   private audioContext: AudioContext | null = null;
@@ -26,6 +30,7 @@ export class AmbientSoundtrackController {
   private isMuted = false;
   private isUnlocked = false;
   private moodListeners: Set<MoodListener> = new Set();
+  private audioPreferenceListeners: Set<AudioPreferenceListener> = new Set();
 
   constructor() {
     this.loadSavedPreferences();
@@ -60,6 +65,24 @@ export class AmbientSoundtrackController {
     return this.isMuted;
   }
 
+  /** Lets isolated audio features honor the player-wide audio preference
+   * without importing the play store. */
+  public onAudioPreferenceChange(listener: AudioPreferenceListener): () => void {
+    this.audioPreferenceListeners.add(listener);
+    return () => this.audioPreferenceListeners.delete(listener);
+  }
+
+  private notifyAudioPreferenceChange(): void {
+    const preferences = { volume: this.volume, isMuted: this.isMuted };
+    for (const listener of this.audioPreferenceListeners) {
+      try {
+        listener(preferences);
+      } catch {
+        // An optional audio consumer must not break global audio controls.
+      }
+    }
+  }
+
   public init(): void {
     if (typeof window === "undefined" || this.audioContext) return;
     this.setupAudioContext();
@@ -75,6 +98,7 @@ export class AmbientSoundtrackController {
         this.audioContext.currentTime,
       );
     }
+    this.notifyAudioPreferenceChange();
   }
 
   public toggleMute(): boolean {
@@ -87,6 +111,7 @@ export class AmbientSoundtrackController {
         this.audioContext.currentTime,
       );
     }
+    this.notifyAudioPreferenceChange();
     return this.isMuted;
   }
 

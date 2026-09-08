@@ -153,3 +153,21 @@ def test_pending_minigame_cleared_unconditionally() -> None:
     )
 
     assert "_pending_minigame" not in resolution.state
+
+
+def test_invalid_outcome_tag_clears_pending_without_treating_it_as_a_loss() -> None:
+    state_with_pending = {**_STATE, "_pending_minigame": {"minigame_id": "mg-1"}}
+
+    resolution = minigame_result_resolver.resolve_result(
+        [_BINARY_MINIGAME],
+        state_with_pending,
+        _SCENARIO_SNAPSHOT,
+        "mg-1",
+        "forged",
+        None,
+    )
+
+    assert resolution.state["player"]["health"] == 100
+    assert resolution.mutated_paths == set()
+    assert resolution.instruction == minigame_result_resolver.FALLBACK_INSTRUCTION
+    assert "_pending_minigame" not in resolution.state

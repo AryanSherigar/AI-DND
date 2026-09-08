@@ -5,12 +5,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from app.exceptions.turn_exceptions import (
     ParticipantAccessDeniedError,
     ParticipantNotFoundError,
     PlaythroughNotActiveError,
     TurnOrderError,
+    MinigameResultMismatchError,
 )
 from app.models.auth import CurrentUser
 from app.models.turn import TurnRequestInput
@@ -150,6 +152,71 @@ async def test_unauthorized_user_cannot_leak_minigame_gating() -> None:
             playthrough_repo,
             participant_repo,
             CurrentUser(user_id=attacker_user_id, token_version=1),
+        )
+
+
+async def test_result_requires_matching_server_issued_attempt_id() -> None:
+    playthrough_id = uuid.uuid4()
+    participant_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    playthrough_repo = AsyncMock()
+    playthrough_repo.get_by_id.return_value = SimpleNamespace(
+        status="active",
+        turn_count=0,
+        state={"_pending_minigame": {"minigame_id": "mg-dodge", "attempt_id": "a-1"}},
+    )
+    participant_repo = AsyncMock()
+    participant_repo.list_by_playthrough.return_value = [
+        _participant(participant_id, 1, user_id=user_id)
+    ]
+
+    with pytest.raises(MinigameResultMismatchError):
+        await receive_request(
+            TurnRequestInput(
+                playthrough_id=playthrough_id,
+                participant_id=participant_id,
+                action_text="result",
+                action_kind="minigame_result",
+                minigame_result={
+                    "minigame_id": "mg-dodge",
+                    "outcome_tag": "win",
+                    "attempt_id": "stale",
+                },
+            ),
+            playthrough_repo,
+            participant_repo,
+            CurrentUser(user_id=user_id, token_version=1),
+        )
+
+
+def test_minigame_result_rejects_forged_outcome_and_boolean_score() -> None:
+    common = {
+        "playthrough_id": uuid.uuid4(),
+        "participant_id": uuid.uuid4(),
+        "action_text": "result",
+        "action_kind": "minigame_result",
+        "minigame_result": {"minigame_id": "mg-dodge"},
+    }
+    with pytest.raises(ValidationError):
+        TurnRequestInput.model_validate(
+            {
+                **common,
+                "minigame_result": {
+                    "minigame_id": "mg-dodge",
+                    "outcome_tag": "forged",
+                },
+            }
+        )
+    with pytest.raises(ValidationError):
+        TurnRequestInput.model_validate(
+            {
+                **common,
+                "minigame_result": {
+                    "minigame_id": "mg-dodge",
+                    "outcome_tag": "win",
+                    "score": True,
+                },
+            }
         )
 
 

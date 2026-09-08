@@ -17,7 +17,7 @@ import {
   WAVE_INTERVAL_MS,
   getDodgePreset,
 } from "./difficultyPresets";
-import { circlesCollide } from "./collision";
+import { hazardCollidesWithPlayer } from "./collision";
 import {
   attachPlayerControls,
   clampToArena,
@@ -26,10 +26,10 @@ import {
 } from "./playerController";
 import {
   HAZARD_PATTERN_GENERATORS,
-  pickNextPattern,
   type HazardPatternType,
   type HazardSpawn,
 } from "./hazardPatterns";
+import type { DodgeMinigameConfig } from "./DodgeMinigame.types";
 import { buildArena } from "./scene/arena";
 import { buildPlayer } from "./scene/player";
 import { buildHazardLayer, type LiveHazard } from "./scene/hazards";
@@ -44,15 +44,36 @@ export interface UseGameLoopResult {
   hitPoints: number;
   maxHitPoints: number;
   timeRemainingMs: number;
+  durationMs: number;
   canvasContainerRef: React.RefObject<HTMLDivElement>;
   /** Begins the simulation — call once the visual "3…2…1…Go" countdown finishes. */
   start: () => void;
+  pause: () => void;
+  resume: () => void;
+  isHit: boolean;
+  isPaused: boolean;
 }
 
 const OFFSCREEN_MARGIN_PX = 40;
 const BEAM_ACTIVE_MS = 500;
 const HOMING_TURN_RATE_RAD_PER_SEC = Math.PI * 0.6;
 const RESOLUTION_SLOWMO_SPEED = 0.3;
+const CONFIG_PATTERN_MAP: Record<string, HazardPatternType> = {
+  rain: "falling_rain",
+  ring: "converging_ring",
+  beam: "sweeping_lines",
+  homing: "homing_orbs",
+  falling_rain: "falling_rain",
+  converging_ring: "converging_ring",
+  sweeping_lines: "sweeping_lines",
+  homing_orbs: "homing_orbs",
+};
+
+function boundedFinite(value: unknown, fallback: number, minimum: number, maximum: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(minimum, Math.min(maximum, value))
+    : fallback;
+}
 
 function isOffscreen(spawn: HazardSpawn): boolean {
   return (
@@ -92,14 +113,33 @@ function steerHoming(
 }
 
 export function useGameLoop(
-  difficulty: number,
+  dodgeConfig: DodgeMinigameConfig,
   onComplete: (outcome: DodgeOutcome) => void,
 ): UseGameLoopResult {
-  const preset = getDodgePreset(difficulty);
+  const preset = getDodgePreset(dodgeConfig.difficulty);
+  const requestedDurationMs = dodgeConfig.duration_ms ??
+    (dodgeConfig.duration_seconds ? dodgeConfig.duration_seconds * 1000 : undefined);
+  const durationMs = boundedFinite(requestedDurationMs, preset.durationMs, 5_000, 120_000);
+  const maxHitPoints = boundedFinite(
+    dodgeConfig.hit_points ?? dodgeConfig.health, preset.hitPoints, 1, 10,
+  );
+  const invulnerabilityMs = boundedFinite(
+    dodgeConfig.invulnerability_ms, POST_HIT_INVULNERABILITY_MS, 250, 5_000,
+  );
+  const configuredPatterns = (dodgeConfig.pattern_order ?? dodgeConfig.enabled_patterns ?? [])
+    .map((pattern) => CONFIG_PATTERN_MAP[pattern])
+    .filter((pattern): pattern is HazardPatternType => Boolean(pattern));
+  const enabledPatterns = configuredPatterns.length > 0
+    ? [...new Set(configuredPatterns)]
+    : (Object.keys(HAZARD_PATTERN_GENERATORS) as HazardPatternType[]);
   const containerRef = useRef<HTMLDivElement>(null);
   const startRef = useRef<() => void>(() => {});
-  const [hitPoints, setHitPoints] = useState(preset.hitPoints);
-  const [timeRemainingMs, setTimeRemainingMs] = useState(preset.durationMs);
+  const pauseRef = useRef<() => void>(() => {});
+  const resumeRef = useRef<() => void>(() => {});
+  const [hitPoints, setHitPoints] = useState(maxHitPoints);
+  const [timeRemainingMs, setTimeRemainingMs] = useState(durationMs);
+  const [isHit, setIsHit] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
@@ -133,18 +173,29 @@ export function useGameLoop(
       isInitialized = true;
       mountEl.appendChild(app.canvas);
 
-      const arena = buildArena();
-      const player = buildPlayer();
-      const hazardLayer = buildHazardLayer(ARENA_WIDTH, ARENA_HEIGHT);
+      const arena = buildArena({
+        background: dodgeConfig.background,
+        texture: dodgeConfig.texture,
+        palette: dodgeConfig.palette,
+        backgroundAssetUrl: dodgeConfig.background_asset_url,
+      });
+      // Styles are deliberately passed only to renderers; movement and
+      // collision continue to use the fixed PLAYER_RADIUS/hazard radii.
+      const player = buildPlayer(dodgeConfig.player_style);
+      const hazardLayer = buildHazardLayer(ARENA_WIDTH, ARENA_HEIGHT, {
+        style: dodgeConfig.obstacle_style,
+        color: dodgeConfig.obstacle_color,
+      });
       app.stage.addChild(arena.container, hazardLayer.container, player.container);
 
       const controllerState = createPlayerControllerState();
       cleanupControls = attachPlayerControls(
         controllerState,
         app.canvas,
-        ARENA_WIDTH,
-        ARENA_HEIGHT,
+        () => pauseRef.current(),
       );
+      app.canvas.tabIndex = 0;
+      app.canvas.setAttribute("aria-label", "Ashfall Dodge arena. Use W A S D to move.");
 
       let playerX = ARENA_WIDTH / 2;
       let playerY = ARENA_HEIGHT / 2;
@@ -152,19 +203,44 @@ export function useGameLoop(
 
       let liveHazards: LiveHazard[] = [];
       let lastPattern: HazardPatternType | null = null;
+      let orderedPatternIndex = 0;
       let elapsedMs = 0;
       let sinceWaveMs = WAVE_INTERVAL_MS; // first wave spawns on the first tick
       let invulnUntilMs = -Infinity;
-      let currentHitPoints = preset.hitPoints;
+      let currentHitPoints = maxHitPoints;
       let hasStarted = false;
+      let paused = false;
+      let skipResumedFrame = false;
       let resolved = false;
 
       startRef.current = () => {
+        if (resolved) return;
         hasStarted = true;
+        app.canvas.focus();
+      };
+      pauseRef.current = () => {
+        if (!hasStarted || resolved) return;
+        paused = true;
+        controllerState.keysDown.clear();
+        setIsPaused(true);
+      };
+      resumeRef.current = () => {
+        if (!hasStarted || resolved) return;
+        controllerState.keysDown.clear();
+        paused = false;
+        // Browsers can deliver a single large ticker delta after a hidden tab
+        // resumes. Discard it so a pause can never consume encounter time.
+        skipResumedFrame = true;
+        setIsPaused(false);
+        app.canvas.focus();
       };
 
       const spawnWave = (): void => {
-        const patternType = pickNextPattern(lastPattern, Math.random);
+        const isExplicitOrder = (dodgeConfig.pattern_order?.length ?? 0) > 0;
+        const candidates = enabledPatterns.filter((pattern) => pattern !== lastPattern);
+        const patternType = isExplicitOrder
+          ? enabledPatterns[orderedPatternIndex++ % enabledPatterns.length]
+          : candidates[Math.floor(Math.random() * candidates.length)] ?? enabledPatterns[0];
         lastPattern = patternType;
         const spawns = HAZARD_PATTERN_GENERATORS[patternType](
           {
@@ -188,8 +264,12 @@ export function useGameLoop(
       };
 
       app.ticker.add((ticker) => {
-        if (resolved || !hasStarted) return;
-        const deltaMs = ticker.deltaMS;
+        if (resolved || !hasStarted || paused || skipResumedFrame) {
+          skipResumedFrame = false;
+          return;
+        }
+        // Clamp a background/throttled frame as a second fairness guard.
+        const deltaMs = Math.min(ticker.deltaMS, 50);
         elapsedMs += deltaMs;
         sinceWaveMs += deltaMs;
 
@@ -222,38 +302,43 @@ export function useGameLoop(
         });
 
         const isInvulnerable = elapsedMs < invulnUntilMs;
+        setIsHit(isInvulnerable);
         player.advance(deltaMs, isInvulnerable);
-        arena.updateBoundaryTint(currentHitPoints / preset.hitPoints);
+        arena.updateBoundaryTint(currentHitPoints / maxHitPoints);
 
         if (!isInvulnerable) {
           const hit = liveHazards.find(
-            (hazard) =>
-              !hazard.isTelegraphing &&
-              circlesCollide(
-                playerX,
-                playerY,
-                PLAYER_RADIUS,
-                hazard.spawn.x,
-                hazard.spawn.y,
-                hazard.spawn.radius,
-              ),
+            (hazard) => hazardCollidesWithPlayer(
+              playerX,
+              playerY,
+              PLAYER_RADIUS,
+              {
+                isTelegraphing: hazard.isTelegraphing,
+                shape: hazard.spawn.shape,
+                x: hazard.spawn.x,
+                y: hazard.spawn.y,
+                radius: hazard.spawn.radius,
+              },
+              ARENA_WIDTH,
+            ),
           );
           if (hit) {
             currentHitPoints -= 1;
             setHitPoints(currentHitPoints);
-            invulnUntilMs = elapsedMs + POST_HIT_INVULNERABILITY_MS;
+            invulnUntilMs = elapsedMs + invulnerabilityMs;
+            setIsHit(true);
             player.playHitFlash();
             playHitSfx();
           }
         }
 
-        setTimeRemainingMs(Math.max(0, preset.durationMs - elapsedMs));
+        setTimeRemainingMs(Math.max(0, durationMs - elapsedMs));
 
         // Loss takes precedence on a simultaneous win/loss frame (design
         // spec §4 edge case) — checked before the duration check.
         if (currentHitPoints <= 0) {
           resolve({ outcome_tag: "lose", score: 0 });
-        } else if (elapsedMs >= preset.durationMs) {
+        } else if (elapsedMs >= durationMs) {
           resolve({ outcome_tag: "win", score: currentHitPoints });
         }
       });
@@ -264,6 +349,9 @@ export function useGameLoop(
     return () => {
       destroyed = true;
       cleanupControls?.();
+      startRef.current = () => {};
+      pauseRef.current = () => {};
+      resumeRef.current = () => {};
       // If init() hasn't resolved yet, don't destroy here — setup()'s own
       // post-await `destroyed` check above handles teardown once init
       // finishes, which is the earliest point destroy() is safe to call.
@@ -274,15 +362,22 @@ export function useGameLoop(
     // and onComplete is captured via a ref so its identity never restarts
     // the effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [difficulty]);
+  }, [dodgeConfig.difficulty]);
 
   const start = (): void => startRef.current();
+  const pause = (): void => pauseRef.current();
+  const resume = (): void => resumeRef.current();
 
   return {
     hitPoints,
-    maxHitPoints: preset.hitPoints,
+    maxHitPoints,
     timeRemainingMs,
+    durationMs,
     canvasContainerRef: containerRef,
     start,
+    pause,
+    resume,
+    isHit,
+    isPaused,
   };
 }

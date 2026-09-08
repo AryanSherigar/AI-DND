@@ -4,6 +4,7 @@ import { PlaythroughData } from "../../types/play.types";
 import { SSEHandlers } from "@/shared/lib/sse-client";
 import { MinigameEventPayload } from "@/shared/types/minigame.types";
 import { queryClient } from "@/shared/lib/query-client";
+import { getPlaythrough } from "../../api/playthroughs.api";
 
 let capturedHandlers: SSEHandlers | null = null;
 let capturedBody: unknown = null;
@@ -19,6 +20,10 @@ vi.mock("@/shared/lib/sse-client", () => ({
     capturedBody = body;
     return vi.fn();
   },
+}));
+
+vi.mock("../../api/playthroughs.api", () => ({
+  getPlaythrough: vi.fn(),
 }));
 
 function buildPlaythrough(): PlaythroughData {
@@ -112,10 +117,12 @@ describe("play.store — minigame trigger/result handling", () => {
   beforeEach(() => {
     capturedHandlers = null;
     capturedBody = null;
+    vi.mocked(getPlaythrough).mockReset();
     usePlayStore.setState({
       playthrough: buildPlaythrough(),
       pending_minigame_trigger: null,
       active_minigame: null,
+      pending_minigame_result: null,
       streaming_text: "",
       is_narrating: false,
     });
@@ -149,6 +156,7 @@ describe("play.store — minigame trigger/result handling", () => {
   });
 
   it("submitMinigameResult posts action_kind minigame_result with the given payload", () => {
+    usePlayStore.setState({ active_minigame: minigamePayload });
     usePlayStore.getState().submitMinigameResult({
       minigame_id: "mg-1",
       outcome_tag: "win",
@@ -160,6 +168,83 @@ describe("play.store — minigame trigger/result handling", () => {
       action_kind: "minigame_result",
       minigame_result: { minigame_id: "mg-1", outcome_tag: "win", score: 10 },
     });
+  });
+
+  it("retains a failed result, reuses its attempt id, and ignores duplicate completion", async () => {
+    usePlayStore.setState({
+      active_minigame: { ...minigamePayload, attempt_id: "attempt-1" },
+    });
+    usePlayStore.getState().submitMinigameResult({
+      minigame_id: "mg-1",
+      outcome_tag: "win",
+    });
+    usePlayStore.getState().submitMinigameResult({
+      minigame_id: "mg-1",
+      outcome_tag: "win",
+    });
+
+    expect(capturedBody).toMatchObject({
+      minigame_result: { attempt_id: "attempt-1" },
+    });
+    capturedHandlers?.onError?.(new Error("submission failed"));
+    expect(usePlayStore.getState().pending_minigame_result).toMatchObject({
+      status: "retryable",
+      attempts: 1,
+    });
+
+    vi.mocked(getPlaythrough).mockResolvedValue({
+      state: {
+        _pending_minigame: { ...minigamePayload, attempt_id: "attempt-1" },
+      },
+    } as never);
+    await usePlayStore.getState().retryMinigameResult();
+    expect(usePlayStore.getState().pending_minigame_result).toMatchObject({
+      status: "submitting",
+      attempts: 2,
+      result: { attempt_id: "attempt-1" },
+    });
+  });
+
+  it("reconciles a committed attempt before retrying instead of posting it again", async () => {
+    usePlayStore.setState({
+      active_minigame: { ...minigamePayload, attempt_id: "attempt-1" },
+    });
+    usePlayStore.getState().submitMinigameResult({
+      minigame_id: "mg-1",
+      outcome_tag: "win",
+    });
+    capturedHandlers?.onError?.(new Error("submission failed"));
+    const firstPost = capturedBody;
+
+    vi.mocked(getPlaythrough).mockResolvedValue({ state: {} } as never);
+    await usePlayStore.getState().retryMinigameResult();
+
+    expect(capturedBody).toBe(firstPost);
+    expect(usePlayStore.getState().active_minigame).toBeNull();
+    expect(usePlayStore.getState().pending_minigame_result).toBeNull();
+  });
+
+  it("does not submit a timeout fallback after the original attempt committed", async () => {
+    usePlayStore.setState({
+      active_minigame: { ...minigamePayload, attempt_id: "attempt-1" },
+      pending_minigame_result: {
+        result: {
+          minigame_id: "mg-1",
+          attempt_id: "attempt-1",
+          outcome_tag: "win",
+        },
+        attempts: 3,
+        status: "terminal",
+        fallback_used: false,
+      },
+    });
+
+    vi.mocked(getPlaythrough).mockResolvedValue({ state: {} } as never);
+    await usePlayStore.getState().submitMinigameTimeoutFallback();
+
+    expect(capturedBody).toBeNull();
+    expect(usePlayStore.getState().active_minigame).toBeNull();
+    expect(usePlayStore.getState().pending_minigame_result).toBeNull();
   });
 
   it("clearActiveMinigame nulls active_minigame immediately", () => {
