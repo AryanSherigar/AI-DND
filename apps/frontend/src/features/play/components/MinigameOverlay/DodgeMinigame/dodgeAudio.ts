@@ -5,7 +5,8 @@
 // docs/specs/dodge-minigame-design.spec.md §3.4.
 
 import { ambientSoundtrack } from "@/shared/lib/audio/ambient-soundtrack";
-import type { ScenarioMood } from "@/features/play/types/audio.types";
+import { DEFAULT_MOOD_TRACK_URLS } from "@/shared/constants/audio";
+import type { ScenarioMood } from "@/shared/types/audio.types";
 import type { DodgeAudioSettings } from "@/shared/types/minigame.types";
 
 const TENSION_MOOD: ScenarioMood = "tension";
@@ -42,7 +43,8 @@ function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
   const AudioCtxConstructor =
     window.AudioContext ||
-    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    (window as unknown as { webkitAudioContext?: typeof AudioContext })
+      .webkitAudioContext;
   if (!AudioCtxConstructor) return null;
 
   if (!sharedAudioContext) {
@@ -75,7 +77,10 @@ function playTone(
   const startTime = context.currentTime + startOffsetSeconds;
   gainNode.gain.setValueAtTime(MIN_GAIN, startTime);
   gainNode.gain.exponentialRampToValueAtTime(peakGain, startTime + 0.02);
-  gainNode.gain.exponentialRampToValueAtTime(MIN_GAIN, startTime + durationSeconds);
+  gainNode.gain.exponentialRampToValueAtTime(
+    MIN_GAIN,
+    startTime + durationSeconds,
+  );
 
   oscillator.connect(gainNode);
   gainNode.connect(masterGain ?? context.destination);
@@ -88,7 +93,13 @@ const HIT_SFX_DURATION_SECONDS = 0.15;
 const HIT_SFX_GAIN = 0.35;
 
 export function playHitSfx(): void {
-  playTone(HIT_SFX_FREQUENCY_HZ, 0, HIT_SFX_DURATION_SECONDS, "square", HIT_SFX_GAIN);
+  playTone(
+    HIT_SFX_FREQUENCY_HZ,
+    0,
+    HIT_SFX_DURATION_SECONDS,
+    "square",
+    HIT_SFX_GAIN,
+  );
 }
 
 const WIN_STINGER_NOTES_HZ = [523.25, 659.25, 783.99]; // C5, E5, G5 — ascending arpeggio
@@ -127,7 +138,10 @@ export function playLoseStinger(): void {
     startTime + LOSE_STINGER_DURATION_SECONDS,
   );
   gainNode.gain.setValueAtTime(MIN_GAIN, startTime);
-  gainNode.gain.exponentialRampToValueAtTime(LOSE_STINGER_GAIN, startTime + 0.02);
+  gainNode.gain.exponentialRampToValueAtTime(
+    LOSE_STINGER_GAIN,
+    startTime + 0.02,
+  );
   gainNode.gain.exponentialRampToValueAtTime(
     MIN_GAIN,
     startTime + LOSE_STINGER_DURATION_SECONDS,
@@ -140,17 +154,25 @@ export function playLoseStinger(): void {
 }
 
 // Crossfades the existing ambient mood track to "tension" on minigame
-// start, and restores the previously-active mood on exit — thin wrapper
-// around ambient-soundtrack.ts's transitionTo(mood, isForce) API. This
-// module does not manage mood state itself; it just remembers what to
-// restore to (captured at call time via ambientSoundtrack.getMood()).
+// start, and restores the previously-active mood/track on exit — thin
+// wrapper around ambient-soundtrack.ts's transitionTo(mood, trackUrl,
+// isForce) API. This module does not manage mood state itself; it just
+// remembers what to restore to (captured at call time via
+// ambientSoundtrack.getMood()/getCurrentTrackUrl()). Uses the built-in
+// default tension track rather than the active scenario's custom one,
+// since this module has no access to per-scenario track overrides.
 // Forces both transitions past the controller's default cooldown gate so
 // the minigame's audio cue is never silently dropped or delayed.
 export function enterMinigameAudio(settings?: DodgeAudioSettings): () => void {
   globalMuted = ambientSoundtrack.getIsMuted();
   globalVolume = ambientSoundtrack.getVolume();
   const previousMood = ambientSoundtrack.getMood();
-  ambientSoundtrack.transitionTo(TENSION_MOOD, true);
+  const previousTrackUrl = ambientSoundtrack.getCurrentTrackUrl();
+  ambientSoundtrack.transitionTo(
+    TENSION_MOOD,
+    DEFAULT_MOOD_TRACK_URLS[TENSION_MOOD],
+    true,
+  );
   if (typeof window !== "undefined" && settings?.music_asset_url) {
     const music = new Audio(settings.music_asset_url);
     music.loop = true;
@@ -182,8 +204,8 @@ export function enterMinigameAudio(settings?: DodgeAudioSettings): () => void {
       activeMusic.load();
       activeMusic = null;
     }
-    if (previousMood) {
-      ambientSoundtrack.transitionTo(previousMood, true);
+    if (previousMood && previousTrackUrl) {
+      ambientSoundtrack.transitionTo(previousMood, previousTrackUrl, true);
     }
   };
 }

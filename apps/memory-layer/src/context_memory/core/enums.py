@@ -39,16 +39,26 @@ _FORWARD_ORDER: tuple[IngestionJobState, ...] = (
 
 # Every non-terminal state may fail into one of these; COMPLETED cannot (it is terminal).
 _FAILURE_TRANSITIONS: frozenset[IngestionJobState] = frozenset(
-    {IngestionJobState.RETRYABLE_FAILED, IngestionJobState.TERMINAL_FAILED, IngestionJobState.MANUAL_REPAIR}
+    {
+        IngestionJobState.RETRYABLE_FAILED,
+        IngestionJobState.TERMINAL_FAILED,
+        IngestionJobState.MANUAL_REPAIR,
+    }
 )
 
 _NON_TERMINAL_STATES: frozenset[IngestionJobState] = frozenset(
-    {IngestionJobState.PENDING_GRAPH, IngestionJobState.PENDING_EMBEDDINGS, IngestionJobState.VERIFYING}
+    {
+        IngestionJobState.PENDING_GRAPH,
+        IngestionJobState.PENDING_EMBEDDINGS,
+        IngestionJobState.VERIFYING,
+    }
 )
 
 
 def is_legal_job_transition(
-    current: IngestionJobState, new: IngestionJobState, last_verified_state: IngestionJobState | None
+    current: IngestionJobState,
+    new: IngestionJobState,
+    last_verified_state: IngestionJobState | None,
 ) -> bool:
     """Table-driven legality check for `docs/decisions.md` ADR-031's state contract.
 
@@ -68,7 +78,9 @@ def is_legal_job_transition(
         if new in (IngestionJobState.TERMINAL_FAILED, IngestionJobState.MANUAL_REPAIR):
             return True
         resume_from = last_verified_state or IngestionJobState.PENDING_GRAPH
-        return new in _FORWARD_ORDER and _FORWARD_ORDER.index(new) >= _FORWARD_ORDER.index(resume_from)
+        return new in _FORWARD_ORDER and _FORWARD_ORDER.index(
+            new
+        ) >= _FORWARD_ORDER.index(resume_from)
     if current is IngestionJobState.TERMINAL_FAILED:
         return new is IngestionJobState.MANUAL_REPAIR
     if current is IngestionJobState.MANUAL_REPAIR:

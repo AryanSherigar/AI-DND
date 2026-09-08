@@ -14,7 +14,7 @@ import {
   StoryCard,
   TurnLogItem,
 } from "../types/play.types";
-import { ScenarioMood } from "../types/audio.types";
+import { ScenarioMood } from "@/shared/types/audio.types";
 import { buildChapterDeltaFromToolCalls } from "../utils/chapterDelta";
 import { MinigameEventPayload } from "@/shared/types/minigame.types";
 
@@ -63,6 +63,7 @@ interface CommonPlaythroughFields {
   scenario_title: string;
   mode: "newbie" | "master";
   initial_mood?: ScenarioMood;
+  music_tracks?: Partial<Record<ScenarioMood, string | null>>;
   narration_font?: string | null;
   creator_name: string;
   character_name: string;
@@ -144,12 +145,15 @@ function buildCommonFields(
   const narrationFont =
     (serverPlaythrough.scenario_snapshot?.narration_font as string | null) ??
     null;
+  const musicTracks = serverPlaythrough.scenario_snapshot?.music_tracks as
+    Partial<Record<ScenarioMood, string | null>> | undefined;
   return {
     playthrough_id: serverPlaythrough.playthrough_id,
     scenario_id: serverPlaythrough.scenario_id,
     scenario_title: serverPlaythrough.scenario_title,
     mode,
     initial_mood: initialMood,
+    music_tracks: musicTracks,
     narration_font: narrationFont,
     creator_name: "Scenario Creator",
     character_name: (setupMap.character_name as string) || "Adventurer",
@@ -184,6 +188,7 @@ export function buildNewbiePlaythroughData(
     action_text: turn.action_text,
     narration_text: turn.narration_text ?? "",
     created_at: turn.created_at,
+    image_url: turn.image_url ?? undefined,
   }));
 
   return {
@@ -315,6 +320,7 @@ export function buildMasterPlaythroughData(
     narration_text: turn.narration_text ?? "",
     created_at: turn.created_at,
     chapter_delta: buildChapterDeltaFromToolCalls(turn.tool_calls, entities),
+    image_url: turn.image_url ?? undefined,
   }));
 
   return {

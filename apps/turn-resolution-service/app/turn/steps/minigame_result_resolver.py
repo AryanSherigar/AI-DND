@@ -14,8 +14,9 @@ set/increment/decrement helper condition_evaluator.py's Effect C uses —
 rather than reimplementing op-handling a second time.
 """
 
-import structlog
 import math
+
+import structlog
 
 from app.turn import state_paths
 from app.turn.steps import state_validator

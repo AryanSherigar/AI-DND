@@ -6,8 +6,9 @@ import logging
 import sys
 import threading
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 
 def setup_logging(
@@ -85,13 +86,24 @@ def drain_metrics() -> list[dict[str, Any]]:
         return drained
 
 
-def _record_metric(operation_name: str, elapsed_ms: float, outcome: str, context: dict[str, Any]) -> None:
-    if _metrics_sink is None:  # unlocked fast-path check -- the overwhelmingly common case, disabled
+def _record_metric(
+    operation_name: str, elapsed_ms: float, outcome: str, context: dict[str, Any]
+) -> None:
+    if (
+        _metrics_sink is None
+    ):  # unlocked fast-path check -- the overwhelmingly common case, disabled
         return
-    record: dict[str, Any] = {"operation": operation_name, "elapsed_ms": round(elapsed_ms, 3), "outcome": outcome, "wall_time": time.time()}
+    record: dict[str, Any] = {
+        "operation": operation_name,
+        "elapsed_ms": round(elapsed_ms, 3),
+        "outcome": outcome,
+        "wall_time": time.time(),
+    }
     record.update(context)
     with _metrics_lock:
-        if _metrics_sink is not None:  # re-checked under lock: could have been disabled between the fast-path check and here
+        if (
+            _metrics_sink is not None
+        ):  # re-checked under lock: could have been disabled between the fast-path check and here
             _metrics_sink.append(record)
 
 
@@ -129,17 +141,25 @@ def timed_operation(
         log_level,
         "[START] %s | %s",
         operation_name,
-        " ".join(f"{k}={v}" for k, v in context.items()) if context else "no extra metadata",
+        " ".join(f"{k}={v}" for k, v in context.items())
+        if context
+        else "no extra metadata",
     )
     try:
         yield context
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
-        meta_str = f" | {' '.join(f'{k}={v}' for k, v in context.items())}" if context else ""
-        logger.log(log_level, "[DONE] %s in %.2f ms%s", operation_name, elapsed_ms, meta_str)
+        meta_str = (
+            f" | {' '.join(f'{k}={v}' for k, v in context.items())}" if context else ""
+        )
+        logger.log(
+            log_level, "[DONE] %s in %.2f ms%s", operation_name, elapsed_ms, meta_str
+        )
         _record_metric(operation_name, elapsed_ms, "done", context)
     except Exception as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
-        meta_str = f" | {' '.join(f'{k}={v}' for k, v in context.items())}" if context else ""
+        meta_str = (
+            f" | {' '.join(f'{k}={v}' for k, v in context.items())}" if context else ""
+        )
         logger.exception(
             "[FAIL] %s FAILED after %.2f ms%s | error=%s: %s",
             operation_name,
@@ -148,5 +168,10 @@ def timed_operation(
             type(e).__name__,
             str(e),
         )
-        _record_metric(operation_name, elapsed_ms, "failed", {**context, "error_type": type(e).__name__, "error": str(e)})
+        _record_metric(
+            operation_name,
+            elapsed_ms,
+            "failed",
+            {**context, "error_type": type(e).__name__, "error": str(e)},
+        )
         raise

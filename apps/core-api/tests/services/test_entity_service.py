@@ -6,7 +6,10 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.user import User
-from app.exceptions.entity_exceptions import EntityNotFoundError
+from app.exceptions.entity_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 from app.exceptions.scenario_exceptions import (
     ScenarioAccessDeniedError,
     ScenarioNotFoundError,
@@ -241,3 +244,64 @@ async def test_delete_entity_cascades_to_referencing_facts(
     )
 
     assert await fact_repo.count_referencing_entity(cairn.entity_id) == 0
+
+
+@pytest.mark.asyncio
+async def test_create_player_entity_success(
+    entity_service: EntityService, master_scenario, creator: User
+) -> None:
+    created = await entity_service.create_entity(
+        master_scenario.scenario_id,
+        creator.user_id,
+        EntityCreate(
+            entity_type="character",
+            canonical_name="The Protagonist",
+            is_player=True,
+        ),
+    )
+    assert created.is_player is True
+
+
+@pytest.mark.asyncio
+async def test_create_player_entity_non_character_rejected(
+    entity_service: EntityService, master_scenario, creator: User
+) -> None:
+    with pytest.raises(EntityValidationError):
+        await entity_service.create_entity(
+            master_scenario.scenario_id,
+            creator.user_id,
+            EntityCreate(
+                entity_type="location",
+                canonical_name="The Citadel",
+                is_player=True,
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_player_designation_unsets_previous_player(
+    entity_service: EntityService, master_scenario, creator: User
+) -> None:
+    first_player = await entity_service.create_entity(
+        master_scenario.scenario_id,
+        creator.user_id,
+        EntityCreate(
+            entity_type="character",
+            canonical_name="Hero One",
+            is_player=True,
+        ),
+    )
+    second_player = await entity_service.create_entity(
+        master_scenario.scenario_id,
+        creator.user_id,
+        EntityCreate(
+            entity_type="character",
+            canonical_name="Hero Two",
+            is_player=True,
+        ),
+    )
+    first_reloaded = await entity_service.get_entity(
+        master_scenario.scenario_id, first_player.entity_id, creator.user_id
+    )
+    assert second_player.is_player is True
+    assert first_reloaded.is_player is False

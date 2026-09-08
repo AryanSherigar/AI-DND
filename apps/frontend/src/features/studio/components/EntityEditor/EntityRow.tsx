@@ -42,6 +42,7 @@ export const EntityRow: React.FC<EntityRowProps> = ({
   const summary = (
     <span className="flex items-center gap-2">
       <span className="text-sm text-content">{entity.canonical_name}</span>
+      {entity.is_player && <Badge variant="warning">PLAYER</Badge>}
       <Badge>{resolveTypeLabel(entity.entity_type)}</Badge>
       {entity.description && (
         <span className="truncate text-xs text-content-faint">

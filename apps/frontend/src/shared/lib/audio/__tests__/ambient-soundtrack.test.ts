@@ -52,7 +52,11 @@ describe("AmbientSoundtrackController", () => {
   });
 
   it("transitions to new mood and ignores duplicate transitions", () => {
-    const firstTransition = controller.transitionTo("peaceful", true);
+    const firstTransition = controller.transitionTo(
+      "peaceful",
+      undefined,
+      true,
+    );
     expect(firstTransition).toBe(true);
     expect(controller.getMood()).toBe("peaceful");
 
@@ -61,7 +65,7 @@ describe("AmbientSoundtrackController", () => {
   });
 
   it("enforces cooldown for non-combat transitions but allows combat escalation", () => {
-    controller.transitionTo("peaceful", true);
+    controller.transitionTo("peaceful", undefined, true);
 
     // Non-combat transition immediately after should be throttled by cooldown
     const nonCombatAttempt = controller.transitionTo("mystery");
@@ -72,6 +76,18 @@ describe("AmbientSoundtrackController", () => {
     const combatAttempt = controller.transitionTo("combat");
     expect(combatAttempt).toBe(true);
     expect(controller.getMood()).toBe("combat");
+  });
+
+  it("uses a custom track URL when one is provided", () => {
+    controller.transitionTo("peaceful", "https://example.com/custom.wav", true);
+    expect(controller.getCurrentTrackUrl()).toBe(
+      "https://example.com/custom.wav",
+    );
+  });
+
+  it("falls back to the default mood track URL when none is provided", () => {
+    controller.transitionTo("peaceful", undefined, true);
+    expect(controller.getCurrentTrackUrl()).toBe("/audio/moods/peaceful.wav");
   });
 
   it("persists settings in localStorage", () => {

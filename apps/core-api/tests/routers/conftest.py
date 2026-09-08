@@ -26,6 +26,7 @@ def _stub_memory_client(monkeypatch: pytest.MonkeyPatch) -> None:
 
     async def _fake_clone_template_memory_space(
         request: MemoryTemplateCloneRequest,
+        canonical_names: dict[uuid.UUID, str] | None = None,
     ) -> MemoryTemplateCloneResponse:
         return MemoryTemplateCloneResponse(playthrough_space_id=request.playthrough_id)
 

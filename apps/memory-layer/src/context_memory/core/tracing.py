@@ -31,7 +31,9 @@ def configure_tracing(service_name: str = "mem1") -> bool:
         return isinstance(trace.get_tracer_provider(), TracerProvider)
     _configured = True
 
-    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or os.getenv(
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
+    )
     if not endpoint:
         return False
 

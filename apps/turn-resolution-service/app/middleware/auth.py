@@ -3,12 +3,11 @@ from typing import Annotated
 
 import jwt
 import structlog
-from fastapi import Depends, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
 from app.config import settings
 from app.exceptions.auth_exceptions import InvalidTokenError
 from app.models.auth import CurrentUser
+from fastapi import Depends, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 security = HTTPBearer(auto_error=False)
 

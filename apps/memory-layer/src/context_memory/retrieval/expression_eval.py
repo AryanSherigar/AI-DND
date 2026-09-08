@@ -34,7 +34,9 @@ class ExpressionError(ValueError):
     common, expected case, not a broken one."""
 
 
-def evaluate_expression(expression: dict[str, Any] | None, game_state: dict[str, Any]) -> bool:
+def evaluate_expression(
+    expression: dict[str, Any] | None, game_state: dict[str, Any]
+) -> bool:
     """`None` (no `when_active` on this fact) means always active -- `True`.
     A fact whose `when_active` is present but references a `field` absent
     from `game_state` evaluates `False` (the condition can't be confirmed
@@ -49,7 +51,9 @@ def evaluate_expression(expression: dict[str, Any] | None, game_state: dict[str,
         raise ExpressionError(f"unsupported op: {op!r}")
 
     actual = _resolve_field(expression["field"], game_state)
-    result = actual is not None and _safe_compare(_OPERATORS[op], actual, expression.get("value"))
+    result = actual is not None and _safe_compare(
+        _OPERATORS[op], actual, expression.get("value")
+    )
 
     if result and "AND" in expression:
         result = evaluate_expression(expression["AND"], game_state)

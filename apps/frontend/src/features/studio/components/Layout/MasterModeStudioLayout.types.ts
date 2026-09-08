@@ -48,6 +48,12 @@ export const MASTER_MODE_TABS = [
       "Draw maps and pin your Location entities onto them, then connect locations together. Connections are advisory only — they inform the narrator, they never restrict where the player can go.",
   },
   {
+    id: "music",
+    label: "Mood Music",
+    helpText:
+      "Upload or generate a track for each of the 6 moods your narrator can call for. All 6 slots must be set (custom or default) before this scenario can be published.",
+  },
+  {
     id: "setup",
     label: "Setup & Narrator",
     helpText:

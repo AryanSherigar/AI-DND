@@ -61,7 +61,11 @@ class ToolRegistry:
         return [
             {
                 "type": "function",
-                "function": {"name": tool.name, "description": tool.description, "parameters": tool.input_schema},
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.input_schema,
+                },
             }
             for tool in self._tools.values()
         ]

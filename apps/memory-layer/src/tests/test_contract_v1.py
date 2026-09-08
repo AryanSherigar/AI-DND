@@ -19,13 +19,17 @@ class ContractV1Tests(unittest.TestCase):
         return json.loads((FIXTURES / name).read_text())
 
     def test_generic_fixture_parses(self) -> None:
-        batch = ContextBatch.from_mapping(self.load_fixture("generic_context_batch_v1.json"))
+        batch = ContextBatch.from_mapping(
+            self.load_fixture("generic_context_batch_v1.json")
+        )
         self.assertEqual(batch.contract_version, "v1")
         self.assertEqual(len(batch.records), 7)
         self.assertEqual(batch.records[0].record_id, "session-a-turn-001")
 
     def test_longmemeval_output_has_generic_shape(self) -> None:
-        payload = self.load_fixture("longmemeval_adapter_expected_context_batch_v1.json")
+        payload = self.load_fixture(
+            "longmemeval_adapter_expected_context_batch_v1.json"
+        )
         payload.pop("adapter_fixture_note")
         batch = ContextBatch.from_mapping(payload)
         self.assertEqual(batch.source.source_type, "longmemeval")

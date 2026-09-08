@@ -33,7 +33,13 @@ from hashlib import sha256
 
 from context_memory.core.models import Chunk, Embedding, SourceDescriptor
 from context_memory.core.validation import chunk_id_for, content_hash
-from context_memory.ingestion.ports import ChunkStore, CopyableEmbeddingStore, Embedder, EmbeddingStore, SearchIndexStore
+from context_memory.ingestion.ports import (
+    ChunkStore,
+    CopyableEmbeddingStore,
+    Embedder,
+    EmbeddingStore,
+    SearchIndexStore,
+)
 
 # Fixed, not wall-clock: PostgresChunkStore.put() treats a chunk's whole
 # content -- occurred_at included -- as immutable, and this placeholder is
@@ -41,7 +47,9 @@ from context_memory.ingestion.ports import ChunkStore, CopyableEmbeddingStore, E
 # cloned under the same context_id. A wall-clock value here would make the
 # SECOND call ever made for a context raise ImmutableRecordConflictError.
 _PLACEHOLDER_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
-_PLACEHOLDER_RAW_TEXT = "placeholder evidence chunk for a fact projected outside extraction"
+_PLACEHOLDER_RAW_TEXT = (
+    "placeholder evidence chunk for a fact projected outside extraction"
+)
 _SUBJECT_KIND_FACT = "fact"
 
 
@@ -84,30 +92,47 @@ class FactProjectionWriter:
         cloned from a template), falling back to a fresh `embed()` only when
         no matching source row exists -- a template authored/cloned before
         this writer existed, or under a since-upgraded embedding model."""
-        source_chunk_id = self._ensure_authoring_chunk(target_context_id, "template_clone")
+        source_chunk_id = self._ensure_authoring_chunk(
+            target_context_id, "template_clone"
+        )
         model_name = getattr(self._embedder, "model_name", "unknown")
         model_version = getattr(self._embedder, "model_version", "1")
         vector = None
         if isinstance(self._embedding_store, CopyableEmbeddingStore):
             vector = self._embedding_store.get_active(
-                source_context_id, _SUBJECT_KIND_FACT, source_subject_id, model_name, model_version
+                source_context_id,
+                _SUBJECT_KIND_FACT,
+                source_subject_id,
+                model_name,
+                model_version,
             )
         if vector is None:
             vector = self._embedder.embed(text)
         self._write(target_context_id, new_fact_graph_id, text, vector, source_chunk_id)
 
     def _write(
-        self, context_id: str, fact_graph_id: int, text: str, vector: tuple[float, ...], source_chunk_id: str,
+        self,
+        context_id: str,
+        fact_graph_id: int,
+        text: str,
+        vector: tuple[float, ...],
+        source_chunk_id: str,
     ) -> None:
         subject_id = str(fact_graph_id)
         embedding = Embedding(
-            context_id=context_id, subject_kind=_SUBJECT_KIND_FACT, subject_id=subject_id,
-            source_chunk_id=source_chunk_id, model_name=getattr(self._embedder, "model_name", "unknown"),
-            model_version=getattr(self._embedder, "model_version", "1"), values=vector,
+            context_id=context_id,
+            subject_kind=_SUBJECT_KIND_FACT,
+            subject_id=subject_id,
+            source_chunk_id=source_chunk_id,
+            model_name=getattr(self._embedder, "model_name", "unknown"),
+            model_version=getattr(self._embedder, "model_version", "1"),
+            values=vector,
             embedded_content_hash=f"sha256:{sha256(text.encode('utf-8')).hexdigest()}",
         )
         self._embedding_store.put(embedding)
-        self._search_index_store.put(context_id=context_id, fact_id=subject_id, raw_text=text)
+        self._search_index_store.put(
+            context_id=context_id, fact_id=subject_id, raw_text=text
+        )
 
     def _ensure_authoring_chunk(self, context_id: str, source_type: str) -> str:
         """One idempotent placeholder `evidence_chunks` row per context_id --
@@ -117,7 +142,9 @@ class FactProjectionWriter:
         chunk = Chunk(
             chunk_id=chunk_id_for(context_id, record_id),
             context_id=context_id,
-            source=SourceDescriptor(source_type=source_type, source_external_id=context_id),
+            source=SourceDescriptor(
+                source_type=source_type, source_external_id=context_id
+            ),
             source_record_id=record_id,
             raw_text=_PLACEHOLDER_RAW_TEXT,
             content_hash=content_hash(_PLACEHOLDER_RAW_TEXT),

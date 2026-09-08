@@ -15,7 +15,9 @@ class Reranker:
         self._rerank_client = rerank_client
         self._config = config or Config()
 
-    def rerank(self, question: str, ranked: list[ScoredFact], top_k: int) -> list[ScoredFact]:
+    def rerank(
+        self, question: str, ranked: list[ScoredFact], top_k: int
+    ) -> list[ScoredFact]:
         """Reorders the fused candidate pool with one LLM selection call (§23).
 
         Selected facts are promoted, in the model's own order, ahead of the rest;
@@ -27,12 +29,18 @@ class Reranker:
         if not self._config.retrieval_rerank_enabled or len(ranked) <= top_k:
             return ranked
         pool = ranked[: self._config.retrieval_rerank_candidates]
-        with timed_operation(logger, "retrieval.phase3.rerank", {"candidates": len(pool), "top_k": top_k}) as ctx:
-            listing = "\n".join(f"[{i}] {(f.text or '').strip()[:220]}" for i, f in enumerate(pool))
+        with timed_operation(
+            logger, "retrieval.phase3.rerank", {"candidates": len(pool), "top_k": top_k}
+        ) as ctx:
+            listing = "\n".join(
+                f"[{i}] {(f.text or '').strip()[:220]}" for i, f in enumerate(pool)
+            )
             user_prompt = f"Question: {question}\n\nCandidates:\n{listing}\n\nSelect the relevant idx values."
             try:
                 result = self._rerank_client.structured_completion(
-                    self._config.rerank_system_prompt, user_prompt, RerankSelection,
+                    self._config.rerank_system_prompt,
+                    user_prompt,
+                    RerankSelection,
                     temperature=self._config.llm_temperature,
                     max_tokens=self._config.retrieval_rerank_max_tokens,
                     timeout=self._config.retrieval_rerank_timeout_seconds,
@@ -54,5 +62,7 @@ class Reranker:
                 return ranked
             ctx["rerank_applied"] = True
             ctx["rerank_selected"] = len(promoted)
-            remainder = [f for i, f in enumerate(pool) if i not in seen] + ranked[len(pool):]
+            remainder = [f for i, f in enumerate(pool) if i not in seen] + ranked[
+                len(pool) :
+            ]
             return promoted + remainder

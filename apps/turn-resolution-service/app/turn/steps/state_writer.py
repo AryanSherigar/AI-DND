@@ -11,22 +11,33 @@ guarantees "done" is never emitted for a turn that isn't actually durable.
 
 import time
 import uuid
+from dataclasses import dataclass
 
 import structlog
-from sqlalchemy.exc import SQLAlchemyError
-
 from app.config import settings
 from app.exceptions.turn_exceptions import OptimisticLockError, StateWriteError
 from app.models.turn import LoadedState, TurnRequest
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.turn_log_repo import TurnLogRepo
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = structlog.get_logger()
 
 EVENT_TURN_STEP_COMPLETED = "turn_step_completed"
 EVENT_TURN_STATE_WRITE_FAILED = "turn_state_write_failed"
 STEP_NAME = "state_writer"
+
+
+@dataclass(frozen=True)
+class SceneImageResult:
+    """A scene image generated for this turn's 'see' action, bundled to keep
+    write_turn's parameter list from growing per-field (CLAUDE.md 30-line/
+    single-responsibility guidance)."""
+
+    image_url: str
+    location_id: str | None
+    scene_image_prompt: str
 
 
 async def write_turn(
@@ -39,6 +50,7 @@ async def write_turn(
     working_state: dict[str, object] | None = None,
     tool_calls: list[dict[str, object]] | None = None,
     mutated_paths: set[str] | None = None,
+    scene_image: SceneImageResult | None = None,
 ) -> dict[str, object]:
     """Persist a completed turn, retrying transient failures.
 
@@ -47,7 +59,9 @@ async def write_turn(
     mutations — the base this appends narrative onto, instead of
     loaded_state.state directly. mutated_paths (master mode) is persisted as
     `_last_changed_fields`, read by next turn's condition_evaluator to scope
-    which conditions/invariants need re-evaluating.
+    which conditions/invariants need re-evaluating. scene_image (when the
+    turn generated one, "see" mode only) is persisted onto the TurnLog row
+    for scrollback/spectator display and future grounding lookups.
 
     Returns the full updated state so callers can extract turns_so_far
     (memory_writer) or evaluate end conditions against it directly
@@ -73,6 +87,7 @@ async def write_turn(
         playthrough_repo,
         turn_log_repo,
         scenario_repo,
+        scene_image,
     )
     logger.info(
         EVENT_TURN_STEP_COMPLETED,
@@ -110,6 +125,7 @@ async def _persist_with_retry(
     playthrough_repo: PlaythroughRepo,
     turn_log_repo: TurnLogRepo,
     scenario_repo: ScenarioRepo,
+    scene_image: SceneImageResult | None,
 ) -> int:
     max_attempts = settings.state_write_max_retries + 1
     for attempt in range(max_attempts):
@@ -126,6 +142,7 @@ async def _persist_with_retry(
                 playthrough_repo,
                 turn_log_repo,
                 scenario_repo,
+                scene_image,
             )
             return attempt
         except OptimisticLockError:
@@ -151,6 +168,7 @@ async def _write_once(
     playthrough_repo: PlaythroughRepo,
     turn_log_repo: TurnLogRepo,
     scenario_repo: ScenarioRepo,
+    scene_image: SceneImageResult | None,
 ) -> None:
     await playthrough_repo.update_state(
         turn_request.playthrough_id,
@@ -165,6 +183,9 @@ async def _write_once(
         action_text=turn_request.action_text,
         narration_text=narration_text,
         tool_calls=tool_calls,
+        image_url=scene_image.image_url if scene_image else None,
+        location_id=scene_image.location_id if scene_image else None,
+        scene_image_prompt=scene_image.scene_image_prompt if scene_image else None,
     )
     should_increment_play_count = (
         new_turn_count == settings.play_count_increment_turn_threshold

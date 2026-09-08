@@ -46,9 +46,20 @@ from context_memory.core.errors import ContractValidationError
 
 # Core vocabulary, from the Generic Context Ingestion Contract v1. Plugins add to
 # this; nothing may remove from it.
-CORE_NODE_LABELS: frozenset[str] = frozenset({"Session", "Turn", "Fact", "Entity", "Alias"})
+CORE_NODE_LABELS: frozenset[str] = frozenset(
+    {"Session", "Turn", "Fact", "Entity", "Alias"}
+)
 CORE_RELATIONSHIP_TYPES: frozenset[str] = frozenset(
-    {"HAS_TURN", "EXTRACTED_FROM", "ABOUT", "HAS_ALIAS", "SUPERSEDES", "RELATES_TO", "STATED_BY", "MERGED_INTO"}
+    {
+        "HAS_TURN",
+        "EXTRACTED_FROM",
+        "ABOUT",
+        "HAS_ALIAS",
+        "SUPERSEDES",
+        "RELATES_TO",
+        "STATED_BY",
+        "MERGED_INTO",
+    }
 )
 
 _MAX_IDENTIFIER_LENGTH = 64
@@ -77,7 +88,9 @@ def _validate(name: str, *, grammar: re.Pattern[str], kind: str, expected: str) 
     if not isinstance(name, str) or not name:
         raise VocabularyError(f"{kind} must be a non-empty string, got {name!r}")
     if len(name) > _MAX_IDENTIFIER_LENGTH:
-        raise VocabularyError(f"{kind} {name!r} exceeds {_MAX_IDENTIFIER_LENGTH} characters")
+        raise VocabularyError(
+            f"{kind} {name!r} exceeds {_MAX_IDENTIFIER_LENGTH} characters"
+        )
     if not grammar.match(name):
         raise VocabularyError(
             f"{kind} {name!r} is not a safe graph identifier ({expected}). "
@@ -96,35 +109,65 @@ class GraphVocabulary:
     ) -> None:
         self._lock = threading.Lock()
         self._node_entries: dict[str, VocabularyEntry] = {
-            name: VocabularyEntry(name, owner="core", description="Context Ingestion Contract v1")
+            name: VocabularyEntry(
+                name, owner="core", description="Context Ingestion Contract v1"
+            )
             for name in node_labels
         }
         self._relationship_entries: dict[str, VocabularyEntry] = {
-            name: VocabularyEntry(name, owner="core", description="Context Ingestion Contract v1")
+            name: VocabularyEntry(
+                name, owner="core", description="Context Ingestion Contract v1"
+            )
             for name in relationship_types
         }
         self._node_snapshot: frozenset[str] = frozenset(self._node_entries)
-        self._relationship_snapshot: frozenset[str] = frozenset(self._relationship_entries)
+        self._relationship_snapshot: frozenset[str] = frozenset(
+            self._relationship_entries
+        )
 
     # -- registration ---------------------------------------------------
 
-    def register_node_label(self, name: str, *, owner: str, description: str = "") -> None:
+    def register_node_label(
+        self, name: str, *, owner: str, description: str = ""
+    ) -> None:
         """Add a node label. Idempotent for the same owner; raises on a
         cross-owner collision so two plugins cannot silently share a term."""
-        _validate(name, grammar=_NODE_LABEL_GRAMMAR, kind="node label",
-                  expected="must start with an uppercase letter, then letters/digits/underscore")
+        _validate(
+            name,
+            grammar=_NODE_LABEL_GRAMMAR,
+            kind="node label",
+            expected="must start with an uppercase letter, then letters/digits/underscore",
+        )
         self._register(self._node_entries, name, owner, description, kind="node label")
         self._node_snapshot = frozenset(self._node_entries)
 
-    def register_relationship_type(self, name: str, *, owner: str, description: str = "") -> None:
+    def register_relationship_type(
+        self, name: str, *, owner: str, description: str = ""
+    ) -> None:
         """Add a relationship type. Same idempotency/collision rules as labels."""
-        _validate(name, grammar=_RELATIONSHIP_TYPE_GRAMMAR, kind="relationship type",
-                  expected="must be UPPER_SNAKE_CASE: uppercase letters, digits, underscore")
-        self._register(self._relationship_entries, name, owner, description, kind="relationship type")
+        _validate(
+            name,
+            grammar=_RELATIONSHIP_TYPE_GRAMMAR,
+            kind="relationship type",
+            expected="must be UPPER_SNAKE_CASE: uppercase letters, digits, underscore",
+        )
+        self._register(
+            self._relationship_entries,
+            name,
+            owner,
+            description,
+            kind="relationship type",
+        )
         self._relationship_snapshot = frozenset(self._relationship_entries)
 
     def _register(
-        self, target: dict[str, VocabularyEntry], name: str, owner: str, description: str, *, kind: str
+        self,
+        target: dict[str, VocabularyEntry],
+        name: str,
+        owner: str,
+        description: str,
+        *,
+        kind: str,
     ) -> None:
         if not owner:
             raise VocabularyError(f"{kind} {name!r} must declare a non-empty owner")
@@ -161,9 +204,12 @@ class GraphVocabulary:
         """Full registry contents grouped by kind, sorted — used to generate the
         integration docs handed to downstream teams, and useful in a debug endpoint."""
         return {
-            "node_labels": sorted(self._node_entries.values(), key=lambda e: (e.owner != "core", e.name)),
+            "node_labels": sorted(
+                self._node_entries.values(), key=lambda e: (e.owner != "core", e.name)
+            ),
             "relationship_types": sorted(
-                self._relationship_entries.values(), key=lambda e: (e.owner != "core", e.name)
+                self._relationship_entries.values(),
+                key=lambda e: (e.owner != "core", e.name),
             ),
         }
 
@@ -171,8 +217,12 @@ class GraphVocabulary:
         """Drop every non-core registration. For test isolation only — production
         code should never need to un-register a term."""
         with self._lock:
-            self._node_entries = {n: e for n, e in self._node_entries.items() if e.owner == "core"}
-            self._relationship_entries = {n: e for n, e in self._relationship_entries.items() if e.owner == "core"}
+            self._node_entries = {
+                n: e for n, e in self._node_entries.items() if e.owner == "core"
+            }
+            self._relationship_entries = {
+                n: e for n, e in self._relationship_entries.items() if e.owner == "core"
+            }
             self._node_snapshot = frozenset(self._node_entries)
             self._relationship_snapshot = frozenset(self._relationship_entries)
 
@@ -187,7 +237,8 @@ def require_node_label(name: str, field: str) -> None:
     already handle contract violations are unaffected."""
     if not VOCABULARY.has_node_label(name):
         raise ContractValidationError(
-            field, f"must be a registered node label (got {name!r}; known: {sorted(VOCABULARY.node_labels)})"
+            field,
+            f"must be a registered node label (got {name!r}; known: {sorted(VOCABULARY.node_labels)})",
         )
 
 

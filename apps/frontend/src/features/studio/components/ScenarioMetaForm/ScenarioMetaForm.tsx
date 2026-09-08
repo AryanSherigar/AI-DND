@@ -106,6 +106,11 @@ export const ScenarioMetaForm: React.FC<ScenarioMetaFormProps> = ({
         label="Cover Image"
         value={form.coverImageUrl}
         onChange={(url) => setForm({ ...form, coverImageUrl: url })}
+        generatePrompt={{
+          title: form.title,
+          genreTags: form.genreTags,
+          openingScene: form.logline,
+        }}
       />
       <div className="space-y-1">
         <label className="text-xs text-content-faint">Genre Tags</label>

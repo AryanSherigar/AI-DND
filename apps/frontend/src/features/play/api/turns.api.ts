@@ -16,6 +16,7 @@ export interface TurnLogResponse {
   narration_text: string | null;
   tool_calls: ToolCallLogEntry[];
   created_at: string;
+  image_url: string | null;
 }
 
 export interface TurnLogListResponse {

@@ -26,6 +26,7 @@ export interface EntityCreate {
   obtainable?: boolean;
   attributes_schema?: Record<string, AttributeFieldSchema>;
   narrator_instruction?: string;
+  is_player?: boolean;
 }
 
 export interface EntityUpdate {
@@ -36,6 +37,7 @@ export interface EntityUpdate {
   obtainable?: boolean;
   attributes_schema?: Record<string, AttributeFieldSchema>;
   narrator_instruction?: string;
+  is_player?: boolean;
 }
 
 export interface EntityResponse {
@@ -48,6 +50,7 @@ export interface EntityResponse {
   obtainable: boolean | null;
   attributes_schema: Record<string, AttributeFieldSchema>;
   narrator_instruction: string | null;
+  is_player?: boolean;
   fact_count?: number;
 }
 

@@ -5,7 +5,12 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from context_memory.core.replay import ReplayedError, ReplayingLLMClient, ReplayMissError, load_journal_fixture
+from context_memory.core.replay import (
+    ReplayedError,
+    ReplayingLLMClient,
+    ReplayMissError,
+    load_journal_fixture,
+)
 from context_memory.retrieval.models import DateRange, QueryRewriterOutput, ScoredFact
 from context_memory.retrieval.query_rewriter import QueryRewriter
 from context_memory.retrieval.reader import AnswerReader
@@ -13,15 +18,27 @@ from context_memory.retrieval.reranker import Reranker
 from context_memory.retrieval.sibling_expander import SiblingExpander
 from context_memory.retrieval.temporal_resolver import TemporalQueryResolver
 
-FIXTURE_PATH = Path(__file__).resolve().parents[2] / "benchmarks" / "fixtures" / "reader_sample_turn.json"
-READER_RERANK_FIXTURE_PATH = Path(__file__).resolve().parents[2] / "benchmarks" / "fixtures" / "reader_rerank_sample.json"
+FIXTURE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "benchmarks"
+    / "fixtures"
+    / "reader_sample_turn.json"
+)
+READER_RERANK_FIXTURE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "benchmarks"
+    / "fixtures"
+    / "reader_rerank_sample.json"
+)
 
 # The exact question/date the fixture was recorded against (LongMemEval
 # instance 0e4e4c46-r30b-bfbbc70f, sample30.json) -- prompts are deterministic
 # functions of these, so replaying with the same inputs reproduces the same
 # idempotency keys the real run recorded.
 QUESTION = "What is my current highest score in Ticket to Ride?"
-QUESTION_DATE = datetime.strptime("2023/06/10 (Sat) 16:46", "%Y/%m/%d (%a) %H:%M").replace(tzinfo=timezone.utc)
+QUESTION_DATE = datetime.strptime(
+    "2023/06/10 (Sat) 16:46", "%Y/%m/%d (%a) %H:%M"
+).replace(tzinfo=timezone.utc)
 
 
 class LoadJournalFixtureTests(unittest.TestCase):
@@ -43,7 +60,9 @@ class ReplayingLLMClientTests(unittest.TestCase):
         self.fixture = load_journal_fixture(FIXTURE_PATH)
 
     def test_temporal_resolver_replays_the_recorded_date_range(self) -> None:
-        client = ReplayingLLMClient(self.fixture, call_role="temporal_resolver", model="qwen.qwen3-32b")
+        client = ReplayingLLMClient(
+            self.fixture, call_role="temporal_resolver", model="qwen.qwen3-32b"
+        )
         resolver = TemporalQueryResolver(client)
 
         start = time.perf_counter()
@@ -53,10 +72,14 @@ class ReplayingLLMClientTests(unittest.TestCase):
         self.assertIsInstance(result, DateRange)
         self.assertIsNone(result.valid_from)
         self.assertIsNone(result.valid_to)
-        self.assertLess(elapsed_ms, 50, "replay should be sub-network-latency, not just fast-ish")
+        self.assertLess(
+            elapsed_ms, 50, "replay should be sub-network-latency, not just fast-ish"
+        )
 
     def test_query_rewriter_replays_the_recorded_decomposition(self) -> None:
-        client = ReplayingLLMClient(self.fixture, call_role="query_rewriter", model="openai.gpt-oss-20b")
+        client = ReplayingLLMClient(
+            self.fixture, call_role="query_rewriter", model="openai.gpt-oss-20b"
+        )
         rewriter = QueryRewriter(client)
 
         result = rewriter.rewrite(QUESTION)
@@ -73,19 +96,26 @@ class ReplayingLLMClientTests(unittest.TestCase):
         # (network error, malformed JSON, a replay miss, ...), which is its
         # own correct, pre-existing resilience behavior, not something this
         # test should paper over by picking an input that never exercises it.
-        client = ReplayingLLMClient(self.fixture, call_role="query_rewriter", model="a-model-never-recorded")
+        client = ReplayingLLMClient(
+            self.fixture, call_role="query_rewriter", model="a-model-never-recorded"
+        )
 
         with self.assertRaises(ReplayMissError):
             client.structured_completion(
-                self._rewriter_system_prompt(), QUESTION, QueryRewriterOutput,
+                self._rewriter_system_prompt(),
+                QUESTION,
+                QueryRewriterOutput,
             )
 
     def test_wrong_question_is_a_replay_miss(self) -> None:
-        client = ReplayingLLMClient(self.fixture, call_role="query_rewriter", model="openai.gpt-oss-20b")
+        client = ReplayingLLMClient(
+            self.fixture, call_role="query_rewriter", model="openai.gpt-oss-20b"
+        )
 
         with self.assertRaises(ReplayMissError):
             client.structured_completion(
-                self._rewriter_system_prompt(), "a completely different question never asked in this fixture",
+                self._rewriter_system_prompt(),
+                "a completely different question never asked in this fixture",
                 QueryRewriterOutput,
             )
 
@@ -96,7 +126,9 @@ class ReplayingLLMClientTests(unittest.TestCase):
         return Config().query_rewriter_system_prompt
 
     def test_text_completion_miss_raises(self) -> None:
-        client = ReplayingLLMClient(self.fixture, call_role="reader", model="openai.gpt-oss-20b")
+        client = ReplayingLLMClient(
+            self.fixture, call_role="reader", model="openai.gpt-oss-20b"
+        )
         with self.assertRaises(ReplayMissError):
             client.text_completion("some system prompt", "some question")
 
@@ -109,9 +141,24 @@ class ReplayingLLMClientTests(unittest.TestCase):
 # to fully control and reproduce here, rather than depending on whatever a
 # live LongMemEval ingestion happened to seed.
 FACTS = [
-    ScoredFact(fact_id="fact-1", text="The user's cat is named Whiskers.", observed_at=1700000000, speaker="user"),
-    ScoredFact(fact_id="fact-2", text="The user's favorite color is teal.", observed_at=1700003600, speaker="user"),
-    ScoredFact(fact_id="fact-3", text="The user works as a marine biologist.", observed_at=1700007200, speaker="user"),
+    ScoredFact(
+        fact_id="fact-1",
+        text="The user's cat is named Whiskers.",
+        observed_at=1700000000,
+        speaker="user",
+    ),
+    ScoredFact(
+        fact_id="fact-2",
+        text="The user's favorite color is teal.",
+        observed_at=1700003600,
+        speaker="user",
+    ),
+    ScoredFact(
+        fact_id="fact-3",
+        text="The user works as a marine biologist.",
+        observed_at=1700007200,
+        speaker="user",
+    ),
 ]
 READER_RERANK_QUESTION = "What is the user's cat's name?"
 
@@ -124,7 +171,9 @@ class ReaderAndRerankerReplayTests(unittest.TestCase):
         self.fixture = load_journal_fixture(READER_RERANK_FIXTURE_PATH)
 
     def test_reranker_replays_the_recorded_selection(self) -> None:
-        client = ReplayingLLMClient(self.fixture, call_role="rerank", model="qwen.qwen3-32b")
+        client = ReplayingLLMClient(
+            self.fixture, call_role="rerank", model="qwen.qwen3-32b"
+        )
         reranker = Reranker(client)
 
         # top_k=2 < len(FACTS) -- otherwise Reranker.rerank short-circuits
@@ -132,13 +181,19 @@ class ReaderAndRerankerReplayTests(unittest.TestCase):
         # that produced an empty capture on the first attempt at this fixture.
         ranked = reranker.rerank(READER_RERANK_QUESTION, list(FACTS), top_k=2)
 
-        self.assertEqual(ranked[0].fact_id, "fact-1")  # the model's real recorded selection
+        self.assertEqual(
+            ranked[0].fact_id, "fact-1"
+        )  # the model's real recorded selection
 
     def test_reader_replays_the_recorded_answer(self) -> None:
-        client = ReplayingLLMClient(self.fixture, call_role="reader", model="openai.gpt-oss-20b")
+        client = ReplayingLLMClient(
+            self.fixture, call_role="reader", model="openai.gpt-oss-20b"
+        )
         reader = AnswerReader(client, SiblingExpander(None, None))
 
-        answer = reader.read(READER_RERANK_QUESTION, list(FACTS), context_id=None, question_date=None)
+        answer = reader.read(
+            READER_RERANK_QUESTION, list(FACTS), context_id=None, question_date=None
+        )
 
         self.assertEqual(answer, "Whiskers.")
 
@@ -161,12 +216,20 @@ class OrderedRepeatedCallReplayTests(unittest.TestCase):
         return {
             key: [
                 RecordedStep(
-                    step_type=key[0], call_role="reader", idempotency_key=idempotency_key, model_name="m",
-                    response_payload={"text": first_text}, outcome="ok",
+                    step_type=key[0],
+                    call_role="reader",
+                    idempotency_key=idempotency_key,
+                    model_name="m",
+                    response_payload={"text": first_text},
+                    outcome="ok",
                 ),
                 RecordedStep(
-                    step_type=key[0], call_role="reader", idempotency_key=idempotency_key, model_name="m",
-                    response_payload={"text": second_text}, outcome="ok",
+                    step_type=key[0],
+                    call_role="reader",
+                    idempotency_key=idempotency_key,
+                    model_name="m",
+                    response_payload={"text": second_text},
+                    outcome="ok",
                 ),
             ]
         }
@@ -204,8 +267,13 @@ class RecordedFailureReplayTests(unittest.TestCase):
         fixture = {
             key: [
                 RecordedStep(
-                    step_type=key[0], call_role="reader", idempotency_key=idempotency_key, model_name="m",
-                    response_payload=None, outcome="error", error_message="provider timeout after 30s",
+                    step_type=key[0],
+                    call_role="reader",
+                    idempotency_key=idempotency_key,
+                    model_name="m",
+                    response_payload=None,
+                    outcome="error",
+                    error_message="provider timeout after 30s",
                 ),
             ]
         }
@@ -217,6 +285,7 @@ class RecordedFailureReplayTests(unittest.TestCase):
     def test_export_no_longer_filters_out_error_outcomes(self) -> None:
         """Exercises the SQL shape directly against a fake cursor, since
         this repo's test suite doesn't require a live Postgres."""
+
         class FakeCursor:
             def __init__(self, rows):
                 self._rows = rows
@@ -241,11 +310,21 @@ class RecordedFailureReplayTests(unittest.TestCase):
             def cursor(self):
                 return self._cursor
 
+        import os
+        import tempfile
+
         from context_memory.core.replay import export_journal_fixture
-        import tempfile, os
 
         rows = [
-            ("llm.text_completion", "reader", "k1", "m", {"text": "ok answer"}, "ok", None),
+            (
+                "llm.text_completion",
+                "reader",
+                "k1",
+                "m",
+                {"text": "ok answer"},
+                "ok",
+                None,
+            ),
             ("llm.text_completion", "reader", "k2", "m", None, "error", "boom"),
         ]
         conn = FakeConnection(rows)
@@ -270,15 +349,27 @@ class ToolCallReplayTests(unittest.TestCase):
         messages = [{"role": "user", "content": "roll a d20"}]
         tools = [{"type": "function", "function": {"name": "roll_die"}}]
         idempotency_key = hash_request(
-            "gm", "m", json.dumps(messages, sort_keys=True), json.dumps(tools, sort_keys=True),
+            "gm",
+            "m",
+            json.dumps(messages, sort_keys=True),
+            json.dumps(tools, sort_keys=True),
         )
         fixture = {
             ("llm.chat_with_tools", idempotency_key): [
                 RecordedStep(
-                    step_type="llm.chat_with_tools", call_role="gm", idempotency_key=idempotency_key, model_name="m",
+                    step_type="llm.chat_with_tools",
+                    call_role="gm",
+                    idempotency_key=idempotency_key,
+                    model_name="m",
                     response_payload={
                         "content": None,
-                        "tool_calls": [{"id": "call-1", "name": "roll_die", "arguments": '{"sides": 20}'}],
+                        "tool_calls": [
+                            {
+                                "id": "call-1",
+                                "name": "roll_die",
+                                "arguments": '{"sides": 20}',
+                            }
+                        ],
                     },
                     outcome="ok",
                 ),

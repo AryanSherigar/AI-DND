@@ -98,3 +98,15 @@ class OptimisticLockError(BaseAppException):
         self, message: str = "Playthrough state was modified by another transaction"
     ):
         super().__init__(message=message, status_code=409)
+
+
+class SceneImageGenerationError(BaseAppException):
+    """Raised when scene image generation or upload fails.
+
+    Caught and swallowed inside scene_image_generator.py — a missing scene
+    image must never fail or degrade a turn — but the exception type is
+    still domain-specific per CLAUDE.md's error handling rules.
+    """
+
+    def __init__(self, message: str = "Scene image generation failed"):
+        super().__init__(message=message, status_code=502)

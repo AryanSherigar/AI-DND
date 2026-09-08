@@ -2,15 +2,14 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sse_starlette.sse import EventSourceResponse
-
 from app.db.connection import get_db_session
 from app.middleware.auth import get_current_user
 from app.models.auth import CurrentUser
 from app.models.turn import TurnRequestInput
 from app.turn.pipeline import run_turn
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse
 
 router = APIRouter(prefix="/v1/turn", tags=["Turn"])
 

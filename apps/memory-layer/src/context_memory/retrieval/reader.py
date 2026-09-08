@@ -11,7 +11,11 @@ from datetime import datetime, timezone
 from context_memory.core.config import Config
 from context_memory.core.llm_client import LLMClient
 from context_memory.core.logging import get_logger, timed_operation
-from context_memory.retrieval.detectors import date_diff_in_unit, format_number, looks_like_duration_query
+from context_memory.retrieval.detectors import (
+    date_diff_in_unit,
+    format_number,
+    looks_like_duration_query,
+)
 from context_memory.retrieval.models import DurationAnswer, ScoredFact
 from context_memory.retrieval.sibling_expander import SiblingExpander
 
@@ -19,23 +23,35 @@ logger = get_logger(__name__)
 
 
 class AnswerReader:
-    def __init__(self, llm_client: LLMClient, sibling_expander: SiblingExpander, config: Config | None = None) -> None:
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        sibling_expander: SiblingExpander,
+        config: Config | None = None,
+    ) -> None:
         self._llm = llm_client
         self._sibling_expander = sibling_expander
         self._config = config or Config()
 
     def read(
-        self, question: str, top_facts: list[ScoredFact], context_id: str | None = None,
+        self,
+        question: str,
+        top_facts: list[ScoredFact],
+        context_id: str | None = None,
         question_date: datetime | None = None,
     ) -> str:
-        with timed_operation(logger, "retrieval.phase3.reader_context", {"top_facts": len(top_facts)}) as ctx:
+        with timed_operation(
+            logger, "retrieval.phase3.reader_context", {"top_facts": len(top_facts)}
+        ) as ctx:
             # Format context
             context_blocks = []
             for fact in top_facts:
                 date_str = ""
                 if fact.observed_at:
                     try:
-                        date_str = datetime.fromtimestamp(fact.observed_at, tz=timezone.utc).strftime("%Y-%m-%d")
+                        date_str = datetime.fromtimestamp(
+                            fact.observed_at, tz=timezone.utc
+                        ).strftime("%Y-%m-%d")
                     except Exception:
                         date_str = "Recent"
                 else:
@@ -54,17 +70,23 @@ class AnswerReader:
             # as if independently ranked.
             if context_id is not None and self._config.retrieval_sibling_fact_limit > 0:
                 try:
-                    siblings = self._sibling_expander.find_siblings(context_id, [f.fact_id for f in top_facts], question)
+                    siblings = self._sibling_expander.find_siblings(
+                        context_id, [f.fact_id for f in top_facts], question
+                    )
                 except Exception as e:
                     logger.debug("Sibling-fact expansion skipped: %s", e)
                     siblings = {}
                 if siblings:
                     ctx["sibling_facts_added"] = len(siblings)
-                    context_blocks.append("[related facts from the same conversation turns]:")
+                    context_blocks.append(
+                        "[related facts from the same conversation turns]:"
+                    )
                     for text, observed_at in siblings.values():
                         if observed_at:
                             try:
-                                d = datetime.fromtimestamp(observed_at, tz=timezone.utc).strftime("%Y-%m-%d")
+                                d = datetime.fromtimestamp(
+                                    observed_at, tz=timezone.utc
+                                ).strftime("%Y-%m-%d")
                                 context_blocks.append(f"- [{d}]: {text}")
                                 continue
                             except Exception:
@@ -82,10 +104,14 @@ class AnswerReader:
             # "currently". Scoped to the questions that actually need it.
             is_duration_query = looks_like_duration_query(question)
             if is_duration_query and question_date is not None:
-                context_blocks.insert(0, f"[today's date is {question_date.strftime('%Y-%m-%d')}]")
+                context_blocks.insert(
+                    0, f"[today's date is {question_date.strftime('%Y-%m-%d')}]"
+                )
             context_str = "\n".join(context_blocks)
 
-            prompt = self._config.reader_system_prompt_template.format(context=context_str)
+            prompt = self._config.reader_system_prompt_template.format(
+                context=context_str
+            )
             # Duration questions get step-by-step arithmetic guidance appended
             # in the SAME call (§20) -- never a second reasoning call, which is
             # the thing measured to reduce accuracy (§11.1).
@@ -93,15 +119,24 @@ class AnswerReader:
                 ctx["duration_guidance_applied"] = True
                 prompt = prompt + self._config.duration_query_guidance
                 if self._config.duration_structured_verification_enabled:
-                    return self._duration_reader_synthesis(prompt, question, ctx, question_date)
+                    return self._duration_reader_synthesis(
+                        prompt, question, ctx, question_date
+                    )
             with timed_operation(logger, "retrieval.phase3.reader_synthesis"):
                 return self._llm.text_completion(
-                    prompt, question, temperature=self._config.reader_temperature,
-                    max_tokens=self._config.reader_max_tokens, timeout=self._config.reader_timeout_seconds,
+                    prompt,
+                    question,
+                    temperature=self._config.reader_temperature,
+                    max_tokens=self._config.reader_max_tokens,
+                    timeout=self._config.reader_timeout_seconds,
                 )
 
     def _duration_reader_synthesis(
-        self, prompt: str, question: str, ctx: dict, question_date: datetime | None = None,
+        self,
+        prompt: str,
+        question: str,
+        ctx: dict,
+        question_date: datetime | None = None,
     ) -> str:
         """§26: structured variant of the reader call for duration questions --
         one call, model reports its own operands alongside its prose, Python
@@ -111,20 +146,34 @@ class AnswerReader:
         with timed_operation(logger, "retrieval.phase3.reader_synthesis") as inner_ctx:
             try:
                 result = self._llm.structured_completion(
-                    prompt + self._config.duration_query_structured_addendum, question, DurationAnswer,
-                    temperature=self._config.reader_temperature, max_tokens=self._config.reader_max_tokens,
-                    timeout=self._config.reader_timeout_seconds, max_retries=self._config.llm_structured_retry_attempts,
+                    prompt + self._config.duration_query_structured_addendum,
+                    question,
+                    DurationAnswer,
+                    temperature=self._config.reader_temperature,
+                    max_tokens=self._config.reader_max_tokens,
+                    timeout=self._config.reader_timeout_seconds,
+                    max_retries=self._config.llm_structured_retry_attempts,
                 )
             except Exception as error:
-                logger.warning("Structured duration reader failed, falling back to plain text: %s", error)
+                logger.warning(
+                    "Structured duration reader failed, falling back to plain text: %s",
+                    error,
+                )
                 inner_ctx["duration_structured_failed"] = True
                 return self._llm.text_completion(
-                    prompt, question, temperature=self._config.reader_temperature,
-                    max_tokens=self._config.reader_max_tokens, timeout=self._config.reader_timeout_seconds,
+                    prompt,
+                    question,
+                    temperature=self._config.reader_temperature,
+                    max_tokens=self._config.reader_max_tokens,
+                    timeout=self._config.reader_timeout_seconds,
                 )
 
             end_date = result.end_date
-            question_day = question_date.strftime("%Y-%m-%d") if question_date is not None else None
+            question_day = (
+                question_date.strftime("%Y-%m-%d")
+                if question_date is not None
+                else None
+            )
             if result.operation == "ago_since" and question_day:
                 # "N days/weeks ago" always resolves against the real reference
                 # date, which Python already knows -- there is no need to trust
@@ -135,7 +184,11 @@ class AnswerReader:
                 # no reason to leave this to chance when the ground truth is
                 # already in hand).
                 end_date = question_day
-            elif result.operation == "between" and question_day and result.end_date == question_day:
+            elif (
+                result.operation == "between"
+                and question_day
+                and result.end_date == question_day
+            ):
                 # A "between two named events" question never has "today" as
                 # one of its own endpoints -- live data shows the model
                 # sometimes substitutes question_date for the second event's
@@ -148,7 +201,8 @@ class AnswerReader:
             if (
                 result.operation in ("ago_since", "between")
                 and result.unit == "days"
-                and result.start_date and end_date
+                and result.start_date
+                and end_date
                 and result.stated_result is not None
             ):
                 # Correction is restricted to unit="days" -- live data (§26)
@@ -163,12 +217,19 @@ class AnswerReader:
                 # triggered a correction in the first place (operands already
                 # matched), so this restriction costs nothing already verified.
                 true_diff = date_diff_in_unit(result.start_date, end_date, result.unit)
-                if true_diff is not None and abs(true_diff - abs(result.stated_result)) > 0.01:
+                if (
+                    true_diff is not None
+                    and abs(true_diff - abs(result.stated_result)) > 0.01
+                ):
                     ctx["duration_arithmetic_corrected"] = True
                     logger.info(
                         "Duration arithmetic mismatch: model stated %s %s (dates %s -> %s), "
                         "dates imply %s -- correcting",
-                        result.stated_result, result.unit, result.start_date, end_date, true_diff,
+                        result.stated_result,
+                        result.unit,
+                        result.start_date,
+                        end_date,
+                        true_diff,
                     )
                     verb = "ago" if result.operation == "ago_since" else "apart"
                     corrected = format_number(true_diff)

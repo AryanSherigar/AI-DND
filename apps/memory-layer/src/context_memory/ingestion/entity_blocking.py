@@ -156,7 +156,10 @@ def find_fuzzy_candidates(
     for profile in profiles:
         candidate_surfaces = (profile.canonical_name, *profile.aliases)
         best = max(
-            (char_trigram_jaccard_similarity(canonical_surface, surface) for surface in candidate_surfaces),
+            (
+                char_trigram_jaccard_similarity(canonical_surface, surface)
+                for surface in candidate_surfaces
+            ),
             default=0.0,
         )
         if best >= threshold:
@@ -176,7 +179,9 @@ NICKNAME_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"william", "bill", "billy", "will", "willy", "liam"}),
     frozenset({"richard", "dick", "rick", "ricky", "richie"}),
     frozenset({"james", "jim", "jimmy", "jamie"}),
-    frozenset({"john", "jack", "jacky", "johnny", "jon", "jonathan", "jonny"}),  # jon/jonny genuinely ambiguous between John and Jonathan -- merged, not picked
+    frozenset(
+        {"john", "jack", "jacky", "johnny", "jon", "jonathan", "jonny"}
+    ),  # jon/jonny genuinely ambiguous between John and Jonathan -- merged, not picked
     frozenset({"joseph", "joe", "joey"}),
     frozenset({"michael", "mike", "mikey", "mick", "mickey"}),
     frozenset({"christopher", "chris", "topher"}),
@@ -185,7 +190,9 @@ NICKNAME_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"thomas", "tom", "thom", "tommy"}),
     frozenset({"charles", "charlie", "chuck"}),
     frozenset({"anthony", "tony"}),
-    frozenset({"edward", "ed", "eddie", "ted", "teddy", "theodore"}),  # ted/teddy genuinely ambiguous between Edward and Theodore -- merged
+    frozenset(
+        {"edward", "ed", "eddie", "ted", "teddy", "theodore"}
+    ),  # ted/teddy genuinely ambiguous between Edward and Theodore -- merged
     frozenset({"matthew", "matt", "matty"}),
     frozenset({"andrew", "andy", "drew"}),
     frozenset({"nicholas", "nick", "nicky"}),
@@ -218,13 +225,39 @@ NICKNAME_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"ronald", "ron", "ronny"}),
     frozenset({"bernard", "bernie", "bern"}),
     frozenset({"frederick", "fred", "freddy"}),
-    frozenset({"harold", "hal", "henry", "hank", "harry"}),  # harry genuinely ambiguous between Harold and Henry -- merged
+    frozenset(
+        {"harold", "hal", "henry", "hank", "harry"}
+    ),  # harry genuinely ambiguous between Harold and Henry -- merged
     frozenset({"irving", "irv"}),
     frozenset({"stuart", "stu"}),
     # -- female --
-    frozenset({"elizabeth", "liz", "lizzy", "beth", "betty", "eliza", "libby", "betsy", "bess"}),
+    frozenset(
+        {
+            "elizabeth",
+            "liz",
+            "lizzy",
+            "beth",
+            "betty",
+            "eliza",
+            "libby",
+            "betsy",
+            "bess",
+        }
+    ),
     frozenset({"margaret", "maggie", "meg", "peggy", "marge"}),
-    frozenset({"katherine", "catherine", "kate", "katie", "kathy", "kat", "kit", "cathy", "cath"}),
+    frozenset(
+        {
+            "katherine",
+            "catherine",
+            "kate",
+            "katie",
+            "kathy",
+            "kat",
+            "kit",
+            "cathy",
+            "cath",
+        }
+    ),
     frozenset({"jennifer", "jen", "jenny"}),
     frozenset({"susan", "sue", "susie", "suzy"}),
     frozenset({"deborah", "deb", "debbie"}),
@@ -277,7 +310,9 @@ NICKNAME_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"alexander", "alexandra", "alex", "xander", "sandra", "sandy", "lexi"}),
     frozenset({"patrick", "patricia", "pat", "paddy", "patty", "tricia", "trish"}),
     frozenset({"nathaniel", "nathan", "natalie", "nate", "nat", "nattie"}),
-    frozenset({"stephen", "steven", "stephanie", "steve", "stevie", "stephan", "steph"}),
+    frozenset(
+        {"stephen", "steven", "stephanie", "steve", "stevie", "stephan", "steph"}
+    ),
     frozenset({"janet", "janice", "jan"}),
 )
 
@@ -294,7 +329,9 @@ def nickname_equivalents(canonical_surface: str) -> frozenset[str]:
     return _NICKNAME_GROUP_BY_NAME.get(canonical_surface, frozenset())
 
 
-def find_nickname_candidates(canonical_surface: str, profiles: Iterable[object]) -> list[int]:
+def find_nickname_candidates(
+    canonical_surface: str, profiles: Iterable[object]
+) -> list[int]:
     """Returns `graph_id`s of `profiles` whose canonical name or any known
     alias is a curated nickname-equivalent of `canonical_surface`. Exact
     table lookup, not a similarity heuristic -- deliberately *not* gated by

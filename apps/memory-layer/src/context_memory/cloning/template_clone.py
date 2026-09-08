@@ -18,8 +18,9 @@ Milestone-3 plan expected before this was checked against a live instance.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol, Sequence
+from typing import Protocol
 
 from context_memory.core.graph import GraphNode, GraphRelationship, GraphWritePlan
 from context_memory.core.logging import get_logger, timed_operation
@@ -41,8 +42,13 @@ class FactMetadataStore(Protocol):
         self, context_id: str, fact_ids: Sequence[int]
     ) -> dict[int, tuple[str | None, dict | None, str | None, bool]]: ...
     def put(
-        self, context_id: str, fact_id: int, checkpoint: str | None, when_active: dict | None,
-        visible_to_participant_id: str | None = None, hidden: bool = False,
+        self,
+        context_id: str,
+        fact_id: int,
+        checkpoint: str | None,
+        when_active: dict | None,
+        visible_to_participant_id: str | None = None,
+        hidden: bool = False,
     ) -> None: ...
 
 
@@ -52,8 +58,12 @@ class FactProjector(Protocol):
     rather than an import of fact_projection.py's concrete class."""
 
     def project_copy(
-        self, source_context_id: str, source_subject_id: str, target_context_id: str,
-        new_fact_graph_id: int, text: str,
+        self,
+        source_context_id: str,
+        source_subject_id: str,
+        target_context_id: str,
+        new_fact_graph_id: int,
+        text: str,
     ) -> None: ...
 
 
@@ -76,12 +86,35 @@ _DIRECT_AUTHORING_LOGICAL_KEY_PREFIX = "fact:direct:"
 # unqueried, not silently dropped, so a future property addition to either
 # writer needs a matching addition here or it won't survive a clone. Not
 # hidden: the risk is the same class as any hand-maintained projection list.
-_ENTITY_PROPERTIES = ("logical_key", "canonical_name", "entity_type", "description", "aliases")
+_ENTITY_PROPERTIES = (
+    "logical_key",
+    "canonical_name",
+    "entity_type",
+    "description",
+    "aliases",
+)
 _FACT_PROPERTIES = (
-    "logical_key", "text", "speaker", "session_id", "memory_type", "scope_type", "scope_id",
-    "predicate_key", "source_chunk_id", "source_start", "source_end", "content_hash",
-    "confidence", "observed_at", "superseded_at", "valid_from", "valid_to", "created_at",
-    "is_current", "archived", "object_literal",
+    "logical_key",
+    "text",
+    "speaker",
+    "session_id",
+    "memory_type",
+    "scope_type",
+    "scope_id",
+    "predicate_key",
+    "source_chunk_id",
+    "source_start",
+    "source_end",
+    "content_hash",
+    "confidence",
+    "observed_at",
+    "superseded_at",
+    "valid_from",
+    "valid_to",
+    "created_at",
+    "is_current",
+    "archived",
+    "object_literal",
 )
 # Fact -> Entity relationship types this codebase actually writes
 # (graph_plan_builder.py's STATED_BY/ABOUT, direct_authoring.py's ABOUT/RELATES_TO).
@@ -126,10 +159,19 @@ def clone(
     exists, rather than re-embedding identical text on every clone.
     """
     with timed_operation(
-        logger, "template_clone.clone", {"source_context_id": source_context_id, "target_context_id": target_context_id}
+        logger,
+        "template_clone.clone",
+        {
+            "source_context_id": source_context_id,
+            "target_context_id": target_context_id,
+        },
     ) as ctx:
-        entity_rows = _read_labeled(hydra_transport, "Entity", source_context_id, _ENTITY_PROPERTIES)
-        fact_rows = _read_labeled(hydra_transport, "Fact", source_context_id, _FACT_PROPERTIES)
+        entity_rows = _read_labeled(
+            hydra_transport, "Entity", source_context_id, _ENTITY_PROPERTIES
+        )
+        fact_rows = _read_labeled(
+            hydra_transport, "Fact", source_context_id, _FACT_PROPERTIES
+        )
 
         entity_nodes, old_to_new_entity_id = _clone_nodes(
             entity_rows, "Entity", "entity", target_context_id, allocator
@@ -140,23 +182,37 @@ def clone(
 
         relationships = []
         for relationship_type in _FACT_TO_ENTITY_RELATIONSHIP_TYPES:
-            edge_rows = _read_fact_to_entity_edges(hydra_transport, relationship_type, source_context_id)
-            relationships.extend(_clone_edges(
-                edge_rows, relationship_type, old_to_new_fact_id, old_to_new_entity_id,
-                target_context_id, allocator,
-            ))
+            edge_rows = _read_fact_to_entity_edges(
+                hydra_transport, relationship_type, source_context_id
+            )
+            relationships.extend(
+                _clone_edges(
+                    edge_rows,
+                    relationship_type,
+                    old_to_new_fact_id,
+                    old_to_new_entity_id,
+                    target_context_id,
+                    allocator,
+                )
+            )
 
         nodes = tuple(entity_nodes) + tuple(fact_nodes)
         if nodes or relationships:
             plan = GraphWritePlan(
                 context_id=target_context_id,
                 plan_key=f"plan:clone:{source_context_id}->{target_context_id}",
-                nodes=nodes, relationships=tuple(relationships),
+                nodes=nodes,
+                relationships=tuple(relationships),
             )
             graph_writer.write(plan)
 
         if fact_metadata_store is not None and old_to_new_fact_id:
-            _clone_fact_metadata(fact_metadata_store, source_context_id, target_context_id, old_to_new_fact_id)
+            _clone_fact_metadata(
+                fact_metadata_store,
+                source_context_id,
+                target_context_id,
+                old_to_new_fact_id,
+            )
 
         # mem1 gap #46 fix: without this, every cloned fact is durable in the
         # PLAYTHROUGH's HydraDB but CandidateSeeder.seed() -- which starts
@@ -164,10 +220,18 @@ def clone(
         # never find it there, regardless of whether it was ever indexed in
         # the template context.
         if fact_projector is not None and old_to_new_fact_id:
-            _project_cloned_facts(fact_rows, old_to_new_fact_id, source_context_id, target_context_id, fact_projector)
+            _project_cloned_facts(
+                fact_rows,
+                old_to_new_fact_id,
+                source_context_id,
+                target_context_id,
+                fact_projector,
+            )
 
         result = CloneResult(
-            entities_cloned=len(entity_nodes), facts_cloned=len(fact_nodes), relationships_cloned=len(relationships)
+            entities_cloned=len(entity_nodes),
+            facts_cloned=len(fact_nodes),
+            relationships_cloned=len(relationships),
         )
         ctx["entities_cloned"] = result.entities_cloned
         ctx["facts_cloned"] = result.facts_cloned
@@ -176,11 +240,20 @@ def clone(
 
 
 def _clone_fact_metadata(
-    fact_metadata_store: FactMetadataStore, source_context_id: str, target_context_id: str,
+    fact_metadata_store: FactMetadataStore,
+    source_context_id: str,
+    target_context_id: str,
     old_to_new_fact_id: dict[int, int],
 ) -> None:
-    metadata = fact_metadata_store.get_many(source_context_id, list(old_to_new_fact_id.keys()))
-    for old_fact_id, (checkpoint, when_active, visible_to_participant_id, hidden) in metadata.items():
+    metadata = fact_metadata_store.get_many(
+        source_context_id, list(old_to_new_fact_id.keys())
+    )
+    for old_fact_id, (
+        checkpoint,
+        when_active,
+        visible_to_participant_id,
+        hidden,
+    ) in metadata.items():
         new_fact_id = old_to_new_fact_id.get(old_fact_id)
         if new_fact_id is None:
             continue
@@ -190,13 +263,21 @@ def _clone_fact_metadata(
         # everyone, the opposite of what the template author specified.
         # Same reasoning for `hidden`: a secret stays a secret in the clone.
         fact_metadata_store.put(
-            target_context_id, new_fact_id, checkpoint, when_active, visible_to_participant_id, hidden,
+            target_context_id,
+            new_fact_id,
+            checkpoint,
+            when_active,
+            visible_to_participant_id,
+            hidden,
         )
 
 
 def _project_cloned_facts(
-    fact_rows: list[dict[str, object]], old_to_new_fact_id: dict[int, int],
-    source_context_id: str, target_context_id: str, fact_projector: FactProjector,
+    fact_rows: list[dict[str, object]],
+    old_to_new_fact_id: dict[int, int],
+    source_context_id: str,
+    target_context_id: str,
+    fact_projector: FactProjector,
 ) -> None:
     for row in fact_rows:
         old_id = int(row["id"])
@@ -209,8 +290,12 @@ def _project_cloned_facts(
             # a property the source node never set; nothing meaningful to
             # embed/index.
             continue
-        source_identity = _source_projection_identity(str(row.get("logical_key") or ""), old_id)
-        fact_projector.project_copy(source_context_id, source_identity, target_context_id, new_id, str(text))
+        source_identity = _source_projection_identity(
+            str(row.get("logical_key") or ""), old_id
+        )
+        fact_projector.project_copy(
+            source_context_id, source_identity, target_context_id, new_id, str(text)
+        )
 
 
 def _source_projection_identity(logical_key: str, old_graph_id: int) -> str:
@@ -223,10 +308,15 @@ def _source_projection_identity(logical_key: str, old_graph_id: int) -> str:
 
 
 def _read_labeled(
-    hydra_transport: GraphTransport, label: str, context_id: str, properties: tuple[str, ...]
+    hydra_transport: GraphTransport,
+    label: str,
+    context_id: str,
+    properties: tuple[str, ...],
 ) -> list[dict[str, object]]:
     projection = ", ".join(f"n.{prop} AS {prop}" for prop in properties)
-    cypher = f"MATCH (n:{label} {{context_id: $context_id}}) RETURN n.id AS id, {projection}"
+    cypher = (
+        f"MATCH (n:{label} {{context_id: $context_id}}) RETURN n.id AS id, {projection}"
+    )
     return list(hydra_transport.read(cypher, {"context_id": context_id}, None))
 
 
@@ -241,7 +331,11 @@ def _read_fact_to_entity_edges(
 
 
 def _clone_nodes(
-    rows: list[dict[str, object]], label: str, node_kind: str, target_context_id: str, allocator: GraphIdAllocator
+    rows: list[dict[str, object]],
+    label: str,
+    node_kind: str,
+    target_context_id: str,
+    allocator: GraphIdAllocator,
 ) -> tuple[list[GraphNode], dict[int, int]]:
     nodes: list[GraphNode] = []
     old_to_new_id: dict[int, int] = {}
@@ -252,7 +346,11 @@ def _clone_nodes(
             # Defensive, not expected: every writer in this codebase always
             # sets logical_key. A row missing it can't be re-allocated a
             # stable id, so it's skipped rather than crashing the whole clone.
-            logger.warning("template_clone: %s node id=%s has no logical_key, skipping", label, old_id)
+            logger.warning(
+                "template_clone: %s node id=%s has no logical_key, skipping",
+                label,
+                old_id,
+            )
             continue
         new_id = allocator.allocate_graph_id(node_kind, target_context_id, logical_key)
         old_to_new_id[old_id] = new_id
@@ -263,8 +361,12 @@ def _clone_nodes(
 
 
 def _clone_edges(
-    rows: list[dict[str, object]], relationship_type: str, old_to_new_fact_id: dict[int, int],
-    old_to_new_entity_id: dict[int, int], target_context_id: str, allocator: GraphIdAllocator,
+    rows: list[dict[str, object]],
+    relationship_type: str,
+    old_to_new_fact_id: dict[int, int],
+    old_to_new_entity_id: dict[int, int],
+    target_context_id: str,
+    allocator: GraphIdAllocator,
 ) -> list[GraphRelationship]:
     relationships = []
     for row in rows:
@@ -278,11 +380,21 @@ def _clone_edges(
             # that was never cloned.
             continue
         logical_key = f"{relationship_type.lower()}:{new_src}:{new_dst}"
-        graph_id = allocator.allocate_graph_id(relationship_type.lower(), target_context_id, logical_key)
-        relationships.append(GraphRelationship(
-            graph_id, relationship_type, logical_key, new_src, new_dst, "Fact", "Entity",
-            {"context_id": target_context_id},
-        ))
+        graph_id = allocator.allocate_graph_id(
+            relationship_type.lower(), target_context_id, logical_key
+        )
+        relationships.append(
+            GraphRelationship(
+                graph_id,
+                relationship_type,
+                logical_key,
+                new_src,
+                new_dst,
+                "Fact",
+                "Entity",
+                {"context_id": target_context_id},
+            )
+        )
     return relationships
 
 
@@ -291,4 +403,8 @@ def _drop_nulls(row: dict[str, object], exclude: tuple[str, ...]) -> dict[str, o
     isn't one, so a property a source node never set (read back as `null`)
     must be dropped, not passed through, the same way `_scalar_properties`
     (graph_plan_builder.py) already filters at write time."""
-    return {key: value for key, value in row.items() if key not in exclude and value is not None}
+    return {
+        key: value
+        for key, value in row.items()
+        if key not in exclude and value is not None
+    }

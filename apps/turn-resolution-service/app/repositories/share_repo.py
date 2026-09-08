@@ -1,9 +1,8 @@
 """PlaythroughShare data repository. Read-only — TRS never writes shares."""
 
+from app.db.models.share import PlaythroughShare
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db.models.share import PlaythroughShare
 
 
 class ShareRepo:

@@ -49,7 +49,7 @@ def _rate_limit_delay(error: Exception, attempt: int) -> float:
     retry_seconds = _extract_retry_delay_seconds(error)
     if retry_seconds is not None:
         return min(retry_seconds + random.uniform(0.1, 0.5), 60.0)
-    return min(2.0 ** attempt + random.uniform(0.1, 0.5), 60.0)
+    return min(2.0**attempt + random.uniform(0.1, 0.5), 60.0)
 
 
 _RETRY_DELAY_KEYS = ("retryDelay", "retry_delay")
@@ -153,7 +153,11 @@ _schema_cache: dict[type[BaseModel], str] = {}
 
 def _strip_schema_noise(node: Any) -> Any:
     if isinstance(node, dict):
-        return {k: _strip_schema_noise(v) for k, v in node.items() if k not in _SCHEMA_NOISE_KEYS}
+        return {
+            k: _strip_schema_noise(v)
+            for k, v in node.items()
+            if k not in _SCHEMA_NOISE_KEYS
+        }
     if isinstance(node, list):
         return [_strip_schema_noise(v) for v in node]
     return node
@@ -165,7 +169,8 @@ def _compact_schema_json(response_schema: type[BaseModel]) -> str:
     cached = _schema_cache.get(response_schema)
     if cached is None:
         cached = json.dumps(
-            _strip_schema_noise(response_schema.model_json_schema()), separators=(",", ":")
+            _strip_schema_noise(response_schema.model_json_schema()),
+            separators=(",", ":"),
         )
         _schema_cache[response_schema] = cached
     return cached
@@ -210,7 +215,9 @@ def _render_type(annotation: Any) -> str:
     return _PRIMITIVE_TYPE_NAMES.get(annotation, getattr(annotation, "__name__", "any"))
 
 
-def _render_typedef(model: type[BaseModel], emitted: list[type[BaseModel]] | None = None) -> str:
+def _render_typedef(
+    model: type[BaseModel], emitted: list[type[BaseModel]] | None = None
+) -> str:
     """Renders a pydantic model as a compact TypeScript/BAML-style type
     declaration instead of JSON Schema.
 
@@ -333,7 +340,9 @@ class LLMClient:
         if self.reasoning_effort:
             from google.genai import types
 
-            config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=self.reasoning_effort)
+            config_kwargs["thinking_config"] = types.ThinkingConfig(
+                thinking_level=self.reasoning_effort
+            )
         if self.seed is not None:
             config_kwargs["seed"] = self.seed
 
@@ -356,22 +365,35 @@ class LLMClient:
         last_error: Exception | None = None
         for attempt in range(self.rate_limit_max_retries + 1):
             try:
-                return self.client.models.generate_content(model=self.model, contents=contents, config=config)
+                return self.client.models.generate_content(
+                    model=self.model, contents=contents, config=config
+                )
             except Exception as error:
-                if not _is_rate_limit_error(error) or attempt == self.rate_limit_max_retries:
+                if (
+                    not _is_rate_limit_error(error)
+                    or attempt == self.rate_limit_max_retries
+                ):
                     raise
                 last_error = error
                 delay = _rate_limit_delay(error, attempt)
                 logger.warning(
                     "Rate limited (attempt %d/%d); waiting %.1fs before retry",
-                    attempt + 1, self.rate_limit_max_retries + 1, delay,
+                    attempt + 1,
+                    self.rate_limit_max_retries + 1,
+                    delay,
                 )
                 time.sleep(delay)
         raise last_error if last_error else RuntimeError("unreachable")
 
     def _build_config(
-        self, *, system_instruction: str | None, temperature: float, max_tokens: int | None,
-        timeout: float | None, json_mode: bool, tools: Any | None = None,
+        self,
+        *,
+        system_instruction: str | None,
+        temperature: float,
+        max_tokens: int | None,
+        timeout: float | None,
+        json_mode: bool,
+        tools: Any | None = None,
     ) -> Any:
         from google.genai import types
 
@@ -385,12 +407,16 @@ class LLMClient:
         if timeout is not None:
             # `HttpOptions.timeout` is milliseconds; every call site here
             # passes seconds (this client's own pre-migration convention).
-            config_kwargs["http_options"] = types.HttpOptions(timeout=int(timeout * 1000))
+            config_kwargs["http_options"] = types.HttpOptions(
+                timeout=int(timeout * 1000)
+            )
         if tools:
             config_kwargs["tools"] = tools
             # This client drives its own tool-calling loop (`run_tool_loop`)
             # -- the SDK must never execute a function on its own behalf.
-            config_kwargs["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(disable=True)
+            config_kwargs["automatic_function_calling"] = (
+                types.AutomaticFunctionCallingConfig(disable=True)
+            )
         if self.service_tier:
             config_kwargs["service_tier"] = types.ServiceTier(self.service_tier)
         self._apply_reasoning_effort(config_kwargs)
@@ -429,15 +455,15 @@ class LLMClient:
         where the prior OpenAI-compatible provider used `length`.)
         """
         schema_name = response_schema.__name__
-        with timed_operation(logger, f"llm.structured_completion[{schema_name}]", {"model": self.model, "prompt_chars": len(user_prompt)}) as ctx:
+        with timed_operation(
+            logger,
+            f"llm.structured_completion[{schema_name}]",
+            {"model": self.model, "prompt_chars": len(user_prompt)},
+        ) as ctx:
             if self.schema_format == "typedef":
-                augmented_system = (
-                    f"{system_prompt}\n\nReturn JSON matching:\n{_compact_schema_typedef(response_schema)}"
-                )
+                augmented_system = f"{system_prompt}\n\nReturn JSON matching:\n{_compact_schema_typedef(response_schema)}"
             else:
-                augmented_system = (
-                    f"{system_prompt}\n\nReturn JSON matching this schema:\n{_compact_schema_json(response_schema)}"
-                )
+                augmented_system = f"{system_prompt}\n\nReturn JSON matching this schema:\n{_compact_schema_json(response_schema)}"
             current_user_prompt = user_prompt
             current_max_tokens = max_tokens
             last_error: Exception | None = None
@@ -446,11 +472,20 @@ class LLMClient:
 
             for attempt in range(max_retries + 1):
                 config = self._build_config(
-                    system_instruction=augmented_system, temperature=temperature,
-                    max_tokens=current_max_tokens, timeout=timeout, json_mode=True,
+                    system_instruction=augmented_system,
+                    temperature=temperature,
+                    max_tokens=current_max_tokens,
+                    timeout=timeout,
+                    json_mode=True,
                 )
-                contents = [types.Content(role="user", parts=[types.Part(text=current_user_prompt)])]
-                response = self._generate_with_rate_limit_retry(contents=contents, config=config)
+                contents = [
+                    types.Content(
+                        role="user", parts=[types.Part(text=current_user_prompt)]
+                    )
+                ]
+                response = self._generate_with_rate_limit_retry(
+                    contents=contents, config=config
+                )
                 usage = response.usage_metadata
                 if usage is not None:
                     ctx["prompt_tokens"] = usage.prompt_token_count
@@ -463,16 +498,25 @@ class LLMClient:
                 try:
                     if not raw_text:
                         raise ValueError("empty completion content")
-                    return response_schema.model_validate_json(_recover_json_object(raw_text))
+                    return response_schema.model_validate_json(
+                        _recover_json_object(raw_text)
+                    )
                 except Exception as error:  # pydantic ValidationError, malformed JSON, or empty content
                     last_error = error
                     if attempt < max_retries:
-                        ran_out_of_budget = finish_reason == types.FinishReason.MAX_TOKENS
+                        ran_out_of_budget = (
+                            finish_reason == types.FinishReason.MAX_TOKENS
+                        )
                         logger.warning(
                             "structured_completion[%s] attempt %d/%d returned unparseable output "
                             "(finish_reason=%s) — retrying%s",
-                            schema_name, attempt + 1, max_retries + 1, finish_reason,
-                            " with a doubled token budget" if ran_out_of_budget and current_max_tokens else "",
+                            schema_name,
+                            attempt + 1,
+                            max_retries + 1,
+                            finish_reason,
+                            " with a doubled token budget"
+                            if ran_out_of_budget and current_max_tokens
+                            else "",
                         )
                         current_user_prompt = (
                             f"{user_prompt}\n\n(Your previous response was empty or not valid JSON. Stop "
@@ -483,9 +527,13 @@ class LLMClient:
                         continue
                     logger.error(
                         "Failed to parse LLM structured completion to %s after %d attempt(s): raw_response=%r",
-                        schema_name, max_retries + 1, raw_text,
+                        schema_name,
+                        max_retries + 1,
+                        raw_text,
                     )
-                    raise LLMClientError(f"model response did not match {response_schema.__name__}") from last_error
+                    raise LLMClientError(
+                        f"model response did not match {response_schema.__name__}"
+                    ) from last_error
 
     def text_completion(
         self,
@@ -497,15 +545,26 @@ class LLMClient:
         timeout: float | None = None,
     ) -> str:
         """Plain text generation, used for reader/answer-generation."""
-        with timed_operation(logger, "llm.text_completion", {"model": self.model, "prompt_chars": len(user_prompt)}) as ctx:
+        with timed_operation(
+            logger,
+            "llm.text_completion",
+            {"model": self.model, "prompt_chars": len(user_prompt)},
+        ) as ctx:
             from google.genai import types
 
             config = self._build_config(
-                system_instruction=system_prompt, temperature=temperature,
-                max_tokens=max_tokens, timeout=timeout, json_mode=False,
+                system_instruction=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
+                json_mode=False,
             )
-            contents = [types.Content(role="user", parts=[types.Part(text=user_prompt)])]
-            response = self._generate_with_rate_limit_retry(contents=contents, config=config)
+            contents = [
+                types.Content(role="user", parts=[types.Part(text=user_prompt)])
+            ]
+            response = self._generate_with_rate_limit_retry(
+                contents=contents, config=config
+            )
             usage = response.usage_metadata
             if usage is not None:
                 ctx["prompt_tokens"] = usage.prompt_token_count
@@ -537,16 +596,25 @@ class LLMClient:
         shape, same division of labor as `structured_completion`/
         `text_completion`.
         """
-        from google.genai import types
 
-        with timed_operation(logger, "llm.chat_with_tools", {"model": self.model, "message_count": len(messages)}) as ctx:
+        with timed_operation(
+            logger,
+            "llm.chat_with_tools",
+            {"model": self.model, "message_count": len(messages)},
+        ) as ctx:
             system_instruction, contents = _messages_to_gemini_contents(messages)
             genai_tools = _tools_to_gemini(tools) if tools else None
             config = self._build_config(
-                system_instruction=system_instruction, temperature=temperature,
-                max_tokens=max_tokens, timeout=timeout, json_mode=False, tools=genai_tools,
+                system_instruction=system_instruction,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
+                json_mode=False,
+                tools=genai_tools,
             )
-            response = self._generate_with_rate_limit_retry(contents=contents, config=config)
+            response = self._generate_with_rate_limit_retry(
+                contents=contents, config=config
+            )
             usage = response.usage_metadata
             if usage is not None:
                 ctx["prompt_tokens"] = usage.prompt_token_count
@@ -558,7 +626,9 @@ class LLMClient:
             return wrapped
 
 
-def _messages_to_gemini_contents(messages: list[dict[str, Any]]) -> tuple[str | None, list[Any]]:
+def _messages_to_gemini_contents(
+    messages: list[dict[str, Any]],
+) -> tuple[str | None, list[Any]]:
     """Translates `run_tool_loop`'s OpenAI-shaped message history (`role`:
     system/user/assistant/tool, assistant `tool_calls`, tool `content`) into
     Gemini's `(system_instruction, contents)` shape: Gemini takes the system
@@ -582,7 +652,11 @@ def _messages_to_gemini_contents(messages: list[dict[str, Any]]) -> tuple[str | 
             system_instruction = message.get("content") or None
             continue
         if role == "user":
-            contents.append(types.Content(role="user", parts=[types.Part(text=message.get("content") or "")]))
+            contents.append(
+                types.Content(
+                    role="user", parts=[types.Part(text=message.get("content") or "")]
+                )
+            )
             continue
         if role == "assistant":
             parts: list[Any] = []
@@ -595,7 +669,13 @@ def _messages_to_gemini_contents(messages: list[dict[str, Any]]) -> tuple[str | 
                     args = json.loads(function.get("arguments") or "{}")
                 except ValueError:
                     args = {}
-                parts.append(types.Part(function_call=types.FunctionCall(name=function["name"], args=args)))
+                parts.append(
+                    types.Part(
+                        function_call=types.FunctionCall(
+                            name=function["name"], args=args
+                        )
+                    )
+                )
             contents.append(types.Content(role="model", parts=parts))
             continue
         if role == "tool":
@@ -607,11 +687,19 @@ def _messages_to_gemini_contents(messages: list[dict[str, Any]]) -> tuple[str | 
                 response_payload = {"result": message.get("content")}
             if not isinstance(response_payload, dict):
                 response_payload = {"result": response_payload}
-            contents.append(types.Content(
-                role="user", parts=[types.Part(function_response=types.FunctionResponse(
-                    name=name, response=response_payload,
-                ))],
-            ))
+            contents.append(
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part(
+                            function_response=types.FunctionResponse(
+                                name=name,
+                                response=response_payload,
+                            )
+                        )
+                    ],
+                )
+            )
             continue
     return system_instruction, contents
 
@@ -673,7 +761,9 @@ class _GeminiChatResponse:
 
     def __init__(self, response: Any) -> None:
         candidates = response.candidates or []
-        content_parts = candidates[0].content.parts if candidates and candidates[0].content else []
+        content_parts = (
+            candidates[0].content.parts if candidates and candidates[0].content else []
+        )
         content_parts = content_parts or []
 
         text_parts = [p.text for p in content_parts if getattr(p, "text", None)]
@@ -686,5 +776,7 @@ class _GeminiChatResponse:
             for i, p in enumerate(content_parts)
             if getattr(p, "function_call", None) is not None
         ]
-        message = _MessageShape(content="".join(text_parts) or None, tool_calls=tool_calls)
+        message = _MessageShape(
+            content="".join(text_parts) or None, tool_calls=tool_calls
+        )
         self.choices = [_ChoiceShape(message)]

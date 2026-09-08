@@ -245,6 +245,19 @@ async def test_publish_flow_success(async_client: AsyncClient, dev_user):
     )
     scenario_id = create_resp.json()["scenario_id"]
 
+    for mood in (
+        "peaceful",
+        "mystery",
+        "tension",
+        "combat",
+        "melancholy",
+        "triumph",
+    ):
+        default_resp = await async_client.post(
+            f"/v1/scenarios/{scenario_id}/music/{mood}/default", headers=headers
+        )
+        assert default_resp.status_code == 200
+
     publish_resp = await async_client.post(
         f"/v1/scenarios/{scenario_id}/publish", headers=headers
     )

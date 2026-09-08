@@ -41,24 +41,37 @@ def _engine(orchestrator) -> MemoryEngine:
     # `pool=object()` a safe placeholder these tests never actually
     # touch, same as before this fix.
     return MemoryEngine(
-        orchestrator, retrieval_engine=None, llm_client=None, pool=object(),
+        orchestrator,
+        retrieval_engine=None,
+        llm_client=None,
+        pool=object(),
         batch_store=InMemoryBatchStore(),
     )
 
 
 def _turns() -> list[TurnBatchEntry]:
     return [
-        TurnBatchEntry(turn_number=1, text="The player enters the cave.", participant_id="p1"),
+        TurnBatchEntry(
+            turn_number=1, text="The player enters the cave.", participant_id="p1"
+        ),
         TurnBatchEntry(turn_number=2, text="A ghost appears.", participant_id="p1"),
     ]
 
 
 class SubmitBatchTests(unittest.TestCase):
     def test_status_is_pending_until_background_run_completes(self):
-        orchestrator = FakeOrchestrator([[
-            ChunkRunResult("chunk:1", IngestionJobState.COMPLETED, accepted_fact_count=2),
-            ChunkRunResult("chunk:2", IngestionJobState.COMPLETED, accepted_fact_count=1),
-        ]])
+        orchestrator = FakeOrchestrator(
+            [
+                [
+                    ChunkRunResult(
+                        "chunk:1", IngestionJobState.COMPLETED, accepted_fact_count=2
+                    ),
+                    ChunkRunResult(
+                        "chunk:2", IngestionJobState.COMPLETED, accepted_fact_count=1
+                    ),
+                ]
+            ]
+        )
         engine = _engine(orchestrator)
 
         batch_id = engine.submit_batch("playthrough-1", _turns())
@@ -82,9 +95,15 @@ class SubmitBatchTests(unittest.TestCase):
         """Simulates a process restart (or a different replica) by reading
         status straight from the durable batch_store, bypassing
         MemoryEngine's own in-memory `_batches` cache entirely."""
-        orchestrator = FakeOrchestrator([[
-            ChunkRunResult("chunk:1", IngestionJobState.COMPLETED, accepted_fact_count=2),
-        ]])
+        orchestrator = FakeOrchestrator(
+            [
+                [
+                    ChunkRunResult(
+                        "chunk:1", IngestionJobState.COMPLETED, accepted_fact_count=2
+                    ),
+                ]
+            ]
+        )
         engine = _engine(orchestrator)
         batch_id = engine.submit_batch("playthrough-1", _turns()[:1])
         engine._executor.shutdown(wait=True)
@@ -100,10 +119,20 @@ class SubmitBatchTests(unittest.TestCase):
         self.assertEqual(status.status, "pending")
 
     def test_retry_after_simulated_restart_reconstructs_batch_from_durable_store(self):
-        orchestrator = FakeOrchestrator([
-            [ChunkRunResult("chunk:1", IngestionJobState.RETRYABLE_FAILED, error="timeout")],
-            [ChunkRunResult("chunk:1", IngestionJobState.COMPLETED, accepted_fact_count=1)],
-        ])
+        orchestrator = FakeOrchestrator(
+            [
+                [
+                    ChunkRunResult(
+                        "chunk:1", IngestionJobState.RETRYABLE_FAILED, error="timeout"
+                    )
+                ],
+                [
+                    ChunkRunResult(
+                        "chunk:1", IngestionJobState.COMPLETED, accepted_fact_count=1
+                    )
+                ],
+            ]
+        )
         engine = _engine(orchestrator)
         batch_id = engine.submit_batch("playthrough-1", _turns()[:1])
         engine._executor.shutdown(wait=True)
@@ -111,7 +140,9 @@ class SubmitBatchTests(unittest.TestCase):
 
         del engine._batches[batch_id]  # simulate restart
         engine._executor = engine._executor.__class__(max_workers=1)
-        engine.retry_batch(batch_id)  # must reconstruct the ContextBatch from batch_store, not raise
+        engine.retry_batch(
+            batch_id
+        )  # must reconstruct the ContextBatch from batch_store, not raise
         engine._executor.shutdown(wait=True)
 
         self.assertEqual(engine.get_batch_status(batch_id).status, "succeeded")
@@ -136,10 +167,18 @@ class SubmitBatchTests(unittest.TestCase):
 
 class BatchStatusAggregationTests(unittest.TestCase):
     def test_partial_when_some_chunks_completed_and_some_failed(self):
-        orchestrator = FakeOrchestrator([[
-            ChunkRunResult("chunk:1", IngestionJobState.COMPLETED, accepted_fact_count=1),
-            ChunkRunResult("chunk:2", IngestionJobState.RETRYABLE_FAILED, error="timeout"),
-        ]])
+        orchestrator = FakeOrchestrator(
+            [
+                [
+                    ChunkRunResult(
+                        "chunk:1", IngestionJobState.COMPLETED, accepted_fact_count=1
+                    ),
+                    ChunkRunResult(
+                        "chunk:2", IngestionJobState.RETRYABLE_FAILED, error="timeout"
+                    ),
+                ]
+            ]
+        )
         engine = _engine(orchestrator)
 
         batch_id = engine.submit_batch("playthrough-1", _turns())
@@ -152,9 +191,17 @@ class BatchStatusAggregationTests(unittest.TestCase):
         self.assertEqual(status.error, "timeout")
 
     def test_failed_and_retryable_when_all_chunks_retryable_failed(self):
-        orchestrator = FakeOrchestrator([[
-            ChunkRunResult("chunk:1", IngestionJobState.RETRYABLE_FAILED, error="mem1 unavailable"),
-        ]])
+        orchestrator = FakeOrchestrator(
+            [
+                [
+                    ChunkRunResult(
+                        "chunk:1",
+                        IngestionJobState.RETRYABLE_FAILED,
+                        error="mem1 unavailable",
+                    ),
+                ]
+            ]
+        )
         engine = _engine(orchestrator)
 
         batch_id = engine.submit_batch("playthrough-1", _turns()[:1])
@@ -165,9 +212,17 @@ class BatchStatusAggregationTests(unittest.TestCase):
         self.assertTrue(status.retryable)
 
     def test_failed_and_not_retryable_when_a_chunk_is_terminal(self):
-        orchestrator = FakeOrchestrator([[
-            ChunkRunResult("chunk:1", IngestionJobState.TERMINAL_FAILED, error="invalid payload"),
-        ]])
+        orchestrator = FakeOrchestrator(
+            [
+                [
+                    ChunkRunResult(
+                        "chunk:1",
+                        IngestionJobState.TERMINAL_FAILED,
+                        error="invalid payload",
+                    ),
+                ]
+            ]
+        )
         engine = _engine(orchestrator)
 
         batch_id = engine.submit_batch("playthrough-1", _turns()[:1])
@@ -213,20 +268,30 @@ class CatchUpBatchIdempotencyTests(unittest.TestCase):
         orchestrator = self.RecordingOrchestrator()
         engine = _engine(orchestrator)
 
-        first = [TurnBatchEntry(turn_number=5, text="The player enters the cave.", participant_id="p1")]
+        first = [
+            TurnBatchEntry(
+                turn_number=5, text="The player enters the cave.", participant_id="p1"
+            )
+        ]
         engine.submit_batch("playthrough-1", first)
         engine._executor.shutdown(wait=True)
 
         engine._executor = engine._executor.__class__(max_workers=1)
         catch_up = [
-            TurnBatchEntry(turn_number=5, text="The player enters the cave.", participant_id="p1"),
+            TurnBatchEntry(
+                turn_number=5, text="The player enters the cave.", participant_id="p1"
+            ),
             TurnBatchEntry(turn_number=6, text="A ghost appears.", participant_id="p1"),
         ]
         engine.submit_batch("playthrough-1", catch_up)
         engine._executor.shutdown(wait=True)
 
         first_record = orchestrator.batches[0].records[0]
-        second_record = next(r for r in orchestrator.batches[1].records if r.record_id == first_record.record_id)
+        second_record = next(
+            r
+            for r in orchestrator.batches[1].records
+            if r.record_id == first_record.record_id
+        )
         self.assertEqual(first_record.record_id, second_record.record_id)
         self.assertEqual(first_record.occurred_at, second_record.occurred_at)
         self.assertEqual(first_record.content, second_record.content)
@@ -245,7 +310,9 @@ class CatchUpBatchIdempotencyTests(unittest.TestCase):
         from context_memory.ingestion.batch_models import dedupe_turn_entries
 
         turns_batch = [TurnBatchEntry(turn_number=5, text="fresh", participant_id="p1")]
-        recent_context_turns = [TurnBatchEntry(turn_number=5, text="stale", participant_id="p1")]
+        recent_context_turns = [
+            TurnBatchEntry(turn_number=5, text="stale", participant_id="p1")
+        ]
         entries = dedupe_turn_entries(turns_batch, recent_context_turns)
 
         orchestrator = self.RecordingOrchestrator()
@@ -260,10 +327,20 @@ class CatchUpBatchIdempotencyTests(unittest.TestCase):
 
 class RetryBatchTests(unittest.TestCase):
     def test_retry_resubmits_the_same_batch_and_can_flip_to_succeeded(self):
-        orchestrator = FakeOrchestrator([
-            [ChunkRunResult("chunk:1", IngestionJobState.RETRYABLE_FAILED, error="timeout")],
-            [ChunkRunResult("chunk:1", IngestionJobState.COMPLETED, accepted_fact_count=1)],
-        ])
+        orchestrator = FakeOrchestrator(
+            [
+                [
+                    ChunkRunResult(
+                        "chunk:1", IngestionJobState.RETRYABLE_FAILED, error="timeout"
+                    )
+                ],
+                [
+                    ChunkRunResult(
+                        "chunk:1", IngestionJobState.COMPLETED, accepted_fact_count=1
+                    )
+                ],
+            ]
+        )
         engine = _engine(orchestrator)
         batch_id = engine.submit_batch("playthrough-1", _turns()[:1])
         engine._executor.shutdown(wait=True)

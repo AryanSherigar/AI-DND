@@ -3,9 +3,8 @@
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel
-
 from app.models.minigame_event import MinigameResultInput
+from pydantic import BaseModel
 
 
 class TurnRequestInput(BaseModel):
@@ -15,6 +14,7 @@ class TurnRequestInput(BaseModel):
     participant_id: uuid.UUID
     action_text: str
     action_kind: Literal["narrative", "minigame_result"] = "narrative"
+    action_mode: Literal["say", "do", "story", "see"] = "do"
     minigame_result: MinigameResultInput | None = None
 
 

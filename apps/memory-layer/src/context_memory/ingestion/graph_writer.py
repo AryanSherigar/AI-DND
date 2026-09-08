@@ -33,27 +33,79 @@ class GraphWriter:
     # turns turns out far more fact-dense than the ones this was tuned on.
     DEFAULT_MAX_ROWS_PER_WRITE = 900
 
-    def __init__(self, manifest_store: GraphManifestStore, transport: GraphTransport, max_rows_per_write: int = DEFAULT_MAX_ROWS_PER_WRITE) -> None:
+    def __init__(
+        self,
+        manifest_store: GraphManifestStore,
+        transport: GraphTransport,
+        max_rows_per_write: int = DEFAULT_MAX_ROWS_PER_WRITE,
+    ) -> None:
         self._manifest_store = manifest_store
         self._transport = transport
         self._max_rows_per_write = max_rows_per_write
 
     def write(self, plan: GraphWritePlan) -> tuple[str, ...]:
-        with timed_operation(logger, "graph_writer.write", {"plan_key": plan.plan_key, "nodes": len(plan.nodes), "relationships": len(plan.relationships)}) as ctx:
+        with timed_operation(
+            logger,
+            "graph_writer.write",
+            {
+                "plan_key": plan.plan_key,
+                "nodes": len(plan.nodes),
+                "relationships": len(plan.relationships),
+            },
+        ) as ctx:
             self._manifest_store.register(plan)
             bookmarks: list[str] = []
-            nodes: dict[tuple[str, tuple[str, ...]], list[GraphNode]] = defaultdict(list)
-            relationships: dict[tuple[str, str, str, tuple[str, ...]], list[GraphRelationship]] = defaultdict(list)
+            nodes: dict[tuple[str, tuple[str, ...]], list[GraphNode]] = defaultdict(
+                list
+            )
+            relationships: dict[
+                tuple[str, str, str, tuple[str, ...]], list[GraphRelationship]
+            ] = defaultdict(list)
             for node in plan.nodes:
                 nodes[(node.label, tuple(sorted(node.properties)))].append(node)
             for relationship in plan.relationships:
-                relationships[(relationship.relationship_type, relationship.source_label, relationship.destination_label, tuple(sorted(relationship.properties)))].append(relationship)
+                relationships[
+                    (
+                        relationship.relationship_type,
+                        relationship.source_label,
+                        relationship.destination_label,
+                        tuple(sorted(relationship.properties)),
+                    )
+                ].append(relationship)
             for (label, property_names), group in nodes.items():
                 rows = self._node_rows(group)
-                bookmarks.extend(self._flush(self._node_query(label, property_names), rows, lambda r: self._key(plan, f"node-{label}-{'-'.join(property_names)}", r)))
-            for (relationship_type, source_label, destination_label, property_names), group in relationships.items():
+                bookmarks.extend(
+                    self._flush(
+                        self._node_query(label, property_names),
+                        rows,
+                        lambda r: self._key(
+                            plan, f"node-{label}-{'-'.join(property_names)}", r
+                        ),
+                    )
+                )
+            for (
+                relationship_type,
+                source_label,
+                destination_label,
+                property_names,
+            ), group in relationships.items():
                 rows = self._relationship_rows(group)
-                bookmarks.extend(self._flush(self._relationship_query(relationship_type, source_label, destination_label, property_names), rows, lambda r: self._key(plan, f"relationship-{relationship_type}-{source_label}-{destination_label}-{'-'.join(property_names)}", r)))
+                bookmarks.extend(
+                    self._flush(
+                        self._relationship_query(
+                            relationship_type,
+                            source_label,
+                            destination_label,
+                            property_names,
+                        ),
+                        rows,
+                        lambda r: self._key(
+                            plan,
+                            f"relationship-{relationship_type}-{source_label}-{destination_label}-{'-'.join(property_names)}",
+                            r,
+                        ),
+                    )
+                )
             ctx["bookmarks_received"] = len(bookmarks)
             return tuple(bookmarks)
 
@@ -85,16 +137,26 @@ class GraphWriter:
         for label, expected_ids in ids_by_label.items():
             cypher = f"MATCH (n:{label} {{context_id: $context_id}}) RETURN n.id AS id"
             try:
-                rows = self._transport.read(cypher, {"context_id": plan.context_id}, None)
+                rows = self._transport.read(
+                    cypher, {"context_id": plan.context_id}, None
+                )
             except Exception as error:
-                logger.warning("graph_writer.verify: read failed for label %s, plan %s: %s", label, plan.plan_key, error)
+                logger.warning(
+                    "graph_writer.verify: read failed for label %s, plan %s: %s",
+                    label,
+                    plan.plan_key,
+                    error,
+                )
                 return False
             found_ids = {int(row["id"]) for row in rows if row.get("id") is not None}
             missing = expected_ids - found_ids
             if missing:
                 logger.warning(
                     "graph_writer.verify: %d %s node(s) missing after write for plan %s: %s",
-                    len(missing), label, plan.plan_key, missing,
+                    len(missing),
+                    label,
+                    plan.plan_key,
+                    missing,
                 )
                 return False
         return True
@@ -137,30 +199,77 @@ class GraphWriter:
         if len(plans) == 1:
             return self.write(plans[0])
 
-        with timed_operation(logger, "graph_writer.write_many", {"plan_count": len(plans), "nodes": sum(len(p.nodes) for p in plans), "relationships": sum(len(p.relationships) for p in plans)}) as ctx:
+        with timed_operation(
+            logger,
+            "graph_writer.write_many",
+            {
+                "plan_count": len(plans),
+                "nodes": sum(len(p.nodes) for p in plans),
+                "relationships": sum(len(p.relationships) for p in plans),
+            },
+        ) as ctx:
             for plan in plans:
                 self._manifest_store.register(plan)
 
             bookmarks: list[str] = []
-            nodes: dict[tuple[str, tuple[str, ...]], list[GraphNode]] = defaultdict(list)
-            relationships: dict[tuple[str, str, str, tuple[str, ...]], list[GraphRelationship]] = defaultdict(list)
+            nodes: dict[tuple[str, tuple[str, ...]], list[GraphNode]] = defaultdict(
+                list
+            )
+            relationships: dict[
+                tuple[str, str, str, tuple[str, ...]], list[GraphRelationship]
+            ] = defaultdict(list)
             for plan in plans:
                 for node in plan.nodes:
                     nodes[(node.label, tuple(sorted(node.properties)))].append(node)
                 for relationship in plan.relationships:
-                    relationships[(relationship.relationship_type, relationship.source_label, relationship.destination_label, tuple(sorted(relationship.properties)))].append(relationship)
+                    relationships[
+                        (
+                            relationship.relationship_type,
+                            relationship.source_label,
+                            relationship.destination_label,
+                            tuple(sorted(relationship.properties)),
+                        )
+                    ].append(relationship)
 
             write_calls = 0
             for (label, property_names), group in nodes.items():
                 rows = self._node_rows(group)
-                flushed = self._flush(self._node_query(label, property_names), rows, lambda r: self._key_many(plans, f"node-{label}-{'-'.join(property_names)}", r))
+                flushed = self._flush(
+                    self._node_query(label, property_names),
+                    rows,
+                    lambda r: self._key_many(
+                        plans, f"node-{label}-{'-'.join(property_names)}", r
+                    ),
+                )
                 bookmarks.extend(flushed)
-                write_calls += max(1, -(-len(rows) // self._max_rows_per_write)) if rows else 0
-            for (relationship_type, source_label, destination_label, property_names), group in relationships.items():
+                write_calls += (
+                    max(1, -(-len(rows) // self._max_rows_per_write)) if rows else 0
+                )
+            for (
+                relationship_type,
+                source_label,
+                destination_label,
+                property_names,
+            ), group in relationships.items():
                 rows = self._relationship_rows(group)
-                flushed = self._flush(self._relationship_query(relationship_type, source_label, destination_label, property_names), rows, lambda r: self._key_many(plans, f"relationship-{relationship_type}-{source_label}-{destination_label}-{'-'.join(property_names)}", r))
+                flushed = self._flush(
+                    self._relationship_query(
+                        relationship_type,
+                        source_label,
+                        destination_label,
+                        property_names,
+                    ),
+                    rows,
+                    lambda r: self._key_many(
+                        plans,
+                        f"relationship-{relationship_type}-{source_label}-{destination_label}-{'-'.join(property_names)}",
+                        r,
+                    ),
+                )
                 bookmarks.extend(flushed)
-                write_calls += max(1, -(-len(rows) // self._max_rows_per_write)) if rows else 0
+                write_calls += (
+                    max(1, -(-len(rows) // self._max_rows_per_write)) if rows else 0
+                )
             ctx["bookmarks_received"] = len(bookmarks)
             ctx["write_calls"] = write_calls
             return tuple(bookmarks)
@@ -188,10 +297,17 @@ class GraphWriter:
     @staticmethod
     def _node_query(label: str, property_names: tuple[str, ...]) -> str:
         assignments = ", ".join(f"n.{name} = row.{name}" for name in property_names)
-        return f"UNWIND $rows AS row MERGE (n {{id: row.id}}) SET n:{label}, {assignments}"
+        return (
+            f"UNWIND $rows AS row MERGE (n {{id: row.id}}) SET n:{label}, {assignments}"
+        )
 
     @staticmethod
-    def _relationship_query(relationship_type: str, source_label: str, destination_label: str, property_names: tuple[str, ...]) -> str:
+    def _relationship_query(
+        relationship_type: str,
+        source_label: str,
+        destination_label: str,
+        property_names: tuple[str, ...],
+    ) -> str:
         assignments = ", ".join(f"r.{name} = row.{name}" for name in property_names)
         return f"UNWIND $rows AS row MATCH (s:{source_label} {{id: row.source_id}}), (d:{destination_label} {{id: row.destination_id}}) MERGE (s)-[r:{relationship_type} {{id: row.id}}]->(d) SET {assignments}"
 
@@ -232,28 +348,57 @@ class GraphWriter:
                 # instead of losing the whole batch again.
                 logger.warning(
                     "graph_writer: conflicting %s for vertex %s (%s vs %s) in one write batch -- keeping the later value",
-                    key, node.graph_id, merged[key], value,
+                    key,
+                    node.graph_id,
+                    merged[key],
+                    value,
                 )
                 merged[key] = value
-            by_id[node.graph_id] = GraphNode(node.graph_id, node.label, node.logical_key, merged)
+            by_id[node.graph_id] = GraphNode(
+                node.graph_id, node.label, node.logical_key, merged
+            )
         return list(by_id.values())
 
     @staticmethod
     def _node_rows(nodes: list[GraphNode]) -> list[dict[str, object]]:
-        return [{"id": node.graph_id, **dict(node.properties)} for node in GraphWriter._dedupe_nodes(nodes)]
+        return [
+            {"id": node.graph_id, **dict(node.properties)}
+            for node in GraphWriter._dedupe_nodes(nodes)
+        ]
 
     @staticmethod
-    def _relationship_rows(relationships: list[GraphRelationship]) -> list[dict[str, object]]:
-        return [{"id": item.graph_id, "source_id": item.source_id, "destination_id": item.destination_id, **dict(item.properties)} for item in relationships]
+    def _relationship_rows(
+        relationships: list[GraphRelationship],
+    ) -> list[dict[str, object]]:
+        return [
+            {
+                "id": item.graph_id,
+                "source_id": item.source_id,
+                "destination_id": item.destination_id,
+                **dict(item.properties),
+            }
+            for item in relationships
+        ]
 
     @staticmethod
-    def _key(plan: GraphWritePlan, phase: str, rows: list[dict[str, object]] | None = None) -> str:
+    def _key(
+        plan: GraphWritePlan, phase: str, rows: list[dict[str, object]] | None = None
+    ) -> str:
         import json
-        payload_bytes = json.dumps(rows, sort_keys=True, default=str).encode() if rows is not None else b""
+
+        payload_bytes = (
+            json.dumps(rows, sort_keys=True, default=str).encode()
+            if rows is not None
+            else b""
+        )
         return f"context-memory-{sha256(f'{plan.context_id}\x00{plan.plan_key}\x00{phase}\x00'.encode() + payload_bytes).hexdigest()}"
 
     @staticmethod
-    def _key_many(plans: Sequence[GraphWritePlan], phase: str, rows: list[dict[str, object]] | None = None) -> str:
+    def _key_many(
+        plans: Sequence[GraphWritePlan],
+        phase: str,
+        rows: list[dict[str, object]] | None = None,
+    ) -> str:
         """Same idempotency-key shape as `_key`, but for a bucket merged
         across several plans -- hashes in every constituent `plan_key`
         (sorted, so call order never changes the key) instead of one. This
@@ -262,7 +407,12 @@ class GraphWriter:
         is unaffected and still keyed per plan, see `write_many`'s docstring.
         """
         import json
-        payload_bytes = json.dumps(rows, sort_keys=True, default=str).encode() if rows is not None else b""
+
+        payload_bytes = (
+            json.dumps(rows, sort_keys=True, default=str).encode()
+            if rows is not None
+            else b""
+        )
         plan_keys = ",".join(sorted(plan.plan_key for plan in plans))
         context_id = plans[0].context_id if plans else ""
         return f"context-memory-{sha256(f'{context_id}\x00{plan_keys}\x00{phase}\x00'.encode() + payload_bytes).hexdigest()}"

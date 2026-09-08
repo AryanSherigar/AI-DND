@@ -8,13 +8,13 @@ from logging.config import fileConfig
 # Ensure app package is importable
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
+# Import all ORM model modules so they register on Base.metadata before
+# autogenerate compares it against the live database — importing app.db.base
+# alone only pulls in the empty declarative base, not the model classes.
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
-# Import all ORM model modules so they register on Base.metadata before
-# autogenerate compares it against the live database — importing app.db.base
-# alone only pulls in the empty declarative base, not the model classes.
 import app.db.models  # noqa: F401
 from app.config import settings
 from app.db.base import Base

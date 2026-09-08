@@ -6,15 +6,14 @@ from collections.abc import AsyncIterator, Callable
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sse_starlette.sse import EventSourceResponse, ServerSentEvent
-
 from app.config import settings
 from app.db.connection import get_db_session
 from app.middleware.auth import get_current_user
 from app.models.auth import CurrentUser
 from app.session import access, notification_manager, spectator_manager
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 
 router = APIRouter(prefix="/v1/session", tags=["Session"])
 logger = structlog.get_logger()

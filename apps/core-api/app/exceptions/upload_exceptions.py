@@ -15,3 +15,10 @@ class UploadFailedError(BaseAppException):
 
     def __init__(self, message: str = "File upload failed"):
         super().__init__(message=message, status_code=502)
+
+
+class ImageGenerationError(BaseAppException):
+    """Raised when AI image generation fails."""
+
+    def __init__(self, message: str = "Image generation is temporarily unavailable"):
+        super().__init__(message=message, status_code=502)

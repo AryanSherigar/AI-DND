@@ -19,7 +19,9 @@ logger = get_logger(__name__)
 
 
 class GraphExpander:
-    def __init__(self, pool: object, hydra_client: GraphTransport, config: Config | None = None) -> None:
+    def __init__(
+        self, pool: object, hydra_client: GraphTransport, config: Config | None = None
+    ) -> None:
         self._pool = pool
         self._hydra = hydra_client
         self._config = config or Config()
@@ -31,15 +33,25 @@ class GraphExpander:
         # first. A single long-lived pool reuses the same worker threads (and so
         # the same cached connections) across every `expand()` call this engine
         # instance ever serves.
-        self._fetch_executor = ThreadPoolExecutor(max_workers=self._config.retrieval_graph_fetch_workers)
+        self._fetch_executor = ThreadPoolExecutor(
+            max_workers=self._config.retrieval_graph_fetch_workers
+        )
 
     def expand(
-        self, context_id: str, seed_facts: dict[str, ScoredFact], temporal_bounds: DateRange, query_epoch: datetime
+        self,
+        context_id: str,
+        seed_facts: dict[str, ScoredFact],
+        temporal_bounds: DateRange,
+        query_epoch: datetime,
     ) -> dict[str, dict[str, Any]]:
         if not seed_facts:
             return {}
 
-        with timed_operation(logger, "retrieval.phase2.graph_expansion", {"context_id": context_id, "seed_count": len(seed_facts)}) as ctx:
+        with timed_operation(
+            logger,
+            "retrieval.phase2.graph_expansion",
+            {"context_id": context_id, "seed_count": len(seed_facts)},
+        ) as ctx:
             graph_data = {}
 
             # Resolve each fact's integer graph_id from Postgres's own
@@ -66,7 +78,7 @@ class GraphExpander:
             # of it below this point is unchanged.
             graph_id_by_fact_key: dict[str, int] = {}
             registry_lookup_keys = []
-            for fid in seed_facts.keys():
+            for fid in seed_facts:
                 if fid.isdigit():
                     graph_id_by_fact_key[f"fact:{fid}"] = int(fid)
                 else:
@@ -126,7 +138,9 @@ class GraphExpander:
             # which as_of_turn filtering fails open on rather than hiding.
             turn_number_by_fact: dict[str, int] = {}
 
-            def _fetch_node(fact_key: str, graph_id: int) -> tuple[str, Sequence[dict[str, object]] | None]:
+            def _fetch_node(
+                fact_key: str, graph_id: int
+            ) -> tuple[str, Sequence[dict[str, object]] | None]:
                 # §5 fix: f.turn_number -- real as_of_turn filtering needs the
                 # turn a fact was extracted from (graph_plan_builder._fact_node
                 # writes it straight from the chunk's own metadata).
@@ -202,7 +216,11 @@ class GraphExpander:
             entity_to_facts = {}
 
             query_int = int(query_epoch.timestamp())
-            chat_ttl_limit = int((query_epoch - timedelta(hours=self._config.retrieval_chat_ttl_hours)).timestamp())
+            chat_ttl_limit = int(
+                (
+                    query_epoch - timedelta(hours=self._config.retrieval_chat_ttl_hours)
+                ).timestamp()
+            )
             # §7 fix: `temporal_bounds` (Phase 0's resolved [valid_from,
             # valid_to] for the question, e.g. "between turns 20 and 30") used
             # to be passed in and never read below -- every query got only
@@ -218,10 +236,21 @@ class GraphExpander:
             # the other defaults to whichever side keeps that meaning: an
             # unbounded past for a bare upper bound, "now" for a bare lower
             # bound (this system has no way to answer about the future).
-            has_temporal_anchor = temporal_bounds.valid_from is not None or temporal_bounds.valid_to is not None
+            has_temporal_anchor = (
+                temporal_bounds.valid_from is not None
+                or temporal_bounds.valid_to is not None
+            )
             if has_temporal_anchor:
-                window_start = int(temporal_bounds.valid_from.timestamp()) if temporal_bounds.valid_from else None
-                window_end = int(temporal_bounds.valid_to.timestamp()) if temporal_bounds.valid_to else query_int
+                window_start = (
+                    int(temporal_bounds.valid_from.timestamp())
+                    if temporal_bounds.valid_from
+                    else None
+                )
+                window_end = (
+                    int(temporal_bounds.valid_to.timestamp())
+                    if temporal_bounds.valid_to
+                    else query_int
+                )
             else:
                 window_start = query_int
                 window_end = query_int
@@ -240,7 +269,9 @@ class GraphExpander:
             # world-validity timing (e.g. "moving to Seattle next month"), not
             # a statement-time artifact, so exact-timestamp comparison stays
             # correct for them.
-            query_day_end = datetime.combine(query_epoch.date(), datetime.max.time(), tzinfo=query_epoch.tzinfo)
+            query_day_end = datetime.combine(
+                query_epoch.date(), datetime.max.time(), tzinfo=query_epoch.tzinfo
+            )
             observed_future_cutoff = int(query_day_end.timestamp())
 
             for row in raw_nodes:
@@ -262,9 +293,17 @@ class GraphExpander:
                 # point check: fact.valid_from <= window_end AND
                 # fact.valid_to >= window_start, each side skipped when that
                 # bound is open (None).
-                if valid_from is not None and window_end is not None and valid_from > window_end:
+                if (
+                    valid_from is not None
+                    and window_end is not None
+                    and valid_from > window_end
+                ):
                     continue
-                if valid_to is not None and window_start is not None and valid_to < window_start:
+                if (
+                    valid_to is not None
+                    and window_start is not None
+                    and valid_to < window_start
+                ):
                     continue
                 if observed_at is not None and observed_at > observed_future_cutoff:
                     continue
@@ -272,11 +311,19 @@ class GraphExpander:
                 # was never true during it. `window_start` is `None` only
                 # when the resolved range is open-ended on the past side
                 # (e.g. "before June"), which no supersession predates.
-                if superseded_at is not None and window_start is not None and superseded_at < window_start:
+                if (
+                    superseded_at is not None
+                    and window_start is not None
+                    and superseded_at < window_start
+                ):
                     continue
 
                 # Chat scope TTL enforcement
-                if memory_scope == "chat" and observed_at is not None and observed_at < chat_ttl_limit:
+                if (
+                    memory_scope == "chat"
+                    and observed_at is not None
+                    and observed_at < chat_ttl_limit
+                ):
                     continue
 
                 valid_fact_keys.add(fact_key)
@@ -392,7 +439,8 @@ class GraphExpander:
                             # one, same exclusion already applied to seed facts above
                             # (`if row.get("archived"): continue`).
                             interior_archived = any(
-                                isinstance(path[idx], dict) and path[idx].get("archived")
+                                isinstance(path[idx], dict)
+                                and path[idx].get("archived")
                                 for idx in range(1, len(path), 2)
                             )
                             if interior_archived:
@@ -402,21 +450,35 @@ class GraphExpander:
                             start_node = path[0]
                             end_node = path[-1]
 
-                            start_key = start_node.get("logical_key") if isinstance(start_node, dict) else None
-                            end_key = end_node.get("logical_key") if isinstance(end_node, dict) else None
+                            start_key = (
+                                start_node.get("logical_key")
+                                if isinstance(start_node, dict)
+                                else None
+                            )
+                            end_key = (
+                                end_node.get("logical_key")
+                                if isinstance(end_node, dict)
+                                else None
+                            )
 
                             for entity_key in (start_key, end_key):
                                 if entity_key in entity_to_facts:
                                     for fact_key in entity_to_facts[entity_key]:
-                                        path_count_by_fact[fact_key] = path_count_by_fact.get(fact_key, 0) + 1
-                                        hop_count_by_fact[fact_key] = min(hop_count_by_fact.get(fact_key, hops), hops)
+                                        path_count_by_fact[fact_key] = (
+                                            path_count_by_fact.get(fact_key, 0) + 1
+                                        )
+                                        hop_count_by_fact[fact_key] = min(
+                                            hop_count_by_fact.get(fact_key, hops), hops
+                                        )
                 except Exception as e:
                     logger.debug("algo.MSpaths query skipped: %s", e)
 
-            for f_id in seed_facts.keys():
+            for f_id in seed_facts:
                 fact_key = f"fact:{f_id}"
                 entity_key = entity_key_by_fact.get(fact_key)
-                entity_fact_count = len(entity_to_facts.get(entity_key, ())) if entity_key else 0
+                entity_fact_count = (
+                    len(entity_to_facts.get(entity_key, ())) if entity_key else 0
+                )
                 graph_data[f_id] = {
                     # Carried through so scoring can apply the entity boost only
                     # to entities the *query* actually mentions, per

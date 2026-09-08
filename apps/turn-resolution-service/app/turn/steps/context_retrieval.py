@@ -8,7 +8,6 @@ gameplay.
 import time
 
 import structlog
-
 from app.exceptions.turn_exceptions import MemoryLayerUnavailableError
 from app.integrations import memory_client
 from app.models.memory import Fact, MemoryQueryRequest, MemoryQueryResponse

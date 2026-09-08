@@ -12,12 +12,11 @@ import asyncio
 from collections.abc import AsyncIterator
 
 import structlog
+from app.config import settings
+from app.exceptions.turn_exceptions import GeminiUnavailableError
 from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
-
-from app.config import settings
-from app.exceptions.turn_exceptions import GeminiUnavailableError
 
 logger = structlog.get_logger()
 

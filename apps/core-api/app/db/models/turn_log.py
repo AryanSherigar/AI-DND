@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import ForeignKey, Text, UniqueConstraint, text
+from sqlalchemy import ForeignKey, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -45,3 +45,6 @@ class TurnLog(Base, CreatedAtMixin):
         default=list,
         nullable=False,
     )
+    image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    location_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    scene_image_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)

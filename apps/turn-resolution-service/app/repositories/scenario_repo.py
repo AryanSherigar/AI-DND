@@ -7,10 +7,9 @@ repository boundary itself rather than by convention alone.
 
 import uuid
 
+from app.db.models.scenario import Scenario
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db.models.scenario import Scenario
 
 
 class ScenarioRepo:

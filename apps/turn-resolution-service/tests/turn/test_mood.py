@@ -23,6 +23,13 @@ def test_normalize_synonyms() -> None:
     assert normalize_mood("danger") == MoodTag.TENSION
     assert normalize_mood("calm") == MoodTag.PEACEFUL
     assert normalize_mood("sorrow") == MoodTag.MELANCHOLY
+    assert normalize_mood("victory") == MoodTag.TRIUMPH
+
+
+def test_normalize_triumph() -> None:
+    assert normalize_mood("triumph") == MoodTag.TRIUMPH
+    assert normalize_mood("Triumphant") == MoodTag.TRIUMPH
+    assert normalize_mood("celebration") == MoodTag.TRIUMPH
 
 
 def test_normalize_unknown_fallback() -> None:

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import unittest
 
-from context_memory.core.errors import ContractValidationError, ImmutableRecordConflictError
+from context_memory.core.errors import (
+    ContractValidationError,
+    ImmutableRecordConflictError,
+)
 from context_memory.core.models import Embedding
 from context_memory.ingestion.fakes import InMemoryEmbeddingStore
 
@@ -48,7 +51,9 @@ class InMemoryEmbeddingStoreTests(unittest.TestCase):
     def test_new_model_version_does_not_conflict(self) -> None:
         store = InMemoryEmbeddingStore()
         store.put(_embedding())
-        store.put(_embedding(model_version="2", embedded_content_hash="sha256:different"))
+        store.put(
+            _embedding(model_version="2", embedded_content_hash="sha256:different")
+        )
 
     def test_deactivate_marks_all_versions_inactive(self) -> None:
         store = InMemoryEmbeddingStore()

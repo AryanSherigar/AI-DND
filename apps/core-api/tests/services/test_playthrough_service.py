@@ -3,6 +3,10 @@
 import uuid
 
 import pytest
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models.entity import Entity
 from app.db.models.participant import Participant
 from app.db.models.scenario import Scenario
 from app.db.models.share import PlaythroughShare
@@ -23,13 +27,12 @@ from app.repositories.minigame_repo import MinigameRepo
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
 from app.repositories.scenario_entity_type_repo import ScenarioEntityTypeRepo
+from app.repositories.scenario_music_repo import ScenarioMusicRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.share_repo import ShareRepo
 from app.repositories.turn_log_repo import TurnLogRepo
 from app.repositories.user_repo import UserRepo
 from app.services.playthrough_service import PlaythroughService
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def _make_service(db_session: AsyncSession) -> PlaythroughService:
@@ -45,6 +48,7 @@ async def _make_service(db_session: AsyncSession) -> PlaythroughService:
         end_condition_repo=EndConditionRepo(db_session),
         map_repo=MapRepo(db_session),
         minigame_repo=MinigameRepo(db_session),
+        scenario_music_repo=ScenarioMusicRepo(db_session),
     )
 
 
@@ -316,6 +320,7 @@ async def test_create_playthrough_master_mode_snapshot_includes_entities_and_rul
     (master-mode-turn-pipeline.spec.md) — TRS never reads Scenario or its
     sub-resource tables directly during a turn."""
     import httpx
+
     from app.models.condition import ConditionCreate
     from app.models.end_condition import EndConditionCreate
     from app.models.entity import EntityCreate
@@ -595,3 +600,67 @@ async def test_join_playthrough_sequential_turn_order_positions(
     assert positions[owner.user_id] == 1
     assert positions[user2.user_id] == 2
     assert positions[user3.user_id] == 3
+
+
+async def _make_master_scenario_with_player(
+    db_session: AsyncSession, user_id: uuid.UUID
+) -> tuple[Scenario, uuid.UUID]:
+    scenario = Scenario(
+        creator_id=user_id,
+        title="Epic Quest",
+        mode="master",
+        complexity_tier="master",
+        player_count_support="solo",
+        status="published",
+        setup_schema=[
+            {"key": "character_name", "label": "Hero Name", "is_character_name": True},
+            {"key": "class", "label": "Class", "predicate": "has_class"},
+        ],
+    )
+    db_session.add(scenario)
+    await db_session.flush()
+    player = await EntityRepo(db_session).create(
+        Entity(
+            scenario_id=scenario.scenario_id,
+            entity_type="character",
+            canonical_name="Default Hero",
+            aliases=["The Chosen"],
+            is_player=True,
+        )
+    )
+    return scenario, player.entity_id
+
+
+@pytest.mark.asyncio
+async def test_create_playthrough_player_setup_fact_attachment(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = await _make_service(db_session)
+    user = await _make_user(db_session)
+    scenario, _ = await _make_master_scenario_with_player(db_session, user.user_id)
+    captured: dict[str, object] = {}
+
+    async def _fake_clone(req: object, *args: object, **kwargs: object) -> None:
+        captured["request"] = req
+        captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "app.services.playthrough_service.memory_client.clone_template_memory_space",
+        _fake_clone,
+    )
+    res = await service.create_playthrough(
+        user.user_id,
+        PlaythroughCreate(
+            scenario_id=scenario.scenario_id,
+            setup_values={"character_name": "Valerius", "class": "Paladin"},
+        ),
+    )
+    ent = res.scenario_snapshot["entities"][0]
+    assert ent["canonical_name"] == "Valerius"
+    assert "Default Hero" in ent["aliases"]
+    assert res.state["setup"]["character_name"] == "Valerius"
+    req = captured["request"]
+    assert req.player_entity_canonical_name == "Valerius"
+    assert "Default Hero" in req.player_entity_aliases
+    assert req.setup_facts[0].predicate == "has_class"
+    assert req.setup_facts[0].object_literal == "Paladin"

@@ -17,7 +17,7 @@ from enum import Enum
 from hashlib import sha256
 from typing import Any
 
-from context_memory.core.journal import JournalContext, StepJournal
+from context_memory.core.journal import StepJournal
 from context_memory.core.tools import Tool, ToolRegistry
 
 
@@ -57,14 +57,17 @@ def _tool_idempotency_key(tool: Tool, args: dict[str, Any]) -> str:
     not a uniqueness constraint."""
     if tool.annotations.idempotent_hint:
         payload = json.dumps(args, sort_keys=True, default=str)
-        return sha256(f"{tool.name}\x1f{payload}".encode("utf-8")).hexdigest()
+        return sha256(f"{tool.name}\x1f{payload}".encode()).hexdigest()
     return uuid.uuid4().hex
 
 
 class GuardedToolExecutor:
     def __init__(
-        self, registry: ToolRegistry, journal: StepJournal | None = None,
-        pre_hooks: tuple[PreToolUseHook, ...] = (), post_hooks: tuple[PostToolUseHook, ...] = (),
+        self,
+        registry: ToolRegistry,
+        journal: StepJournal | None = None,
+        pre_hooks: tuple[PreToolUseHook, ...] = (),
+        post_hooks: tuple[PostToolUseHook, ...] = (),
     ) -> None:
         self._registry = registry
         self._journal = journal
@@ -79,7 +82,9 @@ class GuardedToolExecutor:
         for hook in self._pre_hooks:
             result = hook(tool, args)
             if result.decision is HookDecision.DENY:
-                raise ToolDeniedError(result.reason or f"a PreToolUse hook denied {name!r}")
+                raise ToolDeniedError(
+                    result.reason or f"a PreToolUse hook denied {name!r}"
+                )
 
         step_type = f"tool.execute[{name}]"
         idempotency_key = _tool_idempotency_key(tool, args)
@@ -87,7 +92,9 @@ class GuardedToolExecutor:
         try:
             result = tool.handler(args)
         except Exception as error:
-            self._record(step_type, name, idempotency_key, args, None, "error", start, str(error))
+            self._record(
+                step_type, name, idempotency_key, args, None, "error", start, str(error)
+            )
             raise
         self._record(step_type, name, idempotency_key, args, result, "ok", start, None)
 
@@ -96,13 +103,25 @@ class GuardedToolExecutor:
         return result
 
     def _record(
-        self, step_type: str, call_role: str, idempotency_key: str, args: dict[str, Any],
-        result: dict[str, Any] | None, outcome: str, start: float, error_message: str | None,
+        self,
+        step_type: str,
+        call_role: str,
+        idempotency_key: str,
+        args: dict[str, Any],
+        result: dict[str, Any] | None,
+        outcome: str,
+        start: float,
+        error_message: str | None,
     ) -> None:
         if self._journal is None:
             return
         self._journal.record(
-            step_type=step_type, call_role=call_role, idempotency_key=idempotency_key,
-            request_payload={"args": args}, response_payload=result, outcome=outcome,  # type: ignore[arg-type]
-            elapsed_ms=(time.monotonic() - start) * 1000, error_message=error_message,
+            step_type=step_type,
+            call_role=call_role,
+            idempotency_key=idempotency_key,
+            request_payload={"args": args},
+            response_payload=result,
+            outcome=outcome,  # type: ignore[arg-type]
+            elapsed_ms=(time.monotonic() - start) * 1000,
+            error_message=error_message,
         )

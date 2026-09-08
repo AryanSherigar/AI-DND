@@ -144,18 +144,22 @@ class EntityNameIndex:
 
             sim = float(np.dot(query_vec, vec))
             if sim >= threshold:
-                candidates.append({
-                    "entity_id": eid,
-                    "name": self._names[eid],
-                    "entity_type": self._types[eid],
-                    "similarity": sim,
-                    "type_match": self._types[eid] == entity_type,
-                })
+                candidates.append(
+                    {
+                        "entity_id": eid,
+                        "name": self._names[eid],
+                        "entity_type": self._types[eid],
+                        "similarity": sim,
+                        "type_match": self._types[eid] == entity_type,
+                    }
+                )
 
         candidates.sort(key=lambda c: (-c["type_match"], -c["similarity"]))
         return candidates[:top_k]
 
-    def rebuild_from_entities(self, entities: Iterable[tuple[str, str, str, str]]) -> int:
+    def rebuild_from_entities(
+        self, entities: Iterable[tuple[str, str, str, str]]
+    ) -> int:
         """§12 fix: bulk-repopulates this index from a durable source --
         `entities` is `(entity_id, name, entity_type, haystack_id)` tuples,
         e.g. read straight from HydraDB's own Entity nodes. Returns the
@@ -168,7 +172,12 @@ class EntityNameIndex:
                 self.add(entity_id, name, entity_type, haystack_id)
                 indexed += 1
             except Exception as error:
-                logger.warning("EntityNameIndex.rebuild_from_entities: skipped %s (%r): %s", entity_id, name, error)
+                logger.warning(
+                    "EntityNameIndex.rebuild_from_entities: skipped %s (%r): %s",
+                    entity_id,
+                    name,
+                    error,
+                )
         return indexed
 
     def clear(self) -> None:

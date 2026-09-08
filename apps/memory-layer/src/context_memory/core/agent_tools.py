@@ -42,42 +42,64 @@ def build_memory_agent_tools(engine: Any, context_id: str) -> ToolRegistry:
     registry = ToolRegistry()
 
     def _search_memory(args: dict[str, Any]) -> dict[str, Any]:
-        answer = engine.search_memories(context_id, args["query"], datetime.now(timezone.utc))
+        answer = engine.search_memories(
+            context_id, args["query"], datetime.now(timezone.utc)
+        )
         return {"answer": answer}
 
-    registry.register(Tool(
-        name="search_memory",
-        description="Search this playthrough's memory for facts relevant to a natural-language query.",
-        input_schema={
-            "type": "object",
-            "properties": {"query": {"type": "string", "description": "What to search for."}},
-            "required": ["query"],
-        },
-        handler=_search_memory,
-        annotations=ToolAnnotations(
-            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False,
-        ),
-    ))
+    registry.register(
+        Tool(
+            name="search_memory",
+            description="Search this playthrough's memory for facts relevant to a natural-language query.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "What to search for."}
+                },
+                "required": ["query"],
+            },
+            handler=_search_memory,
+            annotations=ToolAnnotations(
+                read_only_hint=True,
+                destructive_hint=False,
+                idempotent_hint=True,
+                open_world_hint=False,
+            ),
+        )
+    )
 
     def _create_save_point(args: dict[str, Any]) -> dict[str, Any]:
         save_point = engine.create_save_point(context_id, label=args.get("label"))
-        return {"save_id": save_point.save_id, "created_at": save_point.created_at.isoformat()}
+        return {
+            "save_id": save_point.save_id,
+            "created_at": save_point.created_at.isoformat(),
+        }
 
-    registry.register(Tool(
-        name="create_save_point",
-        description=(
-            "Create a rollback point for this playthrough's memory, before a risky or irreversible story event."
-        ),
-        input_schema={
-            "type": "object",
-            "properties": {"label": {"type": "string", "description": "Optional human-readable label."}},
-            "required": [],
-        },
-        handler=_create_save_point,
-        annotations=ToolAnnotations(
-            read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False,
-        ),
-    ))
+    registry.register(
+        Tool(
+            name="create_save_point",
+            description=(
+                "Create a rollback point for this playthrough's memory, before a risky or irreversible story event."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "label": {
+                        "type": "string",
+                        "description": "Optional human-readable label.",
+                    }
+                },
+                "required": [],
+            },
+            handler=_create_save_point,
+            annotations=ToolAnnotations(
+                read_only_hint=False,
+                destructive_hint=False,
+                idempotent_hint=False,
+                open_world_hint=False,
+            ),
+        )
+    )
 
     def _rollback_to_save_point(args: dict[str, Any]) -> dict[str, Any]:
         result = engine.rollback_to(args["save_id"])
@@ -87,19 +109,29 @@ def build_memory_agent_tools(engine: Any, context_id: str) -> ToolRegistry:
             "restored_fact_ids": list(result.restored_fact_ids),
         }
 
-    registry.register(Tool(
-        name="rollback_to_save_point",
-        description="Roll this playthrough's memory back to a previously created save point, undoing everything since.",
-        input_schema={
-            "type": "object",
-            "properties": {"save_id": {"type": "string", "description": "A save_id from create_save_point."}},
-            "required": ["save_id"],
-        },
-        handler=_rollback_to_save_point,
-        annotations=ToolAnnotations(
-            read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False,
-        ),
-    ))
+    registry.register(
+        Tool(
+            name="rollback_to_save_point",
+            description="Roll this playthrough's memory back to a previously created save point, undoing everything since.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "save_id": {
+                        "type": "string",
+                        "description": "A save_id from create_save_point.",
+                    }
+                },
+                "required": ["save_id"],
+            },
+            handler=_rollback_to_save_point,
+            annotations=ToolAnnotations(
+                read_only_hint=False,
+                destructive_hint=True,
+                idempotent_hint=False,
+                open_world_hint=False,
+            ),
+        )
+    )
     return registry
 
 
@@ -123,7 +155,9 @@ def build_rollback_authorization_hook(engine: Any, context_id: str):
         if save_point is None:
             return HookResult(HookDecision.DENY, f"unknown save_id: {save_id!r}")
         if save_point.context_id != context_id:
-            return HookResult(HookDecision.DENY, "save point does not belong to this playthrough")
+            return HookResult(
+                HookDecision.DENY, "save point does not belong to this playthrough"
+            )
         return HookResult(HookDecision.ALLOW)
 
     return hook

@@ -6,18 +6,24 @@ Bare `§N` references below are sections of docs/fixes_and_evaluation_findings.m
 from __future__ import annotations
 
 import contextvars
+from collections.abc import MutableMapping
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from collections.abc import MutableMapping
 
 from context_memory.core.config import Config
 from context_memory.core.llm_client import LLMClient
 from context_memory.core.logging import get_logger, timed_operation
 from context_memory.core.ports import Embedder, GraphTransport
 from context_memory.retrieval.detectors import looks_like_count_query
-from context_memory.retrieval.models import DateRange, QueryRewriterOutput, RetrievedFact, RetrievedFacts, ScoredFact
 from context_memory.retrieval.fuser import CandidateFuser
 from context_memory.retrieval.graph_expander import GraphExpander
+from context_memory.retrieval.models import (
+    DateRange,
+    QueryRewriterOutput,
+    RetrievedFact,
+    RetrievedFacts,
+    ScoredFact,
+)
 from context_memory.retrieval.query_rewriter import JsonFileRewriteCache, QueryRewriter
 from context_memory.retrieval.reader import AnswerReader
 from context_memory.retrieval.reranker import Reranker
@@ -78,14 +84,26 @@ class HybridRetrievalEngine:
         # keep-alive connection cache). This pool only ever runs Phase 0's two
         # LLM calls, which touch no shared per-call state.
         self._phase0_executor = ThreadPoolExecutor(max_workers=2)
-        self._fuser = CandidateFuser(Reranker(self._rerank_client, self._config), self._config)
+        self._fuser = CandidateFuser(
+            Reranker(self._rerank_client, self._config), self._config
+        )
         self._reader = AnswerReader(
             llm_client, SiblingExpander(pool, embedder, self._config), self._config
         )
 
-    def retrieve_and_answer(self, context_id: str, question: str, question_date: datetime, top_k: int | None = None) -> str:
+    def retrieve_and_answer(
+        self,
+        context_id: str,
+        question: str,
+        question_date: datetime,
+        top_k: int | None = None,
+    ) -> str:
         ranked, _graph_data, top_k = self._retrieve_ranked(
-            context_id, question, question_date, top_k, operation_name="retrieval.retrieve_and_answer"
+            context_id,
+            question,
+            question_date,
+            top_k,
+            operation_name="retrieval.retrieve_and_answer",
         )
         if ranked is None:
             return self._config.retrieval_abstention_message
@@ -150,14 +168,24 @@ class HybridRetrievalEngine:
         # fallback -- what it already returns for every query this endpoint
         # has ever sent it -- is reproduced exactly below, not approximated.
         ranked, graph_data, top_k = self._retrieve_ranked(
-            context_id, query_text, question_date, top_k,
-            operation_name="retrieval.retrieve_facts", skip_llm_stages=True,
+            context_id,
+            query_text,
+            question_date,
+            top_k,
+            operation_name="retrieval.retrieve_facts",
+            skip_llm_stages=True,
         )
         if ranked is None:
             return RetrievedFacts(facts=[], abstained=True, resolved_time_point=None)
 
-        metadata_by_fact_id = self._fetch_fact_metadata(context_id, [f.fact_id for f in ranked])
-        checkpoint_order = self._fetch_checkpoint_order(template_context_id) if template_context_id else None
+        metadata_by_fact_id = self._fetch_fact_metadata(
+            context_id, [f.fact_id for f in ranked]
+        )
+        checkpoint_order = (
+            self._fetch_checkpoint_order(template_context_id)
+            if template_context_id
+            else None
+        )
         current_index = (
             checkpoint_order.index(checkpoint)
             if checkpoint_order and checkpoint in checkpoint_order
@@ -165,31 +193,46 @@ class HybridRetrievalEngine:
         )
 
         visible = [
-            scored for scored in ranked
+            scored
+            for scored in ranked
             if self._fact_is_visible(
-                scored, metadata_by_fact_id, checkpoint_order, current_index,
-                graph_data, as_of_turn, participant_id,
+                scored,
+                metadata_by_fact_id,
+                checkpoint_order,
+                current_index,
+                graph_data,
+                as_of_turn,
+                participant_id,
             )
         ]
 
         facts = [
             self._to_retrieved_fact(
-                scored, graph_data.get(scored.fact_id, {}),
+                scored,
+                graph_data.get(scored.fact_id, {}),
                 metadata_by_fact_id.get(scored.fact_id, (None, None, None, False)),
             )
             for scored in visible[:top_k]
         ]
         resolved_time_point = str(as_of_turn) if as_of_turn is not None else None
-        return RetrievedFacts(facts=facts, abstained=False, resolved_time_point=resolved_time_point)
+        return RetrievedFacts(
+            facts=facts, abstained=False, resolved_time_point=resolved_time_point
+        )
 
     @staticmethod
     def _fact_is_visible(
-        scored: ScoredFact, metadata_by_fact_id: dict[str, tuple[str | None, dict | None, str | None, bool]],
-        checkpoint_order: list[str] | None, current_index: int | None,
-        graph_data: dict, as_of_turn: int | None = None, participant_id: str | None = None,
+        scored: ScoredFact,
+        metadata_by_fact_id: dict[
+            str, tuple[str | None, dict | None, str | None, bool]
+        ],
+        checkpoint_order: list[str] | None,
+        current_index: int | None,
+        graph_data: dict,
+        as_of_turn: int | None = None,
+        participant_id: str | None = None,
     ) -> bool:
-        fact_checkpoint, _when_active, visible_to_participant_id, _hidden = metadata_by_fact_id.get(
-            scored.fact_id, (None, None, None, False)
+        fact_checkpoint, _when_active, visible_to_participant_id, _hidden = (
+            metadata_by_fact_id.get(scored.fact_id, (None, None, None, False))
         )
         # Gap B (AI-DND memory-layer contract handoff): `when_active` is no
         # longer evaluated/filtered here at all -- the product's own
@@ -202,7 +245,11 @@ class HybridRetrievalEngine:
         # only the authoritative filtering moved. `checkpoint`-gating below
         # is unaffected: the product has no client-side equivalent for it,
         # so it stays mem1's job.
-        if fact_checkpoint is not None and checkpoint_order is not None and fact_checkpoint in checkpoint_order:
+        if (
+            fact_checkpoint is not None
+            and checkpoint_order is not None
+            and fact_checkpoint in checkpoint_order
+        ):
             # Unset/unresolvable current_index (no checkpoint given, or one
             # not in this scenario's own list) and an unrecognized
             # fact_checkpoint both fail OPEN, not closed -- a configuration
@@ -260,8 +307,14 @@ class HybridRetrievalEngine:
                         (context_id, list(numeric_id_by_fact_id.keys())),
                     )
                     return {
-                        numeric_id_by_fact_id[row[0]]: (row[1], row[2], row[3], bool(row[4]))
-                        for row in cursor.fetchall() if row[0] in numeric_id_by_fact_id
+                        numeric_id_by_fact_id[row[0]]: (
+                            row[1],
+                            row[2],
+                            row[3],
+                            bool(row[4]),
+                        )
+                        for row in cursor.fetchall()
+                        if row[0] in numeric_id_by_fact_id
                     }
         except Exception as e:
             logger.warning("pre_authored_fact_metadata lookup skipped: %s", e)
@@ -283,8 +336,14 @@ class HybridRetrievalEngine:
 
     @staticmethod
     def _to_retrieved_fact(
-        scored: ScoredFact, graph_fields: dict,
-        metadata: tuple[str | None, dict | None, str | None, bool] = (None, None, None, False),
+        scored: ScoredFact,
+        graph_fields: dict,
+        metadata: tuple[str | None, dict | None, str | None, bool] = (
+            None,
+            None,
+            None,
+            False,
+        ),
     ) -> RetrievedFact:
         # §9 fix: `subject`/`object_literal` are the real triple components
         # extraction (or direct authoring) wrote onto the Fact node -- used
@@ -326,7 +385,12 @@ class HybridRetrievalEngine:
         )
 
     def _retrieve_ranked(
-        self, context_id: str, question: str, question_date: datetime, top_k: int | None, operation_name: str,
+        self,
+        context_id: str,
+        question: str,
+        question_date: datetime,
+        top_k: int | None,
+        operation_name: str,
         skip_llm_stages: bool = False,
     ) -> tuple[list[ScoredFact] | None, dict, int]:
         """Phases 0-3, shared by `retrieve_and_answer` and `retrieve_facts`:
@@ -345,10 +409,20 @@ class HybridRetrievalEngine:
         # (tests, API callers) is never second-guessed by the heuristic.
         is_count_query = top_k is None and looks_like_count_query(question)
         if top_k is None:
-            top_k = self._config.retrieval_count_query_top_k if is_count_query else self._config.retrieval_top_k
+            top_k = (
+                self._config.retrieval_count_query_top_k
+                if is_count_query
+                else self._config.retrieval_top_k
+            )
         with timed_operation(
-            logger, operation_name,
-            {"context_id": context_id, "question_len": len(question), "is_count_query": is_count_query, "top_k": top_k},
+            logger,
+            operation_name,
+            {
+                "context_id": context_id,
+                "question_len": len(question),
+                "is_count_query": is_count_query,
+                "top_k": top_k,
+            },
         ) as ctx:
             # Phase 0: Temporal Resolution & Query Rewriting. Two independent
             # LLM calls -- the rewriter doesn't use temporal_bounds and the
@@ -362,10 +436,16 @@ class HybridRetrievalEngine:
                 # already returns for AI-DND's query shape in practice
                 # (verified: no temporal-phrase, no-anchor case, every time).
                 temporal_bounds = DateRange()
-                expanded_query = QueryRewriterOutput(decomposed_queries=[question], synonyms=[])
+                expanded_query = QueryRewriterOutput(
+                    decomposed_queries=[question], synonyms=[]
+                )
             else:
-                resolver = TemporalQueryResolver(self._temporal_resolver_client, self._config)
-                rewriter = QueryRewriter(self._query_rewriter_client, self._config, cache=self._rewrite_cache)
+                resolver = TemporalQueryResolver(
+                    self._temporal_resolver_client, self._config
+                )
+                rewriter = QueryRewriter(
+                    self._query_rewriter_client, self._config, cache=self._rewrite_cache
+                )
                 # `ThreadPoolExecutor` doesn't propagate `ContextVar`s to its
                 # workers (that's asyncio-only) -- without this, both calls'
                 # journal rows (Phase 5) lose the request's correlation_id/
@@ -374,8 +454,15 @@ class HybridRetrievalEngine:
                 # time, so each concurrent task needs its own copy, not one
                 # shared snapshot -- two calls is cheap, both still see the same
                 # ambient values since neither has diverged from this point yet.
-                temporal_future = self._phase0_executor.submit(contextvars.copy_context().run, resolver.resolve, question, question_date)
-                rewriter_future = self._phase0_executor.submit(contextvars.copy_context().run, rewriter.rewrite, question)
+                temporal_future = self._phase0_executor.submit(
+                    contextvars.copy_context().run,
+                    resolver.resolve,
+                    question,
+                    question_date,
+                )
+                rewriter_future = self._phase0_executor.submit(
+                    contextvars.copy_context().run, rewriter.rewrite, question
+                )
                 temporal_bounds = temporal_future.result()
                 expanded_query = rewriter_future.result()
 
@@ -384,29 +471,40 @@ class HybridRetrievalEngine:
             ctx["seed_facts_count"] = len(seed_facts)
 
             # Phase 2: Graph Expansion & Temporal Filtering
-            graph_data = self._graph_expander.expand(context_id, seed_facts, temporal_bounds, question_date)
+            graph_data = self._graph_expander.expand(
+                context_id, seed_facts, temporal_bounds, question_date
+            )
             ctx["graph_expanded_facts"] = len(graph_data)
 
             # Fallback: Populate missing fact text from PostgreSQL if empty
-            missing_text_fids = [fid for fid, fact in seed_facts.items() if not fact.text]
+            missing_text_fids = [
+                fid for fid, fact in seed_facts.items() if not fact.text
+            ]
             if missing_text_fids:
                 try:
                     with self._pool.connection() as conn:
                         with conn.cursor() as cursor:
                             cursor.execute(
                                 "SELECT fact_id, raw_text FROM fact_search_index WHERE context_id = %s AND fact_id = ANY(%s)",
-                                (context_id, missing_text_fids)
+                                (context_id, missing_text_fids),
                             )
                             for r_fid, r_text in cursor.fetchall():
                                 if str(r_fid) in seed_facts:
                                     seed_facts[str(r_fid)].text = r_text
                 except Exception as e:
-                    logger.debug("PostgreSQL fallback fact_search_index query skipped: %s", e)
+                    logger.debug(
+                        "PostgreSQL fallback fact_search_index query skipped: %s", e
+                    )
 
             # Phase 3: 4-Factor Composite Scoring (Reader Synthesis is the
             # caller's job now -- retrieve_and_answer's, not this method's).
             ranked = self._fuser.fuse(
-                question, seed_facts, graph_data, top_k, expanded_query, skip_reranker=skip_llm_stages
+                question,
+                seed_facts,
+                graph_data,
+                top_k,
+                expanded_query,
+                skip_reranker=skip_llm_stages,
             )
             ctx["ranked_count"] = 0 if ranked is None else len(ranked)
             return ranked, graph_data, top_k

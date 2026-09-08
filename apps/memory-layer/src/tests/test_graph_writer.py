@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import unittest
 
-from context_memory.ingestion.fakes import InMemoryGraphManifestStore, RecordingGraphTransport
-from context_memory.core.errors import ContractValidationError, GraphPayloadConflictError
-from context_memory.ingestion.graph_writer import GraphWriter
+from context_memory.core.errors import (
+    ContractValidationError,
+    GraphPayloadConflictError,
+)
 from context_memory.core.graph import GraphNode, GraphRelationship, GraphWritePlan
+from context_memory.ingestion.fakes import (
+    InMemoryGraphManifestStore,
+    RecordingGraphTransport,
+)
+from context_memory.ingestion.graph_writer import GraphWriter
 
 
 class GraphWriterTests(unittest.TestCase):
@@ -15,36 +21,95 @@ class GraphWriterTests(unittest.TestCase):
             context,
             "plan-001",
             (
-                GraphNode(1, "Session", "session-001", {"context_id": context, "session_id": "session-001"}),
-                GraphNode(2, "Turn", "turn-001", {"context_id": context, "source_chunk_id": "chunk-001"}),
+                GraphNode(
+                    1,
+                    "Session",
+                    "session-001",
+                    {"context_id": context, "session_id": "session-001"},
+                ),
+                GraphNode(
+                    2,
+                    "Turn",
+                    "turn-001",
+                    {"context_id": context, "source_chunk_id": "chunk-001"},
+                ),
             ),
-            (GraphRelationship(3, "HAS_TURN", "has-turn-001", 1, 2, "Session", "Turn", {"context_id": context, "turn_index": 0}),),
+            (
+                GraphRelationship(
+                    3,
+                    "HAS_TURN",
+                    "has-turn-001",
+                    1,
+                    2,
+                    "Session",
+                    "Turn",
+                    {"context_id": context, "turn_index": 0},
+                ),
+            ),
         )
 
     def test_writes_supported_unwind_batches_with_stable_keys(self) -> None:
         transport = RecordingGraphTransport()
-        bookmarks = GraphWriter(InMemoryGraphManifestStore(), transport).write(self.plan())
+        bookmarks = GraphWriter(InMemoryGraphManifestStore(), transport).write(
+            self.plan()
+        )
         self.assertEqual(bookmarks, ("bookmark-1", "bookmark-2", "bookmark-3"))
         self.assertEqual(len(transport.writes), 3)
         self.assertIn("UNWIND $rows AS row MERGE", transport.writes[0][0])
         self.assertIn("SET n:Session", transport.writes[0][0])
-        self.assertIn("MATCH (s:Session {id: row.source_id}), (d:Turn {id: row.destination_id})", transport.writes[2][0])
+        self.assertIn(
+            "MATCH (s:Session {id: row.source_id}), (d:Turn {id: row.destination_id})",
+            transport.writes[2][0],
+        )
         self.assertRegex(transport.writes[0][2], r"^context-memory-[0-9a-f]{64}$")
 
     def test_manifest_rejects_changed_replay_before_transport(self) -> None:
         manifest, transport = InMemoryGraphManifestStore(), RecordingGraphTransport()
         writer, plan = GraphWriter(manifest, transport), self.plan()
         writer.write(plan)
-        changed = GraphWritePlan(plan.context_id, plan.plan_key, (GraphNode(1, "Session", "session-001", {"context_id": plan.context_id, "session_id": "changed"}),), ())
+        changed = GraphWritePlan(
+            plan.context_id,
+            plan.plan_key,
+            (
+                GraphNode(
+                    1,
+                    "Session",
+                    "session-001",
+                    {"context_id": plan.context_id, "session_id": "changed"},
+                ),
+            ),
+            (),
+        )
         with self.assertRaises(GraphPayloadConflictError):
             writer.write(changed)
         self.assertEqual(len(transport.writes), 3)
 
     def test_rejects_unsafe_property_and_id_collision(self) -> None:
         with self.assertRaises(ContractValidationError):
-            GraphNode(1, "Fact", "fact-001", {"context_id": "context-001", "x) SET n.pwned": "bad"})
+            GraphNode(
+                1,
+                "Fact",
+                "fact-001",
+                {"context_id": "context-001", "x) SET n.pwned": "bad"},
+            )
         with self.assertRaises(ContractValidationError):
-            GraphWritePlan("context-001", "plan", (GraphNode(1, "Fact", "fact-001", {"context_id": "context-001"}),), (GraphRelationship(1, "ABOUT", "about-001", 1, 1, "Fact", "Entity", {"context_id": "context-001"}),))
+            GraphWritePlan(
+                "context-001",
+                "plan",
+                (GraphNode(1, "Fact", "fact-001", {"context_id": "context-001"}),),
+                (
+                    GraphRelationship(
+                        1,
+                        "ABOUT",
+                        "about-001",
+                        1,
+                        1,
+                        "Fact",
+                        "Entity",
+                        {"context_id": "context-001"},
+                    ),
+                ),
+            )
 
     def other_plan(self) -> GraphWritePlan:
         """Same shape as `plan()` (same node labels/property sets, same
@@ -55,10 +120,31 @@ class GraphWriterTests(unittest.TestCase):
             context,
             "plan-002",
             (
-                GraphNode(11, "Session", "session-002", {"context_id": context, "session_id": "session-002"}),
-                GraphNode(12, "Turn", "turn-002", {"context_id": context, "source_chunk_id": "chunk-002"}),
+                GraphNode(
+                    11,
+                    "Session",
+                    "session-002",
+                    {"context_id": context, "session_id": "session-002"},
+                ),
+                GraphNode(
+                    12,
+                    "Turn",
+                    "turn-002",
+                    {"context_id": context, "source_chunk_id": "chunk-002"},
+                ),
             ),
-            (GraphRelationship(13, "HAS_TURN", "has-turn-002", 11, 12, "Session", "Turn", {"context_id": context, "turn_index": 0}),),
+            (
+                GraphRelationship(
+                    13,
+                    "HAS_TURN",
+                    "has-turn-002",
+                    11,
+                    12,
+                    "Session",
+                    "Turn",
+                    {"context_id": context, "turn_index": 0},
+                ),
+            ),
         )
 
     def test_write_many_merges_matching_buckets_across_plans(self) -> None:
@@ -71,22 +157,38 @@ class GraphWriterTests(unittest.TestCase):
         self.assertEqual(len(transport.writes), 3)  # not 6 -- merged, not doubled
         self.assertEqual(len(bookmarks), 3)
 
-        session_call = next(rows for cypher, rows, _ in transport.writes if "SET n:Session" in cypher)
-        self.assertEqual({row["id"] for row in session_call}, {1, 11})  # both plans' Session nodes, one call
+        session_call = next(
+            rows for cypher, rows, _ in transport.writes if "SET n:Session" in cypher
+        )
+        self.assertEqual(
+            {row["id"] for row in session_call}, {1, 11}
+        )  # both plans' Session nodes, one call
 
-        turn_call = next(rows for cypher, rows, _ in transport.writes if "SET n:Turn" in cypher)
+        turn_call = next(
+            rows for cypher, rows, _ in transport.writes if "SET n:Turn" in cypher
+        )
         self.assertEqual({row["id"] for row in turn_call}, {2, 12})
 
-        rel_call = next(rows for cypher, rows, _ in transport.writes if "MATCH (s:Session" in cypher)
+        rel_call = next(
+            rows for cypher, rows, _ in transport.writes if "MATCH (s:Session" in cypher
+        )
         self.assertEqual({row["id"] for row in rel_call}, {3, 13})
 
     def test_write_many_writes_all_nodes_before_any_relationship(self) -> None:
         transport = RecordingGraphTransport()
-        GraphWriter(InMemoryGraphManifestStore(), transport).write_many([self.plan(), self.other_plan()])
+        GraphWriter(InMemoryGraphManifestStore(), transport).write_many(
+            [self.plan(), self.other_plan()]
+        )
         cyphers = [cypher for cypher, _, _ in transport.writes]
-        first_relationship_idx = next(i for i, c in enumerate(cyphers) if "MATCH (s:" in c)
-        node_cyphers_after = [c for c in cyphers[first_relationship_idx:] if "MATCH (s:" not in c]
-        self.assertEqual(node_cyphers_after, [])  # nothing node-only appears after the first relationship write
+        first_relationship_idx = next(
+            i for i, c in enumerate(cyphers) if "MATCH (s:" in c
+        )
+        node_cyphers_after = [
+            c for c in cyphers[first_relationship_idx:] if "MATCH (s:" not in c
+        ]
+        self.assertEqual(
+            node_cyphers_after, []
+        )  # nothing node-only appears after the first relationship write
 
     def test_write_many_registers_every_plan_in_manifest(self) -> None:
         """Idempotency is per-plan, not per-batch -- a later solo retry of
@@ -95,15 +197,29 @@ class GraphWriterTests(unittest.TestCase):
         writer = GraphWriter(manifest, transport)
         writer.write_many([self.plan(), self.other_plan()])
         changed_second = GraphWritePlan(
-            "context-001", "plan-002",
-            (GraphNode(11, "Session", "session-002", {"context_id": "context-001", "session_id": "changed"}),), (),
+            "context-001",
+            "plan-002",
+            (
+                GraphNode(
+                    11,
+                    "Session",
+                    "session-002",
+                    {"context_id": "context-001", "session_id": "changed"},
+                ),
+            ),
+            (),
         )
         with self.assertRaises(GraphPayloadConflictError):
             writer.write(changed_second)
 
     def test_write_many_of_one_plan_matches_write(self) -> None:
-        transport_many, transport_single = RecordingGraphTransport(), RecordingGraphTransport()
-        GraphWriter(InMemoryGraphManifestStore(), transport_many).write_many([self.plan()])
+        transport_many, transport_single = (
+            RecordingGraphTransport(),
+            RecordingGraphTransport(),
+        )
+        GraphWriter(InMemoryGraphManifestStore(), transport_many).write_many(
+            [self.plan()]
+        )
         GraphWriter(InMemoryGraphManifestStore(), transport_single).write(self.plan())
         self.assertEqual(len(transport_many.writes), len(transport_single.writes))
 
@@ -121,13 +237,27 @@ class GraphWriterTests(unittest.TestCase):
         one node bucket to 1236 rows, HTTP 429, whole group lost)."""
         context = "context-001"
         return [
-            GraphWritePlan(context, f"plan-{i:04d}", (GraphNode(i, "Fact", f"fact-{i:04d}", {"context_id": context, "text": f"fact {i}"}),), ())
+            GraphWritePlan(
+                context,
+                f"plan-{i:04d}",
+                (
+                    GraphNode(
+                        i,
+                        "Fact",
+                        f"fact-{i:04d}",
+                        {"context_id": context, "text": f"fact {i}"},
+                    ),
+                ),
+                (),
+            )
             for i in range(n)
         ]
 
     def test_write_many_splits_a_bucket_that_exceeds_the_row_cap(self) -> None:
         transport = RecordingGraphTransport()
-        writer = GraphWriter(InMemoryGraphManifestStore(), transport, max_rows_per_write=10)
+        writer = GraphWriter(
+            InMemoryGraphManifestStore(), transport, max_rows_per_write=10
+        )
         writer.write_many(self.many_plans(25))
         # 25 rows, cap 10 -> 3 physical calls (10, 10, 5), not 1 oversized call.
         self.assertEqual(len(transport.writes), 3)
@@ -139,7 +269,9 @@ class GraphWriterTests(unittest.TestCase):
 
     def test_write_many_split_sub_batches_get_distinct_idempotency_keys(self) -> None:
         transport = RecordingGraphTransport()
-        writer = GraphWriter(InMemoryGraphManifestStore(), transport, max_rows_per_write=10)
+        writer = GraphWriter(
+            InMemoryGraphManifestStore(), transport, max_rows_per_write=10
+        )
         writer.write_many(self.many_plans(25))
         keys = [key for _, _, key in transport.writes]
         self.assertEqual(len(keys), len(set(keys)))  # no two physical calls share a key
@@ -147,9 +279,16 @@ class GraphWriterTests(unittest.TestCase):
     def test_write_below_the_cap_is_unaffected(self) -> None:
         """Below the cap, splitting logic changes nothing -- same call
         count and same key `write()` always produced."""
-        transport_default, transport_capped = RecordingGraphTransport(), RecordingGraphTransport()
-        GraphWriter(InMemoryGraphManifestStore(), transport_default, max_rows_per_write=900).write(self.plan())
-        GraphWriter(InMemoryGraphManifestStore(), transport_capped, max_rows_per_write=1).write_many([self.plan()])
+        transport_default, transport_capped = (
+            RecordingGraphTransport(),
+            RecordingGraphTransport(),
+        )
+        GraphWriter(
+            InMemoryGraphManifestStore(), transport_default, max_rows_per_write=900
+        ).write(self.plan())
+        GraphWriter(
+            InMemoryGraphManifestStore(), transport_capped, max_rows_per_write=1
+        ).write_many([self.plan()])
         # single-plan write_many delegates straight to write(); a cap of 1 with
         # only 1-2 rows/bucket here still never needs to split within a bucket
         # of size 1, so this just confirms the delegation path is untouched.
@@ -164,25 +303,55 @@ class GraphWriterTests(unittest.TestCase):
         values for the same id."""
         context = "context-001"
         earlier = GraphWritePlan(
-            context, "plan-a",
-            (GraphNode(100, "Fact", "fact-100", {"context_id": context, "superseded_at": 2000, "valid_to": 9999999999}),),
+            context,
+            "plan-a",
+            (
+                GraphNode(
+                    100,
+                    "Fact",
+                    "fact-100",
+                    {
+                        "context_id": context,
+                        "superseded_at": 2000,
+                        "valid_to": 9999999999,
+                    },
+                ),
+            ),
             (),
         )
         later = GraphWritePlan(
-            context, "plan-b",
-            (GraphNode(100, "Fact", "fact-100", {"context_id": context, "superseded_at": 5000, "valid_to": 9999999999}),),
+            context,
+            "plan-b",
+            (
+                GraphNode(
+                    100,
+                    "Fact",
+                    "fact-100",
+                    {
+                        "context_id": context,
+                        "superseded_at": 5000,
+                        "valid_to": 9999999999,
+                    },
+                ),
+            ),
             (),
         )
         return earlier, later
 
-    def test_write_many_merges_conflicting_supersession_instead_of_erroring(self) -> None:
+    def test_write_many_merges_conflicting_supersession_instead_of_erroring(
+        self,
+    ) -> None:
         earlier, later = self.conflicting_supersession_plans()
         transport = RecordingGraphTransport()
         writer = GraphWriter(InMemoryGraphManifestStore(), transport)
         writer.write_many([earlier, later])  # must not raise
 
-        fact_call = next(rows for cypher, rows, _ in transport.writes if "SET n:Fact" in cypher)
-        self.assertEqual(len(fact_call), 1)  # one row for vertex 100, not two conflicting ones
+        fact_call = next(
+            rows for cypher, rows, _ in transport.writes if "SET n:Fact" in cypher
+        )
+        self.assertEqual(
+            len(fact_call), 1
+        )  # one row for vertex 100, not two conflicting ones
         self.assertEqual(fact_call[0]["id"], 100)
 
     def test_conflicting_supersession_keeps_the_earlier_timestamp(self) -> None:
@@ -191,15 +360,25 @@ class GraphWriterTests(unittest.TestCase):
         whichever plan happened to be processed last."""
         earlier, later = self.conflicting_supersession_plans()
         transport = RecordingGraphTransport()
-        GraphWriter(InMemoryGraphManifestStore(), transport).write_many([later, earlier])  # order-independent
-        fact_call = next(rows for cypher, rows, _ in transport.writes if "SET n:Fact" in cypher)
+        GraphWriter(InMemoryGraphManifestStore(), transport).write_many(
+            [later, earlier]
+        )  # order-independent
+        fact_call = next(
+            rows for cypher, rows, _ in transport.writes if "SET n:Fact" in cypher
+        )
         self.assertEqual(fact_call[0]["superseded_at"], 2000)
 
-    def test_identical_valid_to_across_duplicates_is_not_flagged_as_a_conflict(self) -> None:
+    def test_identical_valid_to_across_duplicates_is_not_flagged_as_a_conflict(
+        self,
+    ) -> None:
         earlier, later = self.conflicting_supersession_plans()
         transport = RecordingGraphTransport()
-        GraphWriter(InMemoryGraphManifestStore(), transport).write_many([earlier, later])
-        fact_call = next(rows for cypher, rows, _ in transport.writes if "SET n:Fact" in cypher)
+        GraphWriter(InMemoryGraphManifestStore(), transport).write_many(
+            [earlier, later]
+        )
+        fact_call = next(
+            rows for cypher, rows, _ in transport.writes if "SET n:Fact" in cypher
+        )
         self.assertEqual(fact_call[0]["valid_to"], 9999999999)
 
     def test_a_single_plan_cannot_contain_duplicate_graph_ids_at_all(self) -> None:
@@ -211,15 +390,28 @@ class GraphWriterTests(unittest.TestCase):
         context = "context-001"
         with self.assertRaises(ContractValidationError):
             GraphWritePlan(
-                context, "plan-both",
+                context,
+                "plan-both",
                 (
-                    GraphNode(100, "Fact", "fact-100", {"context_id": context, "superseded_at": 7000}),
-                    GraphNode(100, "Fact", "fact-100", {"context_id": context, "superseded_at": 3000}),
+                    GraphNode(
+                        100,
+                        "Fact",
+                        "fact-100",
+                        {"context_id": context, "superseded_at": 7000},
+                    ),
+                    GraphNode(
+                        100,
+                        "Fact",
+                        "fact-100",
+                        {"context_id": context, "superseded_at": 3000},
+                    ),
                 ),
                 (),
             )
 
-    def test_manifest_rejects_a_genuine_non_temporal_conflict_before_dedupe_runs(self) -> None:
+    def test_manifest_rejects_a_genuine_non_temporal_conflict_before_dedupe_runs(
+        self,
+    ) -> None:
         """A conflict outside superseded_at/valid_to/is_current is a real
         problem (two chunks disagreeing on a fact's actual text), and the
         manifest layer -- not `_dedupe_nodes` -- is what catches it, the
@@ -228,16 +420,40 @@ class GraphWriterTests(unittest.TestCase):
         not the primary guard; this confirms the primary guard still fires."""
         context = "context-001"
         first = GraphWritePlan(
-            context, "plan-a", (GraphNode(100, "Fact", "fact-100", {"context_id": context, "text": "first version"}),), (),
+            context,
+            "plan-a",
+            (
+                GraphNode(
+                    100,
+                    "Fact",
+                    "fact-100",
+                    {"context_id": context, "text": "first version"},
+                ),
+            ),
+            (),
         )
         second = GraphWritePlan(
-            context, "plan-b", (GraphNode(100, "Fact", "fact-100", {"context_id": context, "text": "second version"}),), (),
+            context,
+            "plan-b",
+            (
+                GraphNode(
+                    100,
+                    "Fact",
+                    "fact-100",
+                    {"context_id": context, "text": "second version"},
+                ),
+            ),
+            (),
         )
         transport = RecordingGraphTransport()
         with self.assertRaises(GraphPayloadConflictError):
-            GraphWriter(InMemoryGraphManifestStore(), transport).write_many([first, second])
+            GraphWriter(InMemoryGraphManifestStore(), transport).write_many(
+                [first, second]
+            )
 
-    def test_dedupe_nodes_fallback_keeps_the_later_value_for_an_unexpected_conflict(self) -> None:
+    def test_dedupe_nodes_fallback_keeps_the_later_value_for_an_unexpected_conflict(
+        self,
+    ) -> None:
         """Unit-level test of `_dedupe_nodes` itself, bypassing the manifest
         guard above -- if some future caller ever hands it a genuine
         non-temporal conflict directly, it must still degrade (log + keep
@@ -245,8 +461,18 @@ class GraphWriterTests(unittest.TestCase):
         lost outright."""
         context = "context-001"
         nodes = [
-            GraphNode(100, "Fact", "fact-100", {"context_id": context, "text": "first version"}),
-            GraphNode(100, "Fact", "fact-100", {"context_id": context, "text": "second version"}),
+            GraphNode(
+                100,
+                "Fact",
+                "fact-100",
+                {"context_id": context, "text": "first version"},
+            ),
+            GraphNode(
+                100,
+                "Fact",
+                "fact-100",
+                {"context_id": context, "text": "second version"},
+            ),
         ]
         merged = GraphWriter._dedupe_nodes(nodes)
         self.assertEqual(len(merged), 1)
@@ -262,12 +488,34 @@ class GraphWriterVerifyTests(unittest.TestCase):
     def plan(self) -> GraphWritePlan:
         context = "context-001"
         return GraphWritePlan(
-            context, "plan-001",
+            context,
+            "plan-001",
             (
-                GraphNode(1, "Session", "session-001", {"context_id": context, "session_id": "session-001"}),
-                GraphNode(2, "Turn", "turn-001", {"context_id": context, "source_chunk_id": "chunk-001"}),
+                GraphNode(
+                    1,
+                    "Session",
+                    "session-001",
+                    {"context_id": context, "session_id": "session-001"},
+                ),
+                GraphNode(
+                    2,
+                    "Turn",
+                    "turn-001",
+                    {"context_id": context, "source_chunk_id": "chunk-001"},
+                ),
             ),
-            (GraphRelationship(3, "HAS_TURN", "has-turn-001", 1, 2, "Session", "Turn", {"context_id": context, "turn_index": 0}),),
+            (
+                GraphRelationship(
+                    3,
+                    "HAS_TURN",
+                    "has-turn-001",
+                    1,
+                    2,
+                    "Session",
+                    "Turn",
+                    {"context_id": context, "turn_index": 0},
+                ),
+            ),
         )
 
     def test_verify_true_after_a_real_write(self) -> None:

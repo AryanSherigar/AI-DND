@@ -7,6 +7,7 @@ import { EndConditionsEditor } from "../EndConditionsEditor/EndConditionsEditor"
 import { InvariantEditor } from "../InvariantEditor/InvariantEditor";
 import { MapEditor } from "../MapEditor/MapEditor";
 import { MinigameEditor } from "../MinigameEditor/MinigameEditor";
+import { MusicSlotEditor } from "../MusicSlotEditor/MusicSlotEditor";
 import { PlaytestButton } from "../PlaytestButton/PlaytestButton";
 import { DuplicateScenarioButton } from "../DuplicateScenarioButton/DuplicateScenarioButton";
 import { StudioSetupPanel } from "./StudioSetupPanel";
@@ -69,6 +70,7 @@ export const MasterModeStudioLayout: React.FC<MasterModeStudioLayoutProps> = ({
           <MinigameEditor scenarioId={scenarioId} />
         )}
         {activeTab === "maps" && <MapEditor scenarioId={scenarioId} />}
+        {activeTab === "music" && <MusicSlotEditor scenarioId={scenarioId} />}
         {activeTab === "setup" && <StudioSetupPanel scenarioId={scenarioId} />}
       </main>
       <StudioChatDrawer activeSection={activeTab} scenarioId={scenarioId} />

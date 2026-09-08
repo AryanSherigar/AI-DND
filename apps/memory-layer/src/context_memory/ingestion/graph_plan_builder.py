@@ -43,9 +43,8 @@ Bare `§N` references below are sections of docs/fixes_and_evaluation_findings.m
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from collections.abc import Callable, Sequence
-from typing import Mapping
+from datetime import datetime, timezone
 
 from context_memory.core.graph import GraphNode, GraphRelationship, GraphWritePlan
 from context_memory.core.models import Chunk, ExtractedMemoryCandidate
@@ -60,7 +59,9 @@ from context_memory.ingestion.ports import (
 ResolveEntity = Callable[[str, str, str], "EntityProfile | None"]
 """(context_id, surface, entity_type) -> resolved profile, or None if unresolved."""
 
-ResolveManyEntities = Callable[[str, Sequence[tuple[str, str]]], list["EntityProfile | None"]]
+ResolveManyEntities = Callable[
+    [str, Sequence[tuple[str, str]]], list["EntityProfile | None"]
+]
 """(context_id, [(surface, entity_type), ...]) -> resolved profiles in the same order/length,
 None per unresolved mention. See `EntityRegistry.resolve_many`'s docstring for what this
 parallelizes and the one tradeoff accepted to do it. Optional -- when not supplied, `build()`
@@ -78,6 +79,7 @@ def _scalar_properties(context_id: str, **fields: object) -> dict[str, object]:
 
 FindExistingFacts = Callable[[str, int, str], list[FactState]]
 """(context_id, subject_entity_id, predicate_key) -> list of active FactStates for that subject and predicate."""
+
 
 class GraphPlanBuilder:
     """Builds one `GraphWritePlan` per chunk from its accepted extraction output."""
@@ -103,7 +105,9 @@ class GraphPlanBuilder:
         turn_node = self._turn_node(chunk)
         nodes[session_node.graph_id] = session_node
         nodes[turn_node.graph_id] = turn_node
-        has_turn = self._has_turn_edge(context_id, session_key, session_node, turn_node, chunk)
+        has_turn = self._has_turn_edge(
+            context_id, session_key, session_node, turn_node, chunk
+        )
         relationships[has_turn.graph_id] = has_turn
 
         # Speaker node
@@ -135,10 +139,14 @@ class GraphPlanBuilder:
             fact_node = self._fact_node(chunk, candidate, created_at_dt)
             nodes[fact_node.graph_id] = fact_node
 
-            extracted_from = self._extracted_from_edge(context_id, candidate, fact_node, turn_node, chunk)
+            extracted_from = self._extracted_from_edge(
+                context_id, candidate, fact_node, turn_node, chunk
+            )
             relationships[extracted_from.graph_id] = extracted_from
 
-            stated_by = self._stated_by_edge(context_id, candidate, fact_node, speaker_node)
+            stated_by = self._stated_by_edge(
+                context_id, candidate, fact_node, speaker_node
+            )
             relationships[stated_by.graph_id] = stated_by
 
             subject_entity_node = None
@@ -147,20 +155,36 @@ class GraphPlanBuilder:
                     profile = preresolved[mention_cursor]
                     mention_cursor += 1
                 else:
-                    profile = resolve(context_id, entity_candidate.surface, entity_candidate.entity_type or "other")
+                    profile = resolve(
+                        context_id,
+                        entity_candidate.surface,
+                        entity_candidate.entity_type or "other",
+                    )
                 if profile is None:
                     continue  # unresolved mention: no forced link (ADR-020)
                 entity_node = self._entity_node(profile)
                 if subject_entity_node is None:
                     subject_entity_node = entity_node
                 nodes[entity_node.graph_id] = entity_node
-                about = self._about_edge(context_id, candidate, fact_node, entity_node, entity_candidate.surface)
+                about = self._about_edge(
+                    context_id,
+                    candidate,
+                    fact_node,
+                    entity_node,
+                    entity_candidate.surface,
+                )
                 relationships[about.graph_id] = about
                 for alias_node, has_alias in self._alias_records(profile):
                     nodes[alias_node.graph_id] = alias_node
                     relationships[has_alias.graph_id] = has_alias
 
-            if candidate.action != "DELETE" and candidate.predicate_key and subject_entity_node and update_classifier and find_existing_facts:
+            if (
+                candidate.action != "DELETE"
+                and candidate.predicate_key
+                and subject_entity_node
+                and update_classifier
+                and find_existing_facts
+            ):
                 new_fact_state = FactState(
                     fact_id=candidate.candidate_id,
                     subject_entity_id=subject_entity_node.graph_id,
@@ -168,39 +192,71 @@ class GraphPlanBuilder:
                     text=candidate.text,
                     observed_at=candidate.temporal.observed_at,
                     valid_from=candidate.temporal.valid_from,
-                    valid_to=candidate.temporal.valid_to
+                    valid_to=candidate.temporal.valid_to,
                 )
-                existing_facts = find_existing_facts(context_id, subject_entity_node.graph_id, candidate.predicate_key)
-                
+                existing_facts = find_existing_facts(
+                    context_id, subject_entity_node.graph_id, candidate.predicate_key
+                )
+
                 existing_facts = list(existing_facts)
                 if isinstance(update_classifier, BatchTemporalUpdateClassifierPort):
-                    decisions = update_classifier.classify_many(new_fact=new_fact_state, prior_facts=existing_facts)
+                    decisions = update_classifier.classify_many(
+                        new_fact=new_fact_state, prior_facts=existing_facts
+                    )
                 else:
-                    decisions = [update_classifier.classify(new_fact=new_fact_state, prior_fact=p) for p in existing_facts]
+                    decisions = [
+                        update_classifier.classify(
+                            new_fact=new_fact_state, prior_fact=p
+                        )
+                        for p in existing_facts
+                    ]
                 for prior_fact, decision in zip(existing_facts, decisions):
-                    if decision.relation in (TemporalRelation.CORRECTION, TemporalRelation.STATE_CHANGE):
+                    if decision.relation in (
+                        TemporalRelation.CORRECTION,
+                        TemporalRelation.STATE_CHANGE,
+                    ):
                         # Create SUPERSEDES edge
-                        edge_logical_key = f"supersedes:{candidate.candidate_id}:{prior_fact.fact_id}"
-                        edge_graph_id = self._allocator.allocate_graph_id("supersedes", context_id, edge_logical_key)
-                        
-                        prior_fact_graph_id = self._allocator.allocate_graph_id("fact", context_id, f"fact:{prior_fact.fact_id}")
+                        edge_logical_key = (
+                            f"supersedes:{candidate.candidate_id}:{prior_fact.fact_id}"
+                        )
+                        edge_graph_id = self._allocator.allocate_graph_id(
+                            "supersedes", context_id, edge_logical_key
+                        )
+
+                        prior_fact_graph_id = self._allocator.allocate_graph_id(
+                            "fact", context_id, f"fact:{prior_fact.fact_id}"
+                        )
                         supersedes_edge = GraphRelationship(
-                            edge_graph_id, "SUPERSEDES", edge_logical_key, fact_node.graph_id, prior_fact_graph_id,
-                            "Fact", "Fact", _scalar_properties(context_id)
+                            edge_graph_id,
+                            "SUPERSEDES",
+                            edge_logical_key,
+                            fact_node.graph_id,
+                            prior_fact_graph_id,
+                            "Fact",
+                            "Fact",
+                            _scalar_properties(context_id),
                         )
                         relationships[supersedes_edge.graph_id] = supersedes_edge
-                        
+
                         # Update old fact
                         prior_logical_key = f"fact:{prior_fact.fact_id}"
                         nodes[prior_fact_graph_id] = GraphNode(
-                            prior_fact_graph_id, "Fact", prior_logical_key,
+                            prior_fact_graph_id,
+                            "Fact",
+                            prior_logical_key,
                             _scalar_properties(
                                 context_id,
                                 logical_key=prior_logical_key,
                                 is_current=False,
-                                superseded_at=int(decision.prior_superseded_at.timestamp()) if decision.prior_superseded_at else 9999999999,
-                                valid_to=int(decision.prior_valid_to.timestamp()) if decision.prior_valid_to else 9999999999
-                            )
+                                superseded_at=int(
+                                    decision.prior_superseded_at.timestamp()
+                                )
+                                if decision.prior_superseded_at
+                                else 9999999999,
+                                valid_to=int(decision.prior_valid_to.timestamp())
+                                if decision.prior_valid_to
+                                else 9999999999,
+                            ),
                         )
 
         plan_key = f"plan:{chunk.chunk_id}"
@@ -225,7 +281,9 @@ class GraphPlanBuilder:
         """
         session_key = chunk.session_id or "unknown"
         logical_key = f"session:{session_key}"
-        graph_id = self._allocator.allocate_graph_id("session", chunk.context_id, logical_key)
+        graph_id = self._allocator.allocate_graph_id(
+            "session", chunk.context_id, logical_key
+        )
         properties = _scalar_properties(
             chunk.context_id,
             logical_key=logical_key,
@@ -235,9 +293,11 @@ class GraphPlanBuilder:
 
     def _turn_node(self, chunk: Chunk) -> GraphNode:
         logical_key = f"turn:{chunk.chunk_id}"
-        graph_id = self._allocator.allocate_graph_id("turn", chunk.context_id, logical_key)
+        graph_id = self._allocator.allocate_graph_id(
+            "turn", chunk.context_id, logical_key
+        )
         metadata = chunk.metadata or {}
-        
+
         properties = _scalar_properties(
             chunk.context_id,
             logical_key=logical_key,
@@ -248,18 +308,31 @@ class GraphPlanBuilder:
             actor_role=chunk.actor_role,
             actor_id=chunk.actor_id,
             turn_index=metadata.get("turn_index", 0),
-            session_id=chunk.session_id or "unknown"
+            session_id=chunk.session_id or "unknown",
         )
         return GraphNode(graph_id, "Turn", logical_key, properties)
 
     def _has_turn_edge(
-        self, context_id: str, session_key: str, session_node: GraphNode, turn_node: GraphNode, chunk: Chunk
+        self,
+        context_id: str,
+        session_key: str,
+        session_node: GraphNode,
+        turn_node: GraphNode,
+        chunk: Chunk,
     ) -> GraphRelationship:
         logical_key = f"has_turn:{session_key}:{chunk.chunk_id}"
-        graph_id = self._allocator.allocate_graph_id("has_turn", context_id, logical_key)
+        graph_id = self._allocator.allocate_graph_id(
+            "has_turn", context_id, logical_key
+        )
         return GraphRelationship(
-            graph_id, "HAS_TURN", logical_key, session_node.graph_id, turn_node.graph_id,
-            "Session", "Turn", _scalar_properties(context_id),
+            graph_id,
+            "HAS_TURN",
+            logical_key,
+            session_node.graph_id,
+            turn_node.graph_id,
+            "Session",
+            "Turn",
+            _scalar_properties(context_id),
         )
 
     def _speaker_entity_node(self, chunk: Chunk) -> GraphNode:
@@ -280,31 +353,64 @@ class GraphPlanBuilder:
         """
         role = chunk.actor_role or "unknown"
         logical_key = f"speaker:{role}"
-        graph_id = self._allocator.allocate_graph_id("entity", chunk.context_id, logical_key)
+        graph_id = self._allocator.allocate_graph_id(
+            "entity", chunk.context_id, logical_key
+        )
         return GraphNode(
-            graph_id, "Entity", logical_key,
-            _scalar_properties(chunk.context_id, logical_key=logical_key, canonical_name=role, entity_type="speaker"),
+            graph_id,
+            "Entity",
+            logical_key,
+            _scalar_properties(
+                chunk.context_id,
+                logical_key=logical_key,
+                canonical_name=role,
+                entity_type="speaker",
+            ),
         )
 
     def _stated_by_edge(
-        self, context_id: str, candidate: ExtractedMemoryCandidate, fact_node: GraphNode, speaker_node: GraphNode
+        self,
+        context_id: str,
+        candidate: ExtractedMemoryCandidate,
+        fact_node: GraphNode,
+        speaker_node: GraphNode,
     ) -> GraphRelationship:
         logical_key = f"stated_by:{candidate.candidate_id}:{speaker_node.graph_id}"
-        graph_id = self._allocator.allocate_graph_id("stated_by", context_id, logical_key)
+        graph_id = self._allocator.allocate_graph_id(
+            "stated_by", context_id, logical_key
+        )
         return GraphRelationship(
-            graph_id, "STATED_BY", logical_key, fact_node.graph_id, speaker_node.graph_id,
-            "Fact", "Entity", _scalar_properties(context_id)
+            graph_id,
+            "STATED_BY",
+            logical_key,
+            fact_node.graph_id,
+            speaker_node.graph_id,
+            "Fact",
+            "Entity",
+            _scalar_properties(context_id),
         )
 
-    def _fact_node(self, chunk: Chunk, candidate: ExtractedMemoryCandidate, created_at_dt: datetime) -> GraphNode:
+    def _fact_node(
+        self, chunk: Chunk, candidate: ExtractedMemoryCandidate, created_at_dt: datetime
+    ) -> GraphNode:
         logical_key = f"fact:{candidate.candidate_id}"
-        graph_id = self._allocator.allocate_graph_id("fact", chunk.context_id, logical_key)
-        
+        graph_id = self._allocator.allocate_graph_id(
+            "fact", chunk.context_id, logical_key
+        )
+
         obs_epoch = int(candidate.temporal.observed_at.timestamp())
-        v_from_epoch = int(candidate.temporal.valid_from.timestamp()) if candidate.temporal.valid_from else 0
-        v_to_epoch = int(candidate.temporal.valid_to.timestamp()) if candidate.temporal.valid_to else 9999999999
+        v_from_epoch = (
+            int(candidate.temporal.valid_from.timestamp())
+            if candidate.temporal.valid_from
+            else 0
+        )
+        v_to_epoch = (
+            int(candidate.temporal.valid_to.timestamp())
+            if candidate.temporal.valid_to
+            else 9999999999
+        )
         created_epoch = int(created_at_dt.timestamp())
-        
+
         properties = _scalar_properties(
             chunk.context_id,
             logical_key=logical_key,
@@ -347,46 +453,96 @@ class GraphPlanBuilder:
         return GraphNode(graph_id, "Fact", logical_key, properties)
 
     def _extracted_from_edge(
-        self, context_id: str, candidate: ExtractedMemoryCandidate, fact_node: GraphNode, turn_node: GraphNode, chunk: Chunk
+        self,
+        context_id: str,
+        candidate: ExtractedMemoryCandidate,
+        fact_node: GraphNode,
+        turn_node: GraphNode,
+        chunk: Chunk,
     ) -> GraphRelationship:
         logical_key = f"extracted_from:{candidate.candidate_id}:{chunk.chunk_id}"
-        graph_id = self._allocator.allocate_graph_id("extracted_from", context_id, logical_key)
+        graph_id = self._allocator.allocate_graph_id(
+            "extracted_from", context_id, logical_key
+        )
         return GraphRelationship(
-            graph_id, "EXTRACTED_FROM", logical_key, fact_node.graph_id, turn_node.graph_id,
-            "Fact", "Turn", _scalar_properties(context_id),
+            graph_id,
+            "EXTRACTED_FROM",
+            logical_key,
+            fact_node.graph_id,
+            turn_node.graph_id,
+            "Fact",
+            "Turn",
+            _scalar_properties(context_id),
         )
 
     def _entity_node(self, profile: EntityProfile) -> GraphNode:
         logical_key = f"entity:{profile.canonical_name}"
         return GraphNode(
-            profile.graph_id, "Entity", logical_key,
-            _scalar_properties(profile.context_id, logical_key=logical_key, canonical_name=profile.canonical_name, entity_type=profile.entity_type),
+            profile.graph_id,
+            "Entity",
+            logical_key,
+            _scalar_properties(
+                profile.context_id,
+                logical_key=logical_key,
+                canonical_name=profile.canonical_name,
+                entity_type=profile.entity_type,
+            ),
         )
 
     def _about_edge(
-        self, context_id: str, candidate: ExtractedMemoryCandidate, fact_node: GraphNode, entity_node: GraphNode, surface: str
+        self,
+        context_id: str,
+        candidate: ExtractedMemoryCandidate,
+        fact_node: GraphNode,
+        entity_node: GraphNode,
+        surface: str,
     ) -> GraphRelationship:
         logical_key = f"about:{candidate.candidate_id}:{entity_node.graph_id}"
         graph_id = self._allocator.allocate_graph_id("about", context_id, logical_key)
         return GraphRelationship(
-            graph_id, "ABOUT", logical_key, fact_node.graph_id, entity_node.graph_id,
-            "Fact", "Entity", _scalar_properties(context_id, surface=surface),
+            graph_id,
+            "ABOUT",
+            logical_key,
+            fact_node.graph_id,
+            entity_node.graph_id,
+            "Fact",
+            "Entity",
+            _scalar_properties(context_id, surface=surface),
         )
 
-    def _alias_records(self, profile: EntityProfile) -> list[tuple[GraphNode, GraphRelationship]]:
+    def _alias_records(
+        self, profile: EntityProfile
+    ) -> list[tuple[GraphNode, GraphRelationship]]:
         records: list[tuple[GraphNode, GraphRelationship]] = []
         for alias in profile.aliases:
             alias_logical_key = f"alias:{alias}:{profile.graph_id}"
-            alias_graph_id = self._allocator.allocate_graph_id("alias", profile.context_id, alias_logical_key)
+            alias_graph_id = self._allocator.allocate_graph_id(
+                "alias", profile.context_id, alias_logical_key
+            )
             alias_node = GraphNode(
-                alias_graph_id, "Alias", alias_logical_key,
-                _scalar_properties(profile.context_id, logical_key=alias_logical_key, canonical_alias=alias, entity_graph_id=profile.graph_id),
+                alias_graph_id,
+                "Alias",
+                alias_logical_key,
+                _scalar_properties(
+                    profile.context_id,
+                    logical_key=alias_logical_key,
+                    canonical_alias=alias,
+                    entity_graph_id=profile.graph_id,
+                ),
             )
             edge_logical_key = f"has_alias:{profile.graph_id}:{alias}"
-            edge_graph_id = self._allocator.allocate_graph_id("has_alias", profile.context_id, edge_logical_key)
+            edge_graph_id = self._allocator.allocate_graph_id(
+                "has_alias", profile.context_id, edge_logical_key
+            )
             has_alias = GraphRelationship(
-                edge_graph_id, "HAS_ALIAS", edge_logical_key, profile.graph_id, alias_graph_id,
-                "Entity", "Alias", _scalar_properties(profile.context_id),
+                edge_graph_id,
+                "HAS_ALIAS",
+                edge_logical_key,
+                profile.graph_id,
+                alias_graph_id,
+                "Entity",
+                "Alias",
+                _scalar_properties(profile.context_id),
             )
             records.append((alias_node, has_alias))
         return records

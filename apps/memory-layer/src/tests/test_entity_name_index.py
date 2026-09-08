@@ -1,8 +1,7 @@
 import pytest
-from sentence_transformers import SentenceTransformer
-
 from context_memory.core.id_generator import IdGenerator
 from context_memory.ingestion.entity_name_index import EntityNameIndex
+from sentence_transformers import SentenceTransformer
 
 
 @pytest.fixture(scope="module")
@@ -35,7 +34,9 @@ class TestEntityNameIndex:
         assert index.size(hid) == 3
 
         # Search candidates for mentions of "Max" with entity_type="pet"
-        candidates = index.find_candidates("Max", entity_type="pet", haystack_id=hid, threshold=0.7)
+        candidates = index.find_candidates(
+            "Max", entity_type="pet", haystack_id=hid, threshold=0.7
+        )
         assert len(candidates) >= 1
 
         # Matching entity type should be ranked first
@@ -52,7 +53,9 @@ class TestEntityNameIndex:
         index.add(eid1, "Golden Retriever", "pet", hid)
 
         # High threshold for completely unrelated query returns empty
-        candidates = index.find_candidates("Quantum Mechanics", entity_type="topic", haystack_id=hid, threshold=0.75)
+        candidates = index.find_candidates(
+            "Quantum Mechanics", entity_type="topic", haystack_id=hid, threshold=0.75
+        )
         assert len(candidates) == 0
 
     def test_remove_entity(self, shared_model, id_gen):
@@ -65,7 +68,9 @@ class TestEntityNameIndex:
 
         index.remove(eid)
         assert index.size(hid) == 0
-        candidates = index.find_candidates("Buddy", entity_type="pet", haystack_id=hid, threshold=0.5)
+        candidates = index.find_candidates(
+            "Buddy", entity_type="pet", haystack_id=hid, threshold=0.5
+        )
         assert len(candidates) == 0
 
 
@@ -87,10 +92,12 @@ class TestRebuildFromEntities:
     def test_rebuild_populates_the_index(self) -> None:
         index = EntityNameIndex(model=_FakeModel())
 
-        count = index.rebuild_from_entities([
-            ("1", "Max", "pet", "hid-1"),
-            ("2", "Maxwell", "person", "hid-1"),
-        ])
+        count = index.rebuild_from_entities(
+            [
+                ("1", "Max", "pet", "hid-1"),
+                ("2", "Maxwell", "person", "hid-1"),
+            ]
+        )
 
         assert count == 2
         assert index.size("hid-1") == 2
@@ -98,10 +105,12 @@ class TestRebuildFromEntities:
     def test_a_bad_entry_is_skipped_not_fatal_to_the_rest_of_the_rebuild(self) -> None:
         index = EntityNameIndex(model=_FakeModel())
 
-        count = index.rebuild_from_entities([
-            ("1", "", "pet", "hid-1"),  # empty name -> add() rejects it
-            ("2", "Maxwell", "person", "hid-1"),
-        ])
+        count = index.rebuild_from_entities(
+            [
+                ("1", "", "pet", "hid-1"),  # empty name -> add() rejects it
+                ("2", "Maxwell", "person", "hid-1"),
+            ]
+        )
 
         assert count == 1
         assert index.size("hid-1") == 1

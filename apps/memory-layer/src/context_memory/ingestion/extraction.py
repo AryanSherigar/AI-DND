@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
-import uuid
 
-from context_memory.core.errors import ContractValidationError
-from context_memory.ingestion.ports import ExtractionStore, Extractor
 from context_memory.core.enums import MemoryScope, MemoryType
+from context_memory.core.errors import ContractValidationError
 from context_memory.core.models import (
     Chunk,
     ContextBatch,
@@ -19,6 +17,7 @@ from context_memory.core.models import (
     TemporalBounds,
 )
 from context_memory.core.validation import validate_candidate
+from context_memory.ingestion.ports import ExtractionStore, Extractor
 
 EXTRACTOR_KIND = "deterministic_fixture"
 QUALITY_STATUS = "baseline_only"
@@ -53,13 +52,25 @@ class ExtractionService:
         self._extractor = extractor
         self._store = store
 
-    def extract(self, batch: ContextBatch, record: ContextRecord, chunk: Chunk) -> ExtractionResult:
-        if chunk.context_id != batch.context_id or chunk.source_record_id != record.record_id:
-            raise ValueError("chunk must be the immutable chunk for the supplied record and context")
+    def extract(
+        self, batch: ContextBatch, record: ContextRecord, chunk: Chunk
+    ) -> ExtractionResult:
+        if (
+            chunk.context_id != batch.context_id
+            or chunk.source_record_id != record.record_id
+        ):
+            raise ValueError(
+                "chunk must be the immutable chunk for the supplied record and context"
+            )
         name = getattr(self._extractor, "extractor_name", None)
         version = getattr(self._extractor, "extractor_version", None)
-        if (name, version) not in {("deterministic-fixture", "v1"), ("llm-extractor", "v1")}:
-            raise ValueError("extraction accepts only deterministic-fixture or llm-extractor v1 output")
+        if (name, version) not in {
+            ("deterministic-fixture", "v1"),
+            ("llm-extractor", "v1"),
+        }:
+            raise ValueError(
+                "extraction accepts only deterministic-fixture or llm-extractor v1 output"
+            )
         drafts = tuple(self._extractor.extract(record))
         attempt_id = self._attempt_id(chunk, name, version, drafts)
         accepted: list[ExtractedMemoryCandidate] = []
@@ -69,7 +80,9 @@ class ExtractionService:
                 candidate = self._resolve_draft(batch, record, draft)
                 validate_candidate(candidate, batch.records)
             except (ContractValidationError, ValueError) as error:
-                rejected.append(RejectedExtraction(draft.candidate_id, str(error), draft))
+                rejected.append(
+                    RejectedExtraction(draft.candidate_id, str(error), draft)
+                )
             else:
                 accepted.append(candidate)
         self._store.record(
@@ -83,7 +96,9 @@ class ExtractionService:
         return ExtractionResult(attempt_id, tuple(accepted), tuple(rejected))
 
     @staticmethod
-    def _attempt_id(chunk: Chunk, name: str, version: str, drafts: tuple[ExtractionDraft, ...]) -> str:
+    def _attempt_id(
+        chunk: Chunk, name: str, version: str, drafts: tuple[ExtractionDraft, ...]
+    ) -> str:
         logical = f"{chunk.chunk_id}\x00{chunk.content_hash}\x00{name}\x00{version}\x00{drafts!r}".encode()
         return f"extract:{sha256(logical).hexdigest()}"
 
@@ -92,9 +107,15 @@ class ExtractionService:
         batch: ContextBatch, record: ContextRecord, draft: ExtractionDraft
     ) -> ExtractedMemoryCandidate:
         if draft.memory_type is MemoryType.EPISODIC:
-            raise ValueError("episodic is reserved for the immutable raw chunk, not an extracted candidate")
-        scope_type = draft.scope_type or (MemoryScope.SESSION if record.session_id else MemoryScope.CHAT)
-        scope_id = draft.scope_id or (record.session_id if scope_type is MemoryScope.SESSION else batch.context_id)
+            raise ValueError(
+                "episodic is reserved for the immutable raw chunk, not an extracted candidate"
+            )
+        scope_type = draft.scope_type or (
+            MemoryScope.SESSION if record.session_id else MemoryScope.CHAT
+        )
+        scope_id = draft.scope_id or (
+            record.session_id if scope_type is MemoryScope.SESSION else batch.context_id
+        )
         if scope_id is None:
             raise ValueError("session scope requires a session_id")
         return ExtractedMemoryCandidate(
@@ -103,9 +124,13 @@ class ExtractionService:
             memory_type=draft.memory_type or MemoryType.SEMANTIC,
             scope_type=scope_type,
             scope_id=scope_id,
-            source_span=SourceSpan(record.record_id, draft.source_start, draft.source_end),
+            source_span=SourceSpan(
+                record.record_id, draft.source_start, draft.source_end
+            ),
             confidence=float(draft.confidence),
-            temporal=TemporalBounds(record.occurred_at, draft.valid_from, draft.valid_to),
+            temporal=TemporalBounds(
+                record.occurred_at, draft.valid_from, draft.valid_to
+            ),
             entities=draft.entities,
             action=draft.action,
             predicate_key=draft.predicate_key,

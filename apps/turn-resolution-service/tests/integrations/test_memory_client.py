@@ -5,7 +5,6 @@ from uuid import uuid4
 import httpx
 import pytest
 import respx
-
 from app.config import settings
 from app.exceptions.turn_exceptions import (
     MemoryBatchNotFoundError,

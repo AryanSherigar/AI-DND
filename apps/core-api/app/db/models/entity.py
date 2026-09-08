@@ -44,3 +44,6 @@ class Entity(Base, TimestampMixin):
         nullable=False,
     )
     narrator_instruction: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_player: Mapped[bool] = mapped_column(
+        Boolean, server_default="false", default=False, nullable=False
+    )

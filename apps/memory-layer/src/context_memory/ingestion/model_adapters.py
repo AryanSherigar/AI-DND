@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from context_memory.core.config import Config
 from context_memory.core.errors import ExtractionProviderError
-from context_memory.core.llm_client import LLMClient, LLMClientError
+from context_memory.core.llm_client import LLMClient
 from context_memory.core.logging import get_logger, timed_operation
 from context_memory.core.resolution import EntityProfile, FactState, TemporalRelation
 
@@ -75,7 +75,11 @@ class LLMEntityResolutionModel:
     ) -> int | None:
         if not candidates:
             return None
-        with timed_operation(logger, "entity_resolution.disambiguate", {"surface": surface, "candidates_count": len(candidates)}) as ctx:
+        with timed_operation(
+            logger,
+            "entity_resolution.disambiguate",
+            {"surface": surface, "candidates_count": len(candidates)},
+        ) as ctx:
             user_prompt = (
                 f"Surface form to resolve: {surface!r}\n\n"
                 f"Candidates (context {context_id!r}):\n{_format_candidates(candidates)}\n\n"
@@ -83,8 +87,11 @@ class LLMEntityResolutionModel:
             )
             try:
                 result = self._client.structured_completion(
-                    self._config.entity_resolution_system_prompt, user_prompt, _EntityResolutionResponse,
-                    temperature=self._config.llm_temperature, max_tokens=self._config.entity_resolution_max_tokens,
+                    self._config.entity_resolution_system_prompt,
+                    user_prompt,
+                    _EntityResolutionResponse,
+                    temperature=self._config.llm_temperature,
+                    max_tokens=self._config.entity_resolution_max_tokens,
                     timeout=self._config.entity_resolution_timeout_seconds,
                     max_retries=self._config.llm_structured_retry_attempts,
                 )
@@ -101,11 +108,16 @@ class LLMEntityResolutionModel:
                 # "return None on any doubt" (EntityRegistry.resolve treats
                 # UNRESOLVED as no-forced-link, never invents a candidate); a
                 # provider timeout is exactly that kind of doubt.
-                logger.warning("Entity resolution model error for surface %r: %s", surface, error)
+                logger.warning(
+                    "Entity resolution model error for surface %r: %s", surface, error
+                )
                 return None
 
     def resolve_entities(
-        self, *, context_id: str, mentions: Sequence[tuple[str, Sequence[EntityProfile]]]
+        self,
+        *,
+        context_id: str,
+        mentions: Sequence[tuple[str, Sequence[EntityProfile]]],
     ) -> dict[int, int | None]:
         """One call resolving every mention in `mentions` (each `(surface,
         candidates)`), keyed by index. A missing/invalid index degrades to
@@ -124,18 +136,26 @@ class LLMEntityResolutionModel:
         max_tokens = self._config.entity_resolution_batch_max_tokens_for(len(mentions))
 
         with timed_operation(
-            logger, "entity_resolution.disambiguate_batch",
+            logger,
+            "entity_resolution.disambiguate_batch",
             {"mentions": len(mentions), "max_tokens": max_tokens},
         ) as ctx:
             try:
                 result = self._client.structured_completion(
-                    self._config.batched_entity_resolution_system_prompt, user_prompt, _BatchedEntityResolutionResponse,
-                    temperature=self._config.llm_temperature, max_tokens=max_tokens,
+                    self._config.batched_entity_resolution_system_prompt,
+                    user_prompt,
+                    _BatchedEntityResolutionResponse,
+                    temperature=self._config.llm_temperature,
+                    max_tokens=max_tokens,
                     timeout=self._config.entity_resolution_batch_timeout_seconds,
                     max_retries=self._config.llm_structured_retry_attempts,
                 )
             except Exception as error:
-                logger.warning("Batched entity resolution error for %d mentions: %s", len(mentions), error)
+                logger.warning(
+                    "Batched entity resolution error for %d mentions: %s",
+                    len(mentions),
+                    error,
+                )
                 ctx["resolved"] = 0
                 return {}
 
@@ -154,8 +174,18 @@ class LLMTemporalUpdateModel:
         self._client = client
         self._config = config or Config()
 
-    def classify_update(self, *, new_fact: FactState, prior_fact: FactState) -> TemporalRelation:
-        with timed_operation(logger, "temporal_update.classify", {"predicate": new_fact.predicate_key, "prior_id": prior_fact.fact_id, "new_id": new_fact.fact_id}) as ctx:
+    def classify_update(
+        self, *, new_fact: FactState, prior_fact: FactState
+    ) -> TemporalRelation:
+        with timed_operation(
+            logger,
+            "temporal_update.classify",
+            {
+                "predicate": new_fact.predicate_key,
+                "prior_id": prior_fact.fact_id,
+                "new_id": new_fact.fact_id,
+            },
+        ) as ctx:
             user_prompt = (
                 f"Prior fact (observed {prior_fact.observed_at.isoformat()}): {prior_fact.text!r}\n"
                 f"New fact (observed {new_fact.observed_at.isoformat()}): {new_fact.text!r}\n\n"
@@ -163,8 +193,11 @@ class LLMTemporalUpdateModel:
             )
             try:
                 result = self._client.structured_completion(
-                    self._config.temporal_update_system_prompt, user_prompt, _TemporalUpdateResponse,
-                    temperature=self._config.llm_temperature, max_tokens=self._config.temporal_update_max_tokens,
+                    self._config.temporal_update_system_prompt,
+                    user_prompt,
+                    _TemporalUpdateResponse,
+                    temperature=self._config.llm_temperature,
+                    max_tokens=self._config.temporal_update_max_tokens,
                     timeout=self._config.temporal_update_timeout_seconds,
                     max_retries=self._config.llm_structured_retry_attempts,
                 )
@@ -187,7 +220,9 @@ class LLMTemporalUpdateModel:
                 logger.warning("Temporal update classification error: %s", error)
                 return TemporalRelation.UNRESOLVED
 
-    def classify_updates(self, *, new_fact: FactState, prior_facts: Sequence[FactState]) -> dict[int, TemporalRelation]:
+    def classify_updates(
+        self, *, new_fact: FactState, prior_facts: Sequence[FactState]
+    ) -> dict[int, TemporalRelation]:
         """One call classifying `new_fact` against every prior, keyed by prior index.
 
         Missing/invalid indices degrade to UNRESOLVED for that prior only, which
@@ -197,11 +232,17 @@ class LLMTemporalUpdateModel:
             return {}
         max_tokens = self._config.temporal_update_batch_max_tokens_for(len(prior_facts))
         with timed_operation(
-            logger, "temporal_update.classify_batch",
-            {"priors": len(prior_facts), "predicate": new_fact.predicate_key, "new_id": new_fact.fact_id},
+            logger,
+            "temporal_update.classify_batch",
+            {
+                "priors": len(prior_facts),
+                "predicate": new_fact.predicate_key,
+                "new_id": new_fact.fact_id,
+            },
         ) as ctx:
             priors_block = "\n".join(
-                f"idx={i} (observed {p.observed_at.isoformat()}): {p.text!r}" for i, p in enumerate(prior_facts)
+                f"idx={i} (observed {p.observed_at.isoformat()}): {p.text!r}"
+                for i, p in enumerate(prior_facts)
             )
             user_prompt = (
                 f"New fact (observed {new_fact.observed_at.isoformat()}): {new_fact.text!r}\n\n"
@@ -210,13 +251,18 @@ class LLMTemporalUpdateModel:
             )
             try:
                 result = self._client.structured_completion(
-                    self._config.batched_temporal_update_system_prompt, user_prompt, _BatchedTemporalUpdateResponse,
-                    temperature=self._config.llm_temperature, max_tokens=max_tokens,
+                    self._config.batched_temporal_update_system_prompt,
+                    user_prompt,
+                    _BatchedTemporalUpdateResponse,
+                    temperature=self._config.llm_temperature,
+                    max_tokens=max_tokens,
                     timeout=self._config.temporal_update_batch_timeout_seconds,
                     max_retries=self._config.llm_structured_retry_attempts,
                 )
             except Exception as error:
-                logger.warning("Batched temporal update classification error: %s", error)
+                logger.warning(
+                    "Batched temporal update classification error: %s", error
+                )
                 ctx["classified"] = 0
                 return {}
 
@@ -279,6 +325,7 @@ class LLMExtractor:
         path can never drift from the unbatched path's attribution logic.
         """
         import uuid
+
         from context_memory.core.enums import MemoryScope, MemoryType
         from context_memory.core.models import EntityCandidate, ExtractionDraft
 
@@ -298,7 +345,11 @@ class LLMExtractor:
             if end <= start:
                 end = max(len(content), start + 1)
 
-            entities = tuple(EntityCandidate(surface=e.strip(), entity_type=None) for e in item.entities if e.strip())
+            entities = tuple(
+                EntityCandidate(surface=e.strip(), entity_type=None)
+                for e in item.entities
+                if e.strip()
+            )
             draft = ExtractionDraft(
                 candidate_id=f"cand-{uuid.uuid4().hex[:12]}",
                 text=item.text.strip(),
@@ -330,22 +381,39 @@ class LLMExtractor:
         # it (see config.py's field comment for the measured percentiles and
         # docs/fixes_and_evaluation_findings.md §3 for the reasoning).
         max_tokens = self._config.extraction_max_tokens_for(len(content))
-        with timed_operation(logger, "extractor.extract", {"record_id": record.record_id, "content_len": len(content), "max_tokens": max_tokens}) as ctx:
+        with timed_operation(
+            logger,
+            "extractor.extract",
+            {
+                "record_id": record.record_id,
+                "content_len": len(content),
+                "max_tokens": max_tokens,
+            },
+        ) as ctx:
             # `actor_role` is unset for runtime narrative/lore records (no
             # single speaker) -- omit the line rather than literally sending
             # "Speaker: None" on every such call. Chat/LongMemEval records
             # always set actor_role, so this is byte-identical there.
-            speaker_line = f"Speaker: {record.actor_role}\n" if record.actor_role else ""
+            speaker_line = (
+                f"Speaker: {record.actor_role}\n" if record.actor_role else ""
+            )
             user_prompt = f"{speaker_line}Content: {content}\n\nExtract atomic facts:"
             try:
                 res = self._client.structured_completion(
-                    self._config.fact_extraction_system_prompt, user_prompt, _FactExtractionResponse,
-                    temperature=self._config.llm_temperature, max_tokens=max_tokens,
+                    self._config.fact_extraction_system_prompt,
+                    user_prompt,
+                    _FactExtractionResponse,
+                    temperature=self._config.llm_temperature,
+                    max_tokens=max_tokens,
                     timeout=self._config.extractor_timeout_seconds,
                     max_retries=self._config.llm_structured_retry_attempts,
                 )
             except Exception as e:
-                logger.error("LLMExtractor failed structured extraction for record %s: %s", record.record_id, e)
+                logger.error(
+                    "LLMExtractor failed structured extraction for record %s: %s",
+                    record.record_id,
+                    e,
+                )
                 # §2 fix: was `return ()` -- indistinguishable downstream from
                 # "the model looked and genuinely found nothing," so the
                 # chunk sailed through to COMPLETED with zero facts and no
@@ -364,7 +432,9 @@ class LLMExtractor:
             ctx["extracted_drafts"] = len(drafts)
             return tuple(drafts)
 
-    def extract_batch(self, records: Sequence[ContextRecord]) -> dict[str, Sequence[ExtractionDraft]]:
+    def extract_batch(
+        self, records: Sequence[ContextRecord]
+    ) -> dict[str, Sequence[ExtractionDraft]]:
         """Batched sibling of `extract()`: packs multiple turns into ONE LLM call
         instead of one call per turn, cutting REQUEST count under concurrency (a
         provider's RPM/TPM ceiling presses on request count, not just per-call
@@ -383,28 +453,52 @@ class LLMExtractor:
         Returns a dict keyed by `record_id` covering every record passed in (records
         with empty content, or a turn_index the model never returned, map to `()`).
         """
-        results: dict[str, Sequence[ExtractionDraft]] = {record.record_id: () for record in records}
-        non_empty = [(i, r) for i, r in enumerate(records) if r.content and r.content.strip()]
+        results: dict[str, Sequence[ExtractionDraft]] = {
+            record.record_id: () for record in records
+        }
+        non_empty = [
+            (i, r) for i, r in enumerate(records) if r.content and r.content.strip()
+        ]
         if not non_empty:
             return results
 
-        prompt_parts = [_format_turn_block(local_idx, record) for local_idx, (_, record) in enumerate(non_empty)]
-        user_prompt = "\n\n".join(prompt_parts) + "\n\nExtract atomic facts for each turn above, grouped by turn_index:"
-        max_tokens = self._config.extraction_batch_max_tokens_for([len(record.content) for _, record in non_empty])
+        prompt_parts = [
+            _format_turn_block(local_idx, record)
+            for local_idx, (_, record) in enumerate(non_empty)
+        ]
+        user_prompt = (
+            "\n\n".join(prompt_parts)
+            + "\n\nExtract atomic facts for each turn above, grouped by turn_index:"
+        )
+        max_tokens = self._config.extraction_batch_max_tokens_for(
+            [len(record.content) for _, record in non_empty]
+        )
 
         with timed_operation(
-            logger, "extractor.extract_batch",
-            {"batch_size": len(non_empty), "content_len": sum(len(r.content) for _, r in non_empty), "max_tokens": max_tokens},
+            logger,
+            "extractor.extract_batch",
+            {
+                "batch_size": len(non_empty),
+                "content_len": sum(len(r.content) for _, r in non_empty),
+                "max_tokens": max_tokens,
+            },
         ) as ctx:
             try:
                 res = self._client.structured_completion(
-                    self._config.batched_fact_extraction_system_prompt, user_prompt, _BatchedFactExtractionResponse,
-                    temperature=self._config.llm_temperature, max_tokens=max_tokens,
+                    self._config.batched_fact_extraction_system_prompt,
+                    user_prompt,
+                    _BatchedFactExtractionResponse,
+                    temperature=self._config.llm_temperature,
+                    max_tokens=max_tokens,
                     timeout=self._config.extractor_batch_timeout_seconds,
                     max_retries=self._config.llm_structured_retry_attempts,
                 )
             except Exception as e:
-                logger.error("LLMExtractor failed batched extraction for %d records: %s", len(non_empty), e)
+                logger.error(
+                    "LLMExtractor failed batched extraction for %d records: %s",
+                    len(non_empty),
+                    e,
+                )
                 ctx["extracted_drafts"] = 0
                 # §2 fix: was `return results` with every record defaulted to
                 # `()` -- one failed call silently erased facts for every

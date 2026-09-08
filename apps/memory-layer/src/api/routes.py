@@ -1,21 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import time
-import asyncio
 from datetime import datetime, timezone
-from typing import Any, Optional
 from uuid import UUID, uuid5
-import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
-from pydantic import BaseModel
 
-from context_memory.engine import MemoryEngine
-from context_memory.composition import build_memory_engine
-from context_memory.ingestion.batch_models import TurnBatchEntry as DomainTurnBatchEntry, dedupe_turn_entries
-from context_memory.ingestion.direct_authoring import DirectEntityInput, DirectFactInput
-from api.models import Fact as MemoryFact
-from api.models import BatchStatus as MemoryBatchStatus
+import httpx
 from api.models import (
     AgentTurnRequest,
     AgentTurnResponse,
@@ -33,6 +24,27 @@ from api.models import (
     SavePointResponse,
     ScenarioTemplateRequest,
 )
+from api.models import BatchStatus as MemoryBatchStatus
+from api.models import Fact as MemoryFact
+from context_memory.composition import build_memory_engine
+from context_memory.engine import MemoryEngine
+from context_memory.ingestion.batch_models import (
+    TurnBatchEntry as DomainTurnBatchEntry,
+)
+from context_memory.ingestion.batch_models import (
+    dedupe_turn_entries,
+)
+from context_memory.ingestion.direct_authoring import DirectEntityInput, DirectFactInput
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    status,
+)
+from pydantic import BaseModel
 
 _GLOBAL_ENGINE: MemoryEngine | None = None
 
@@ -67,35 +79,47 @@ def require_api_key(authorization: str | None = Header(default=None)) -> None:
 class SearchRequest(BaseModel):
     context_id: str
     query: str
-    question_date: Optional[datetime] = None
-    scenario_id: Optional[str] = None
+    question_date: datetime | None = None
+    scenario_id: str | None = None
 
 
 class ChatRequest(BaseModel):
     context_id: str
     session_id: str
     user_message: str
-    scenario_id: Optional[str] = None
+    scenario_id: str | None = None
 
 
-@router.post("/v1/memory/ingest", response_model=MemoryIngestResponse, status_code=status.HTTP_202_ACCEPTED)
-def ingest_memory(req: MemoryIngestRequest, engine: MemoryEngine = Depends(get_engine)) -> MemoryIngestResponse:
+@router.post(
+    "/v1/memory/ingest",
+    response_model=MemoryIngestResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def ingest_memory(
+    req: MemoryIngestRequest, engine: MemoryEngine = Depends(get_engine)
+) -> MemoryIngestResponse:
     """Async batched ingest for AI-DND's Turn Resolution Service (Milestone 2
     of the AI-DND bridge). `playthrough_id` is mem1's `context_id`. Returns
     immediately with a `batch_id` -- poll `GET /v1/memory/batch/{batch_id}/status`
     for completion, per ADR-5 (memory writes never block a turn)."""
     to_domain = lambda t: DomainTurnBatchEntry(
-        turn_number=t.turn_number, text=t.text, participant_id=str(t.participant_id), occurred_at=t.occurred_at,
+        turn_number=t.turn_number,
+        text=t.text,
+        participant_id=str(t.participant_id),
+        occurred_at=t.occurred_at,
     )
     entries = dedupe_turn_entries(
-        (to_domain(t) for t in req.turns_batch), (to_domain(t) for t in req.recent_context_turns),
+        (to_domain(t) for t in req.turns_batch),
+        (to_domain(t) for t in req.recent_context_turns),
     )
     batch_id = engine.submit_batch(str(req.playthrough_id), entries)
     return MemoryIngestResponse(batch_id=batch_id)
 
 
 @router.get("/v1/memory/batch/{batch_id}/status", response_model=MemoryBatchStatus)
-def get_batch_status(batch_id: str, engine: MemoryEngine = Depends(get_engine)) -> MemoryBatchStatus:
+def get_batch_status(
+    batch_id: str, engine: MemoryEngine = Depends(get_engine)
+) -> MemoryBatchStatus:
     # §3 fix: an unknown batch_id (never submitted, or submitted to a
     # different replica/before a restart with no durable trace) now raises
     # BatchNotFoundError instead of reporting "pending" forever.
@@ -113,7 +137,9 @@ def get_batch_status(batch_id: str, engine: MemoryEngine = Depends(get_engine)) 
 
 
 @router.post("/v1/memory/batch/{batch_id}/retry", response_model=MemoryIngestResponse)
-def retry_batch(batch_id: str, engine: MemoryEngine = Depends(get_engine)) -> MemoryIngestResponse:
+def retry_batch(
+    batch_id: str, engine: MemoryEngine = Depends(get_engine)
+) -> MemoryIngestResponse:
     try:
         engine.retry_batch(batch_id)
     except ValueError as e:
@@ -143,7 +169,9 @@ def _stable_fact_uuid(fact_id: str) -> str:
 
 
 @router.post("/v1/memory/query", response_model=MemoryQueryResponse)
-def query_memory(req: MemoryQueryRequest, engine: MemoryEngine = Depends(get_engine)) -> MemoryQueryResponse:
+def query_memory(
+    req: MemoryQueryRequest, engine: MemoryEngine = Depends(get_engine)
+) -> MemoryQueryResponse:
     """Structured retrieval for AI-DND's Turn Resolution Service (Milestones
     1, 4, 5 of the bridge). `playthrough_id` is mem1's `context_id`;
     `template_context_id` (derived from `scenario_id`, never stored per-
@@ -178,7 +206,9 @@ def query_memory(req: MemoryQueryRequest, engine: MemoryEngine = Depends(get_eng
         for f in result.facts
     ]
     return MemoryQueryResponse(
-        facts=facts, abstained=result.abstained, resolved_time_point=result.resolved_time_point
+        facts=facts,
+        abstained=result.abstained,
+        resolved_time_point=result.resolved_time_point,
     )
 
 
@@ -233,7 +263,10 @@ def _ingest_scenario_template(
         if mode == "newbie":
             lore_text = world_data.get("lore_text")
             if not lore_text:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "newbie mode requires world_data.lore_text")
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "newbie mode requires world_data.lore_text",
+                )
             engine.ingest_template_lore(context_id, lore_text)
         else:
             # AI-DND memory-layer contract: a republish must replace prior
@@ -243,14 +276,18 @@ def _ingest_scenario_template(
             # requirement, not asked for directly).
             engine.begin_template_republish(context_id)
             for raw_entity in world_data.get("entities", []):
-                engine.write_template_entity(context_id, _parse_template_entity(raw_entity))
+                engine.write_template_entity(
+                    context_id, _parse_template_entity(raw_entity)
+                )
             for raw_fact in world_data.get("facts", []):
                 engine.write_template_fact(context_id, _parse_template_fact(raw_fact))
             checkpoints = world_data.get("checkpoints")
             if checkpoints:
                 engine.write_scenario_checkpoints(context_id, list(checkpoints))
     except KeyError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"world_data missing required field: {e}") from e
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"world_data missing required field: {e}"
+        ) from e
     return MemoryTemplateIngestResponse(template_space_id=scenario_id)
 
 
@@ -269,9 +306,14 @@ def ingest_scenario_template(
     return _ingest_scenario_template(req.scenario_id, req.mode, req.world_data, engine)
 
 
-@router.post("/v1/memory/scenario/{scenario_id}/template", response_model=MemoryTemplateIngestResponse)
+@router.post(
+    "/v1/memory/scenario/{scenario_id}/template",
+    response_model=MemoryTemplateIngestResponse,
+)
 def ingest_scenario_template_by_path(
-    scenario_id: UUID, req: ScenarioTemplateRequest, engine: MemoryEngine = Depends(get_engine)
+    scenario_id: UUID,
+    req: ScenarioTemplateRequest,
+    engine: MemoryEngine = Depends(get_engine),
 ) -> MemoryTemplateIngestResponse:
     """AI-DND memory-layer contract's own proposed path (`scenario_id` in
     the URL, not the body) -- added alongside `/v1/memory/template/ingest`
@@ -280,9 +322,14 @@ def ingest_scenario_template_by_path(
     return _ingest_scenario_template(scenario_id, req.mode, req.world_data, engine)
 
 
-@router.post("/v1/memory/playthrough/{playthrough_id}/init", response_model=MemoryTemplateCloneResponse)
+@router.post(
+    "/v1/memory/playthrough/{playthrough_id}/init",
+    response_model=MemoryTemplateCloneResponse,
+)
 def init_playthrough_memory_space(
-    playthrough_id: UUID, req: MemoryTemplateCloneRequest, engine: MemoryEngine = Depends(get_engine)
+    playthrough_id: UUID,
+    req: MemoryTemplateCloneRequest,
+    engine: MemoryEngine = Depends(get_engine),
 ) -> MemoryTemplateCloneResponse:
     """ADR-7's clone step, triggered by Core API when it creates the
     Playthrough row. The path's `playthrough_id` is authoritative; the
@@ -290,16 +337,31 @@ def init_playthrough_memory_space(
     `MemoryTemplateCloneRequest` shape) but never overrides it."""
     if req.playthrough_id != playthrough_id:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "playthrough_id in body must match the URL path"
+            status.HTTP_400_BAD_REQUEST,
+            "playthrough_id in body must match the URL path",
         )
     template_context_id = _template_context_id(req.scenario_id)
-    engine.clone_playthrough_space(template_context_id, str(playthrough_id))
+    target_context_id = str(playthrough_id)
+    engine.clone_playthrough_space(template_context_id, target_context_id)
+    if req.player_entity_canonical_name:
+        engine.write_template_entity(
+            target_context_id,
+            DirectEntityInput(
+                canonical_name=req.player_entity_canonical_name,
+                entity_type="character",
+                aliases=tuple(req.player_entity_aliases or ()),
+            ),
+        )
+    for raw_fact in req.setup_facts:
+        engine.write_template_fact(target_context_id, _parse_template_fact(raw_fact))
     return MemoryTemplateCloneResponse(playthrough_space_id=playthrough_id)
 
 
 @router.post("/v1/chat")
 def chat_turn(req: ChatRequest, engine: MemoryEngine = Depends(get_engine)):
-    reply = engine.generate_reply(req.context_id, req.session_id, req.user_message, req.scenario_id)
+    reply = engine.generate_reply(
+        req.context_id, req.session_id, req.user_message, req.scenario_id
+    )
     return {"reply": reply}
 
 
@@ -309,23 +371,31 @@ def chat_turn(req: ChatRequest, engine: MemoryEngine = Depends(get_engine)):
 # MemoryEngine instance directly.
 @router.post("/v1/memory/{context_id}/save-point", response_model=SavePointResponse)
 def create_save_point(
-    context_id: str, req: CreateSavePointRequest, engine: MemoryEngine = Depends(get_engine)
+    context_id: str,
+    req: CreateSavePointRequest,
+    engine: MemoryEngine = Depends(get_engine),
 ) -> SavePointResponse:
     save_point = engine.create_save_point(context_id, req.session_id, req.label)
     return SavePointResponse(
-        save_id=save_point.save_id, context_id=save_point.context_id, session_id=save_point.session_id,
-        label=save_point.label, created_at=save_point.created_at,
+        save_id=save_point.save_id,
+        context_id=save_point.context_id,
+        session_id=save_point.session_id,
+        label=save_point.label,
+        created_at=save_point.created_at,
     )
 
 
 @router.post("/v1/memory/rollback/{save_id}", response_model=RollbackResponse)
-def rollback_to_save_point(save_id: str, engine: MemoryEngine = Depends(get_engine)) -> RollbackResponse:
+def rollback_to_save_point(
+    save_id: str, engine: MemoryEngine = Depends(get_engine)
+) -> RollbackResponse:
     try:
         result = engine.rollback_to(save_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     return RollbackResponse(
-        save_id=result.save_id, archived_fact_ids=list(result.archived_fact_ids),
+        save_id=result.save_id,
+        archived_fact_ids=list(result.archived_fact_ids),
         restored_fact_ids=list(result.restored_fact_ids),
     )
 
@@ -334,7 +404,9 @@ def rollback_to_save_point(save_id: str, engine: MemoryEngine = Depends(get_engi
 # tool harness (ToolRegistry/GuardedToolExecutor/run_tool_loop) -- see
 # MemoryEngine.agent_turn and core/agent_tools.py.
 @router.post("/v1/memory/agent", response_model=AgentTurnResponse)
-def agent_turn(req: AgentTurnRequest, engine: MemoryEngine = Depends(get_engine)) -> AgentTurnResponse:
+def agent_turn(
+    req: AgentTurnRequest, engine: MemoryEngine = Depends(get_engine)
+) -> AgentTurnResponse:
     reply = engine.agent_turn(req.context_id, req.user_prompt, req.system_prompt)
     return AgentTurnResponse(reply=reply)
 
@@ -344,10 +416,15 @@ def agent_turn(req: AgentTurnRequest, engine: MemoryEngine = Depends(get_engine)
 # tool-calling hook). `entity_id` is mem1's `canonical_name` -- see
 # MemoryEngine.get_entity's docstring.
 @router.get("/v1/memory/entity/{entity_id}", response_model=EntityDetailResponse)
-def get_entity(entity_id: str, context_id: str, engine: MemoryEngine = Depends(get_engine)) -> EntityDetailResponse:
+def get_entity(
+    entity_id: str, context_id: str, engine: MemoryEngine = Depends(get_engine)
+) -> EntityDetailResponse:
     entity = engine.get_entity(context_id, entity_id)
     if entity is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no entity {entity_id!r} in context {context_id!r}")
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"no entity {entity_id!r} in context {context_id!r}",
+        )
     return EntityDetailResponse(**entity)
 
 
@@ -412,6 +489,7 @@ async def health_check(request: Request) -> dict[str, str]:
 @router.post("/v1/demo/clear")
 def clear_demo():
     from api.stream import streamer
+
     streamer.push_event({"type": "graph_clear"})
     return {"status": "cleared"}
 
@@ -419,106 +497,189 @@ def clear_demo():
 @router.post("/v1/demo/simulate")
 async def simulate_demo(background_tasks: BackgroundTasks):
     from api.stream import streamer
+
     async def run_simulation():
         streamer.push_event({"type": "graph_clear"})
         await asyncio.sleep(0.3)
 
-        streamer.push_event({
-            "type": "chat_message",
-            "message": {
-                "id": f"demo-{int(time.time()*1000)}-1",
-                "role": "user",
-                "content": "Hi! My name is Alice, and I am a Principal AI Engineer at TechCorp.",
-                "timestamp": datetime.now(timezone.utc).isoformat()
+        streamer.push_event(
+            {
+                "type": "chat_message",
+                "message": {
+                    "id": f"demo-{int(time.time() * 1000)}-1",
+                    "role": "user",
+                    "content": "Hi! My name is Alice, and I am a Principal AI Engineer at TechCorp.",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             }
-        })
+        )
         await asyncio.sleep(0.6)
 
-        streamer.push_event({
-            "type": "graph_update",
-            "nodes": [
-                {"id": "node-alice", "label": "Entity", "properties": {"name": "Alice"}},
-                {"id": "node-techcorp", "label": "Entity", "properties": {"name": "TechCorp"}},
-                {"id": "node-role", "label": "Fact", "properties": {"name": "Principal AI Engineer"}}
-            ],
-            "edges": [
-                {"id": "edge-1", "source_id": "node-alice", "target_id": "node-techcorp", "type": "WORKS_AT"},
-                {"id": "edge-2", "source_id": "node-alice", "target_id": "node-role", "type": "HAS_ROLE"}
-            ]
-        })
+        streamer.push_event(
+            {
+                "type": "graph_update",
+                "nodes": [
+                    {
+                        "id": "node-alice",
+                        "label": "Entity",
+                        "properties": {"name": "Alice"},
+                    },
+                    {
+                        "id": "node-techcorp",
+                        "label": "Entity",
+                        "properties": {"name": "TechCorp"},
+                    },
+                    {
+                        "id": "node-role",
+                        "label": "Fact",
+                        "properties": {"name": "Principal AI Engineer"},
+                    },
+                ],
+                "edges": [
+                    {
+                        "id": "edge-1",
+                        "source_id": "node-alice",
+                        "target_id": "node-techcorp",
+                        "type": "WORKS_AT",
+                    },
+                    {
+                        "id": "edge-2",
+                        "source_id": "node-alice",
+                        "target_id": "node-role",
+                        "type": "HAS_ROLE",
+                    },
+                ],
+            }
+        )
         await asyncio.sleep(1.0)
 
-        streamer.push_event({
-            "type": "chat_message",
-            "message": {
-                "id": f"demo-{int(time.time()*1000)}-2",
-                "role": "agent",
-                "content": "Hello Alice! Great to meet you. I've stored your role at TechCorp in long-term memory.",
-                "timestamp": datetime.now(timezone.utc).isoformat()
+        streamer.push_event(
+            {
+                "type": "chat_message",
+                "message": {
+                    "id": f"demo-{int(time.time() * 1000)}-2",
+                    "role": "agent",
+                    "content": "Hello Alice! Great to meet you. I've stored your role at TechCorp in long-term memory.",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             }
-        })
+        )
         await asyncio.sleep(1.0)
 
-        streamer.push_event({
-            "type": "chat_message",
-            "message": {
-                "id": f"demo-{int(time.time()*1000)}-3",
-                "role": "user",
-                "content": "I prefer dark mode UI and love drinking Matcha Latte during code reviews.",
-                "timestamp": datetime.now(timezone.utc).isoformat()
+        streamer.push_event(
+            {
+                "type": "chat_message",
+                "message": {
+                    "id": f"demo-{int(time.time() * 1000)}-3",
+                    "role": "user",
+                    "content": "I prefer dark mode UI and love drinking Matcha Latte during code reviews.",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             }
-        })
+        )
         await asyncio.sleep(0.6)
 
-        streamer.push_event({
-            "type": "graph_update",
-            "nodes": [
-                {"id": "node-alias-alice", "label": "Alias", "properties": {"name": "Alice_Alias"}},
-                {"id": "node-darkmode", "label": "Fact", "properties": {"name": "Prefers Dark Mode"}},
-                {"id": "node-matcha", "label": "Fact", "properties": {"name": "Loves Matcha Latte"}}
-            ],
-            "edges": [
-                {"id": "edge-3", "source_id": "node-alice", "target_id": "node-alias-alice", "type": "HAS_ALIAS"},
-                {"id": "edge-4", "source_id": "node-alice", "target_id": "node-darkmode", "type": "PREFERS"},
-                {"id": "edge-5", "source_id": "node-alice", "target_id": "node-matcha", "type": "LIKES"}
-            ]
-        })
+        streamer.push_event(
+            {
+                "type": "graph_update",
+                "nodes": [
+                    {
+                        "id": "node-alias-alice",
+                        "label": "Alias",
+                        "properties": {"name": "Alice_Alias"},
+                    },
+                    {
+                        "id": "node-darkmode",
+                        "label": "Fact",
+                        "properties": {"name": "Prefers Dark Mode"},
+                    },
+                    {
+                        "id": "node-matcha",
+                        "label": "Fact",
+                        "properties": {"name": "Loves Matcha Latte"},
+                    },
+                ],
+                "edges": [
+                    {
+                        "id": "edge-3",
+                        "source_id": "node-alice",
+                        "target_id": "node-alias-alice",
+                        "type": "HAS_ALIAS",
+                    },
+                    {
+                        "id": "edge-4",
+                        "source_id": "node-alice",
+                        "target_id": "node-darkmode",
+                        "type": "PREFERS",
+                    },
+                    {
+                        "id": "edge-5",
+                        "source_id": "node-alice",
+                        "target_id": "node-matcha",
+                        "type": "LIKES",
+                    },
+                ],
+            }
+        )
         await asyncio.sleep(1.0)
 
-        streamer.push_event({
-            "type": "chat_message",
-            "message": {
-                "id": f"demo-{int(time.time()*1000)}-4",
-                "role": "agent",
-                "content": "Noted! Preferences for Dark Mode and Matcha Latte saved to your memory profile.",
-                "timestamp": datetime.now(timezone.utc).isoformat()
+        streamer.push_event(
+            {
+                "type": "chat_message",
+                "message": {
+                    "id": f"demo-{int(time.time() * 1000)}-4",
+                    "role": "agent",
+                    "content": "Noted! Preferences for Dark Mode and Matcha Latte saved to your memory profile.",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             }
-        })
+        )
         await asyncio.sleep(1.0)
 
-        streamer.push_event({
-            "type": "chat_message",
-            "message": {
-                "id": f"demo-{int(time.time()*1000)}-5",
-                "role": "user",
-                "content": "Recently moved from San Francisco to Neo-Tokyo.",
-                "timestamp": datetime.now(timezone.utc).isoformat()
+        streamer.push_event(
+            {
+                "type": "chat_message",
+                "message": {
+                    "id": f"demo-{int(time.time() * 1000)}-5",
+                    "role": "user",
+                    "content": "Recently moved from San Francisco to Neo-Tokyo.",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             }
-        })
+        )
         await asyncio.sleep(0.6)
 
-        streamer.push_event({
-            "type": "graph_update",
-            "nodes": [
-                {"id": "node-neotokyo", "label": "Entity", "properties": {"name": "Neo-Tokyo"}},
-                {"id": "node-turn-3", "label": "Turn", "properties": {"name": "Session Turn 3"}}
-            ],
-            "edges": [
-                {"id": "edge-6", "source_id": "node-alice", "target_id": "node-neotokyo", "type": "LIVES_IN"},
-                {"id": "edge-7", "source_id": "node-neotokyo", "target_id": "node-turn-3", "type": "LOCATED_AT"}
-            ]
-        })
+        streamer.push_event(
+            {
+                "type": "graph_update",
+                "nodes": [
+                    {
+                        "id": "node-neotokyo",
+                        "label": "Entity",
+                        "properties": {"name": "Neo-Tokyo"},
+                    },
+                    {
+                        "id": "node-turn-3",
+                        "label": "Turn",
+                        "properties": {"name": "Session Turn 3"},
+                    },
+                ],
+                "edges": [
+                    {
+                        "id": "edge-6",
+                        "source_id": "node-alice",
+                        "target_id": "node-neotokyo",
+                        "type": "LIVES_IN",
+                    },
+                    {
+                        "id": "edge-7",
+                        "source_id": "node-neotokyo",
+                        "target_id": "node-turn-3",
+                        "type": "LOCATED_AT",
+                    },
+                ],
+            }
+        )
 
     background_tasks.add_task(run_simulation)
     return {"status": "simulation_started"}
-

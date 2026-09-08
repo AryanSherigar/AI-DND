@@ -13,9 +13,8 @@ from __future__ import annotations
 import os
 import unittest
 
-from fastapi import HTTPException
-
 from api.routes import require_api_key
+from fastapi import HTTPException
 
 
 class RequireApiKeyTests(unittest.TestCase):

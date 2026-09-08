@@ -20,14 +20,23 @@ class TemporalQueryResolver:
         self._config = config or Config()
 
     def resolve(self, question: str, question_date: datetime) -> DateRange:
-        with timed_operation(logger, "retrieval.phase0.temporal_resolver", {"question_len": len(question)}) as ctx:
-            system_prompt = self._config.temporal_resolver_system_prompt_template.format(
-                question_date=question_date.isoformat()
+        with timed_operation(
+            logger,
+            "retrieval.phase0.temporal_resolver",
+            {"question_len": len(question)},
+        ) as ctx:
+            system_prompt = (
+                self._config.temporal_resolver_system_prompt_template.format(
+                    question_date=question_date.isoformat()
+                )
             )
             try:
                 response = self._llm.structured_completion(
-                    system_prompt, question, DateRange,
-                    temperature=self._config.llm_temperature, max_tokens=self._config.temporal_resolver_max_tokens,
+                    system_prompt,
+                    question,
+                    DateRange,
+                    temperature=self._config.llm_temperature,
+                    max_tokens=self._config.temporal_resolver_max_tokens,
                     timeout=self._config.temporal_resolver_timeout_seconds,
                     max_retries=self._config.llm_structured_retry_attempts,
                 )

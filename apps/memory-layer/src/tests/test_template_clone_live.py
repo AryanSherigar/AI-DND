@@ -12,7 +12,12 @@ from uuid import uuid4
 
 from context_memory.client.hydradb_http import HydraHttpTransport
 from context_memory.cloning.template_clone import clone
-from context_memory.ingestion.direct_authoring import DirectEntityInput, DirectFactInput, write_entity, write_fact
+from context_memory.ingestion.direct_authoring import (
+    DirectEntityInput,
+    DirectFactInput,
+    write_entity,
+    write_fact,
+)
 from context_memory.ingestion.fakes import InMemoryGraphManifestStore
 from context_memory.ingestion.graph_writer import GraphWriter
 
@@ -38,7 +43,9 @@ class _RandomBaseGraphIdAllocator:
         self._next = uuid4().int % 1_000_000_000
         self._ids: dict[tuple[str, str, str], int] = {}
 
-    def allocate_graph_id(self, node_kind: str, context_id: str, logical_key: str) -> int:
+    def allocate_graph_id(
+        self, node_kind: str, context_id: str, logical_key: str
+    ) -> int:
         key = (node_kind, context_id, logical_key)
         if key not in self._ids:
             self._ids[key] = self._next
@@ -46,7 +53,10 @@ class _RandomBaseGraphIdAllocator:
         return self._ids[key]
 
 
-@unittest.skipUnless(URI and TOKEN, "requires local CONTEXT_MEMORY_HYDRADB_URL and CONTEXT_MEMORY_HYDRADB_TOKEN")
+@unittest.skipUnless(
+    URI and TOKEN,
+    "requires local CONTEXT_MEMORY_HYDRADB_URL and CONTEXT_MEMORY_HYDRADB_TOKEN",
+)
 class TemplateCloneLiveTests(unittest.TestCase):
     def test_clone_is_a_real_independent_copy(self) -> None:
         suffix = uuid4().hex
@@ -58,27 +68,69 @@ class TemplateCloneLiveTests(unittest.TestCase):
         writer = GraphWriter(manifest, transport)
         allocator = _RandomBaseGraphIdAllocator()
 
-        write_entity(template_ctx, DirectEntityInput(canonical_name="Sukuna", entity_type="character"), allocator, writer)
-        write_entity(template_ctx, DirectEntityInput(canonical_name="Jujutsu High", entity_type="faction"), allocator, writer)
-        write_fact(template_ctx, DirectFactInput(predicate="is_strongest", subject_canonical_name="Sukuna", object_literal="true"), allocator, writer)
-        write_fact(template_ctx, DirectFactInput(predicate="member_of", subject_canonical_name="Sukuna", object_canonical_name="Jujutsu High"), allocator, writer)
+        write_entity(
+            template_ctx,
+            DirectEntityInput(canonical_name="Sukuna", entity_type="character"),
+            allocator,
+            writer,
+        )
+        write_entity(
+            template_ctx,
+            DirectEntityInput(canonical_name="Jujutsu High", entity_type="faction"),
+            allocator,
+            writer,
+        )
+        write_fact(
+            template_ctx,
+            DirectFactInput(
+                predicate="is_strongest",
+                subject_canonical_name="Sukuna",
+                object_literal="true",
+            ),
+            allocator,
+            writer,
+        )
+        write_fact(
+            template_ctx,
+            DirectFactInput(
+                predicate="member_of",
+                subject_canonical_name="Sukuna",
+                object_canonical_name="Jujutsu High",
+            ),
+            allocator,
+            writer,
+        )
 
         result = clone(template_ctx, playthrough_ctx, allocator, writer, transport)
-        self.assertEqual((result.entities_cloned, result.facts_cloned, result.relationships_cloned), (2, 2, 3))
+        self.assertEqual(
+            (result.entities_cloned, result.facts_cloned, result.relationships_cloned),
+            (2, 2, 3),
+        )
 
         cloned_facts = transport.read(
-            "MATCH (n:Fact {context_id: $ctx}) RETURN n.id AS id, n.predicate_key AS pk", {"ctx": playthrough_ctx}, None
+            "MATCH (n:Fact {context_id: $ctx}) RETURN n.id AS id, n.predicate_key AS pk",
+            {"ctx": playthrough_ctx},
+            None,
         )
-        self.assertEqual({row["pk"] for row in cloned_facts}, {"is_strongest", "member_of"})
+        self.assertEqual(
+            {row["pk"] for row in cloned_facts}, {"is_strongest", "member_of"}
+        )
 
         # Mutating the clone must never touch the template.
         write_fact(
             playthrough_ctx,
-            DirectFactInput(predicate="playthrough_only_event", subject_canonical_name="Sukuna", object_literal="met the player"),
-            allocator, writer,
+            DirectFactInput(
+                predicate="playthrough_only_event",
+                subject_canonical_name="Sukuna",
+                object_literal="met the player",
+            ),
+            allocator,
+            writer,
         )
         template_facts_after = transport.read(
-            "MATCH (n:Fact {context_id: $ctx}) RETURN n.id AS id", {"ctx": template_ctx}, None
+            "MATCH (n:Fact {context_id: $ctx}) RETURN n.id AS id",
+            {"ctx": template_ctx},
+            None,
         )
         self.assertEqual(len(template_facts_after), 2)
 
@@ -88,6 +140,15 @@ class TemplateCloneLiveTests(unittest.TestCase):
         writer = GraphWriter(InMemoryGraphManifestStore(), transport)
         allocator = _RandomBaseGraphIdAllocator()
 
-        result = clone(f"live-empty-template-{suffix}", f"live-empty-playthrough-{suffix}", allocator, writer, transport)
+        result = clone(
+            f"live-empty-template-{suffix}",
+            f"live-empty-playthrough-{suffix}",
+            allocator,
+            writer,
+            transport,
+        )
 
-        self.assertEqual((result.entities_cloned, result.facts_cloned, result.relationships_cloned), (0, 0, 0))
+        self.assertEqual(
+            (result.entities_cloned, result.facts_cloned, result.relationships_cloned),
+            (0, 0, 0),
+        )

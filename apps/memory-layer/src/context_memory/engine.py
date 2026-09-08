@@ -1,37 +1,46 @@
 from __future__ import annotations
 
 import contextvars
-from datetime import datetime, timezone
 import uuid
-import json
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
+from context_memory.cloning.template_clone import CloneResult, clone
 from context_memory.core.config import Config
 from context_memory.core.enums import IngestionJobState
 from context_memory.core.errors import BatchNotFoundError
-from context_memory.core.journal import JournalContext, StepJournal, correlation_scope
-from context_memory.core.logging import get_logger, timed_operation
 from context_memory.core.graph import GraphNode, GraphWritePlan
+from context_memory.core.journal import JournalContext, StepJournal, correlation_scope
+from context_memory.core.llm_client import LLMClient
+from context_memory.core.logging import get_logger, timed_operation
 from context_memory.core.models import ContextBatch, ContextRecord, SourceDescriptor
 from context_memory.core.ports import GraphTransport
 from context_memory.core.validation import chunk_id_for, content_hash
-from context_memory.cloning.template_clone import CloneResult, clone
 from context_memory.ingestion.batch_models import BatchStatus, TurnBatchEntry
-from context_memory.ingestion.direct_authoring import DirectEntityInput, DirectFactInput, write_entity, write_fact
+from context_memory.ingestion.direct_authoring import (
+    DirectEntityInput,
+    DirectFactInput,
+    write_entity,
+    write_fact,
+)
 from context_memory.ingestion.fact_projection import FactProjectionWriter
 from context_memory.ingestion.graph_writer import GraphWriter
 from context_memory.ingestion.orchestrator import BatchRunResult, IngestionOrchestrator
 from context_memory.ingestion.ports import BatchStore, GraphIdAllocator
+from context_memory.ingestion.rollback import (
+    RollbackResult,
+    RollbackService,
+    SavePoint,
+    SavePointStore,
+)
+from context_memory.ingestion.sources.chat import adapt_chat_turn
 from context_memory.persistence.postgres import (
     PostgresBatchStore,
     PostgresCheckpointStore,
     PostgresExternalFactIdStore,
     PostgresFactMetadataStore,
 )
-from context_memory.ingestion.rollback import RollbackResult, RollbackService, SavePoint, SavePointStore
-from context_memory.ingestion.sources.chat import adapt_chat_turn
 from context_memory.retrieval import HybridRetrievalEngine
-from context_memory.core.llm_client import LLMClient
-from concurrent.futures import ThreadPoolExecutor
 
 logger = get_logger(__name__)
 
@@ -51,6 +60,7 @@ _SYNTHETIC_TURN_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 def _synthetic_turn_occurred_at(turn_number: int) -> datetime:
     from datetime import timedelta
+
     return _SYNTHETIC_TURN_EPOCH + timedelta(seconds=turn_number)
 
 
@@ -72,17 +82,34 @@ def _batch_status_from_result(batch_id: str, result: BatchRunResult) -> BatchSta
     # run finishes) -- PENDING_GRAPH/PENDING_EMBEDDINGS/VERIFYING are
     # mid-flight `ingestion_jobs` states, never a final `ChunkRunResult.state`.
     if states <= {IngestionJobState.COMPLETED}:
-        return BatchStatus(batch_id=batch_id, status="succeeded", facts_created=facts_created, retryable=False)
+        return BatchStatus(
+            batch_id=batch_id,
+            status="succeeded",
+            facts_created=facts_created,
+            retryable=False,
+        )
     if IngestionJobState.COMPLETED in states:
         return BatchStatus(
-            batch_id=batch_id, status="partial", facts_created=facts_created, error=first_error, retryable=True
+            batch_id=batch_id,
+            status="partial",
+            facts_created=facts_created,
+            error=first_error,
+            retryable=True,
         )
     if states <= {IngestionJobState.RETRYABLE_FAILED}:
         return BatchStatus(
-            batch_id=batch_id, status="failed", facts_created=facts_created, error=first_error, retryable=True
+            batch_id=batch_id,
+            status="failed",
+            facts_created=facts_created,
+            error=first_error,
+            retryable=True,
         )
     return BatchStatus(
-        batch_id=batch_id, status="failed", facts_created=facts_created, error=first_error, retryable=False
+        batch_id=batch_id,
+        status="failed",
+        facts_created=facts_created,
+        error=first_error,
+        retryable=False,
     )
 
 
@@ -123,11 +150,15 @@ class MemoryEngine:
         self._hydra_transport = hydra_transport
         # Milestones 4-5: default built off `pool`, same
         # override-or-default pattern `save_point_store` already uses above.
-        self._fact_metadata_store = fact_metadata_store or PostgresFactMetadataStore(pool)
+        self._fact_metadata_store = fact_metadata_store or PostgresFactMetadataStore(
+            pool
+        )
         self._checkpoint_store = checkpoint_store or PostgresCheckpointStore(pool)
         # AI-DND memory-layer contract: `superseded_fact_id` on a
         # direct-authored fact, same override-or-default pattern as above.
-        self._external_fact_id_store = external_fact_id_store or PostgresExternalFactIdStore(pool)
+        self._external_fact_id_store = (
+            external_fact_id_store or PostgresExternalFactIdStore(pool)
+        )
         self._batch_store = batch_store or PostgresBatchStore(pool)
         # mem1 gap #46 fix: unlike the stores above, deliberately NOT
         # default-constructed here -- it needs the same `Embedder` instance
@@ -139,7 +170,9 @@ class MemoryEngine:
         # simply skip the projection step, same as the other optional
         # authoring deps above when unset.
         self._fact_projection_writer = fact_projection_writer
-        self._executor = ThreadPoolExecutor(max_workers=self._config.ingestion_executor_max_workers)
+        self._executor = ThreadPoolExecutor(
+            max_workers=self._config.ingestion_executor_max_workers
+        )
         # Milestone 2 of the AI-DND bridge: batch_id -> {"batch", "chunk_ids",
         # "result", "error"}. Same-process fast-path cache only -- doesn't
         # survive a restart or reach a different replica, same as before.
@@ -157,31 +190,55 @@ class MemoryEngine:
         """The underlying connection pool (e.g. psycopg_pool.ConnectionPool)."""
         return self._pool
 
-    def create_save_point(self, context_id: str, session_id: str | None = None, label: str | None = None) -> SavePoint:
+    def create_save_point(
+        self, context_id: str, session_id: str | None = None, label: str | None = None
+    ) -> SavePoint:
         return self._save_point_store.create(context_id, session_id, label)
 
     def rollback_to(self, save_id: str) -> RollbackResult:
         if self._rollback_service is None:
-            raise RuntimeError("rollback_to called without a RollbackService configured")
+            raise RuntimeError(
+                "rollback_to called without a RollbackService configured"
+            )
         save_point = self._save_point_store.get(save_id)
         if save_point is None:
             raise ValueError(f"unknown save_id: {save_id}")
-        with correlation_scope(JournalContext(context_id=save_point.context_id, session_id=save_point.session_id)):
+        with correlation_scope(
+            JournalContext(
+                context_id=save_point.context_id, session_id=save_point.session_id
+            )
+        ):
             return self._rollback_service.rollback_to(save_point)
 
     def add_turn_async(
-        self, context_id: str, session_id: str, role: str, content: str, timestamp: datetime,
+        self,
+        context_id: str,
+        session_id: str,
+        role: str,
+        content: str,
+        timestamp: datetime,
         scenario_id: str | None = None,
     ) -> None:
-        with correlation_scope(JournalContext(context_id=context_id, session_id=session_id, scenario_id=scenario_id)), timed_operation(
-            logger, "memory_engine.add_turn_async", {"context_id": context_id, "session_id": session_id, "role": role}
-        ) as ctx:
+        with (
+            correlation_scope(
+                JournalContext(
+                    context_id=context_id,
+                    session_id=session_id,
+                    scenario_id=scenario_id,
+                )
+            ),
+            timed_operation(
+                logger,
+                "memory_engine.add_turn_async",
+                {"context_id": context_id, "session_id": session_id, "role": role},
+            ) as ctx,
+        ):
             # 1. Record to conversation buffer
             with self._pool.connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         "SELECT COALESCE(MAX(turn_index), -1) + 1 FROM conversation_buffer WHERE context_id = %s AND session_id = %s",
-                        (context_id, session_id)
+                        (context_id, session_id),
                     )
                     turn_index = cursor.fetchone()[0]
 
@@ -190,7 +247,7 @@ class MemoryEngine:
                         INSERT INTO conversation_buffer (context_id, session_id, turn_index, role, content, created_at)
                         VALUES (%s, %s, %s, %s, %s, %s)
                         """,
-                        (context_id, session_id, turn_index, role, content, timestamp)
+                        (context_id, session_id, turn_index, role, content, timestamp),
                     )
                     try:
                         conn.commit()
@@ -218,10 +275,19 @@ class MemoryEngine:
 
     def _run_orchestrator_safe(self, batch: ContextBatch) -> None:
         try:
-            with timed_operation(logger, "memory_engine.bg_ingest", {"batch_id": batch.ingestion_id, "context_id": batch.context_id}):
+            with timed_operation(
+                logger,
+                "memory_engine.bg_ingest",
+                {"batch_id": batch.ingestion_id, "context_id": batch.context_id},
+            ):
                 self._orchestrator.run_batch(batch)
         except Exception as e:
-            logger.error("Background ingestion failed for batch %s: %s", batch.ingestion_id, e, exc_info=True)
+            logger.error(
+                "Background ingestion failed for batch %s: %s",
+                batch.ingestion_id,
+                e,
+                exc_info=True,
+            )
 
     def submit_batch(self, context_id: str, turns_batch: list[TurnBatchEntry]) -> str:
         """Milestone 2 of the AI-DND bridge: async batched ingest for
@@ -241,7 +307,8 @@ class MemoryEngine:
         records = tuple(
             ContextRecord(
                 record_id=f"{context_id}:turn:{entry.turn_number}",
-                occurred_at=entry.occurred_at or _synthetic_turn_occurred_at(entry.turn_number),
+                occurred_at=entry.occurred_at
+                or _synthetic_turn_occurred_at(entry.turn_number),
                 content=entry.text,
                 actor_id=str(entry.participant_id),
                 # `turn_index` is what graph_plan_builder._turn_node reads;
@@ -249,7 +316,10 @@ class MemoryEngine:
                 # and what graph_plan_builder._fact_node also writes onto the
                 # Fact node itself (§4/§5: as_of_turn filtering needs
                 # turn_number on the fact, not just the Turn node).
-                metadata={"turn_number": entry.turn_number, "turn_index": entry.turn_number},
+                metadata={
+                    "turn_number": entry.turn_number,
+                    "turn_index": entry.turn_number,
+                },
             )
             for entry in turns_batch
         )
@@ -272,10 +342,17 @@ class MemoryEngine:
         batch = ContextBatch(
             ingestion_id=batch_id,
             context_id=context_id,
-            source=SourceDescriptor(source_type="turn_batch", source_external_id=context_id),
+            source=SourceDescriptor(
+                source_type="turn_batch", source_external_id=context_id
+            ),
             records=records,
         )
-        self._batches[batch_id] = {"batch": batch, "chunk_ids": chunk_ids, "result": None, "error": None}
+        self._batches[batch_id] = {
+            "batch": batch,
+            "chunk_ids": chunk_ids,
+            "result": None,
+            "error": None,
+        }
         # §3 fix: durable row too, so status/retry survive this process
         # ending -- see PostgresBatchStore's docstring.
         self._batch_store.create(batch, chunk_turn_pairs)
@@ -287,30 +364,50 @@ class MemoryEngine:
     def _run_batch_safe(self, batch_id: str, batch: ContextBatch) -> None:
         try:
             with timed_operation(
-                logger, "memory_engine.bg_batch_ingest", {"batch_id": batch_id, "context_id": batch.context_id}
+                logger,
+                "memory_engine.bg_batch_ingest",
+                {"batch_id": batch_id, "context_id": batch.context_id},
             ):
                 result = self._orchestrator.run_batch(batch)
                 self._batches[batch_id]["result"] = result
         except Exception as e:
-            logger.error("Background batch ingestion failed for batch %s: %s", batch_id, e, exc_info=True)
+            logger.error(
+                "Background batch ingestion failed for batch %s: %s",
+                batch_id,
+                e,
+                exc_info=True,
+            )
             self._batches[batch_id]["error"] = str(e)
             # §3 fix: durably recorded too -- the in-memory entry above is
             # only ever visible to this same process/replica.
             try:
                 self._batch_store.mark_run_error(batch_id, str(e))
             except Exception:
-                logger.warning("failed to durably record run error for batch %s", batch_id, exc_info=True)
+                logger.warning(
+                    "failed to durably record run error for batch %s",
+                    batch_id,
+                    exc_info=True,
+                )
 
     def get_batch_status(self, batch_id: str) -> BatchStatus:
         entry = self._batches.get(batch_id)
         if entry is not None:
             if entry["error"] is not None:
                 return BatchStatus(
-                    batch_id=batch_id, status="failed", facts_created=0, error=entry["error"], retryable=True
+                    batch_id=batch_id,
+                    status="failed",
+                    facts_created=0,
+                    error=entry["error"],
+                    retryable=True,
                 )
             result: BatchRunResult | None = entry["result"]
             if result is None:
-                return BatchStatus(batch_id=batch_id, status="pending", facts_created=0, retryable=False)
+                return BatchStatus(
+                    batch_id=batch_id,
+                    status="pending",
+                    facts_created=0,
+                    retryable=False,
+                )
             return _batch_status_from_result(batch_id, result)
         # §3 fix: not in this process's memory -- a different replica, or
         # this process restarted since the batch was submitted. Fall back to
@@ -335,8 +432,15 @@ class MemoryEngine:
             batch = self._batch_store.get_context_batch(batch_id)
             if batch is None:
                 raise BatchNotFoundError(f"unknown batch_id: {batch_id}")
-            chunk_ids = tuple(chunk_id_for(batch.context_id, r.record_id) for r in batch.records)
-            self._batches[batch_id] = {"batch": batch, "chunk_ids": chunk_ids, "result": None, "error": None}
+            chunk_ids = tuple(
+                chunk_id_for(batch.context_id, r.record_id) for r in batch.records
+            )
+            self._batches[batch_id] = {
+                "batch": batch,
+                "chunk_ids": chunk_ids,
+                "result": None,
+                "error": None,
+            }
             entry = self._batches[batch_id]
         entry["result"] = None
         entry["error"] = None
@@ -354,11 +458,18 @@ class MemoryEngine:
     def write_template_fact(self, context_id: str, fact: DirectFactInput) -> int:
         allocator, writer = self._require_authoring_deps()
         return write_fact(
-            context_id, fact, allocator, writer, self._fact_metadata_store, self._external_fact_id_store,
+            context_id,
+            fact,
+            allocator,
+            writer,
+            self._fact_metadata_store,
+            self._external_fact_id_store,
             self._fact_projection_writer,
         )
 
-    def write_scenario_checkpoints(self, template_context_id: str, checkpoints: list[str]) -> None:
+    def write_scenario_checkpoints(
+        self, template_context_id: str, checkpoints: list[str]
+    ) -> None:
         """Milestone 5: the scenario's ordered checkpoint list, stored once
         against the template context_id (not per-playthrough -- every clone
         shares the same authored ordering)."""
@@ -390,11 +501,15 @@ class MemoryEngine:
         occurred_at = datetime.now(timezone.utc)
         record = ContextRecord(
             record_id=f"{context_id}:template-lore:{content_hash(lore_text)[7:23]}",
-            occurred_at=occurred_at, content=lore_text,
+            occurred_at=occurred_at,
+            content=lore_text,
         )
         batch = ContextBatch(
-            ingestion_id=f"template-{uuid.uuid4()}", context_id=context_id,
-            source=SourceDescriptor(source_type="scenario_template", source_external_id=context_id),
+            ingestion_id=f"template-{uuid.uuid4()}",
+            context_id=context_id,
+            source=SourceDescriptor(
+                source_type="scenario_template", source_external_id=context_id
+            ),
             records=(record,),
         )
         self._orchestrator.run_batch(batch)
@@ -422,46 +537,69 @@ class MemoryEngine:
         deliberate follow-up rather than folded into this fix silently.
         Returns the number of facts archived."""
         if self._hydra_transport is None:
-            raise RuntimeError("begin_template_republish called without a hydra_transport configured")
+            raise RuntimeError(
+                "begin_template_republish called without a hydra_transport configured"
+            )
         _, writer = self._require_authoring_deps()
         rows = self._hydra_transport.read(
             "MATCH (f:Fact {context_id: $context_id, is_current: true}) "
             "RETURN f.id AS id, f.logical_key AS logical_key",
-            {"context_id": context_id}, None,
+            {"context_id": context_id},
+            None,
         )
         now_epoch = int(datetime.now(timezone.utc).timestamp())
         nodes = tuple(
             GraphNode(
-                int(row["id"]), "Fact", row["logical_key"],
+                int(row["id"]),
+                "Fact",
+                row["logical_key"],
                 {
-                    "context_id": context_id, "logical_key": row["logical_key"], "is_current": False,
-                    "archived": True, "superseded_at": now_epoch, "valid_to": now_epoch,
+                    "context_id": context_id,
+                    "logical_key": row["logical_key"],
+                    "is_current": False,
+                    "archived": True,
+                    "superseded_at": now_epoch,
+                    "valid_to": now_epoch,
                 },
             )
-            for row in rows if row.get("id") is not None and row.get("logical_key")
+            for row in rows
+            if row.get("id") is not None and row.get("logical_key")
         )
         if not nodes:
             return 0
         plan = GraphWritePlan(
-            context_id=context_id, plan_key=f"plan:template-republish:{context_id}:{now_epoch}",
-            nodes=nodes, relationships=(),
+            context_id=context_id,
+            plan_key=f"plan:template-republish:{context_id}:{now_epoch}",
+            nodes=nodes,
+            relationships=(),
         )
         writer.write(plan)
         return len(nodes)
 
-    def clone_playthrough_space(self, template_context_id: str, playthrough_context_id: str) -> CloneResult:
+    def clone_playthrough_space(
+        self, template_context_id: str, playthrough_context_id: str
+    ) -> CloneResult:
         """ADR-7: ingest once (into the scenario's template context_id, via
         `write_template_entity`/`write_template_fact`/`ingest_template_lore`),
         clone many (once per playthrough, here)."""
         allocator, writer = self._require_authoring_deps()
         if self._hydra_transport is None:
-            raise RuntimeError("clone_playthrough_space called without a hydra_transport configured")
+            raise RuntimeError(
+                "clone_playthrough_space called without a hydra_transport configured"
+            )
         return clone(
-            template_context_id, playthrough_context_id, allocator, writer, self._hydra_transport,
-            self._fact_metadata_store, self._fact_projection_writer,
+            template_context_id,
+            playthrough_context_id,
+            allocator,
+            writer,
+            self._hydra_transport,
+            self._fact_metadata_store,
+            self._fact_projection_writer,
         )
 
-    def get_entity(self, context_id: str, canonical_name: str) -> dict[str, object] | None:
+    def get_entity(
+        self, context_id: str, canonical_name: str
+    ) -> dict[str, object] | None:
         """AI-DND memory-layer contract: `GET /v1/memory/entity/{entity_id}`
         (§4.5, "required for launch" -- present in the RFC as a debugging
         and future-tool-calling hook, not called by any product code today).
@@ -481,7 +619,8 @@ class MemoryEngine:
             "MATCH (n:Entity {context_id: $context_id, logical_key: $logical_key}) "
             "RETURN n.id AS id, n.canonical_name AS canonical_name, n.entity_type AS entity_type, "
             "n.description AS description, n.aliases AS aliases",
-            {"context_id": context_id, "logical_key": logical_key}, None,
+            {"context_id": context_id, "logical_key": logical_key},
+            None,
         )
         if not rows:
             return None
@@ -494,7 +633,9 @@ class MemoryEngine:
             "description": row.get("description"),
             # write_entity flattens aliases to one comma-joined string
             # (graph properties are scalar-only) -- split back out here.
-            "aliases": [a.strip() for a in raw_aliases.split(",")] if raw_aliases else [],
+            "aliases": [a.strip() for a in raw_aliases.split(",")]
+            if raw_aliases
+            else [],
         }
 
     def _require_authoring_deps(self) -> tuple[GraphIdAllocator, GraphWriter]:
@@ -505,12 +646,25 @@ class MemoryEngine:
         return self._graph_id_allocator, self._authoring_graph_writer
 
     def search_memories(
-        self, context_id: str, query: str, question_date: datetime, scenario_id: str | None = None
+        self,
+        context_id: str,
+        query: str,
+        question_date: datetime,
+        scenario_id: str | None = None,
     ) -> str:
-        with correlation_scope(JournalContext(context_id=context_id, scenario_id=scenario_id)), timed_operation(
-            logger, "memory_engine.search_memories", {"context_id": context_id, "query_len": len(query)}
+        with (
+            correlation_scope(
+                JournalContext(context_id=context_id, scenario_id=scenario_id)
+            ),
+            timed_operation(
+                logger,
+                "memory_engine.search_memories",
+                {"context_id": context_id, "query_len": len(query)},
+            ),
         ):
-            return self._retrieval_engine.retrieve_and_answer(context_id, query, question_date)
+            return self._retrieval_engine.retrieve_and_answer(
+                context_id, query, question_date
+            )
 
     def retrieve_facts(
         self,
@@ -535,8 +689,15 @@ class MemoryEngine:
         correlation context only (not a new filter -- `context_id` /
         playthrough_id is already this system's hard isolation boundary;
         every fact/embedding/graph write and read is scoped to it)."""
-        with correlation_scope(JournalContext(context_id=context_id, scenario_id=scenario_id)), timed_operation(
-            logger, "memory_engine.retrieve_facts", {"context_id": context_id, "query_len": len(query_text)}
+        with (
+            correlation_scope(
+                JournalContext(context_id=context_id, scenario_id=scenario_id)
+            ),
+            timed_operation(
+                logger,
+                "memory_engine.retrieve_facts",
+                {"context_id": context_id, "query_len": len(query_text)},
+            ),
         ):
             return self._retrieval_engine.retrieve_facts(
                 context_id,
@@ -550,7 +711,11 @@ class MemoryEngine:
             )
 
     def generate_reply(
-        self, context_id: str, session_id: str, user_message: str, scenario_id: str | None = None
+        self,
+        context_id: str,
+        session_id: str,
+        user_message: str,
+        scenario_id: str | None = None,
     ) -> str:
         # One correlation id for the whole turn -- add_turn_async/search_memories
         # each open their own scope, but `correlation_scope` reuses the ambient
@@ -558,11 +723,20 @@ class MemoryEngine:
         # under one `journal_steps.correlation_id` (and one `scenario_id`,
         # Phase 9's tenancy identity -- set once here, propagated to every
         # nested call without each one needing to pass it again).
-        with correlation_scope(
-            JournalContext(context_id=context_id, session_id=session_id, scenario_id=scenario_id)
-        ), timed_operation(
-            logger, "memory_engine.generate_reply", {"context_id": context_id, "session_id": session_id}
-        ) as ctx:
+        with (
+            correlation_scope(
+                JournalContext(
+                    context_id=context_id,
+                    session_id=session_id,
+                    scenario_id=scenario_id,
+                )
+            ),
+            timed_operation(
+                logger,
+                "memory_engine.generate_reply",
+                {"context_id": context_id, "session_id": session_id},
+            ) as ctx,
+        ):
             now = datetime.now(timezone.utc)
 
             # Ingest user turn
@@ -576,7 +750,9 @@ class MemoryEngine:
             ctx["reply_len"] = len(reply)
             return reply
 
-    def agent_turn(self, context_id: str, user_prompt: str, system_prompt: str | None = None) -> str:
+    def agent_turn(
+        self, context_id: str, user_prompt: str, system_prompt: str | None = None
+    ) -> str:
         """§11 fix: the first real production caller of the Phase 9 tool
         harness (`ToolRegistry`/`GuardedToolExecutor`/`run_tool_loop`) --
         until this method, those had registry/hook/loop tests but no
@@ -596,13 +772,20 @@ class MemoryEngine:
 
         registry = build_memory_agent_tools(self, context_id)
         executor = GuardedToolExecutor(
-            registry, journal=self._journal,
+            registry,
+            journal=self._journal,
             pre_hooks=(build_rollback_authorization_hook(self, context_id),),
         )
-        with correlation_scope(JournalContext(context_id=context_id)), timed_operation(
-            logger, "memory_engine.agent_turn", {"context_id": context_id}
+        with (
+            correlation_scope(JournalContext(context_id=context_id)),
+            timed_operation(
+                logger, "memory_engine.agent_turn", {"context_id": context_id}
+            ),
         ):
             return run_tool_loop(
-                self._llm, registry, executor,
-                system_prompt or DEFAULT_MEMORY_AGENT_SYSTEM_PROMPT, user_prompt,
+                self._llm,
+                registry,
+                executor,
+                system_prompt or DEFAULT_MEMORY_AGENT_SYSTEM_PROMPT,
+                user_prompt,
             )

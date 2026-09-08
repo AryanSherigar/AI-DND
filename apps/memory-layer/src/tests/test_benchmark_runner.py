@@ -8,7 +8,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from context_memory.core.models import ContextBatch, ContextRecord, SourceDescriptor
+from context_memory.core.models import ContextRecord
+from context_memory.ingestion.entity_registry import EntityRegistry
+from context_memory.ingestion.extraction import (
+    ExtractionService,
+    InMemoryExtractionStore,
+)
 from context_memory.ingestion.fakes import (
     DeterministicEmbedder,
     DeterministicExtractor,
@@ -20,11 +25,9 @@ from context_memory.ingestion.fakes import (
     InMemorySearchIndexStore,
     RecordingGraphTransport,
 )
-from context_memory.ingestion.extraction import ExtractionService, InMemoryExtractionStore
 from context_memory.ingestion.graph_plan_builder import GraphPlanBuilder
 from context_memory.ingestion.graph_writer import GraphWriter
 from context_memory.ingestion.orchestrator import IngestionOrchestrator
-from context_memory.ingestion.entity_registry import EntityRegistry
 from evaluation.benchmark_runner import evaluate_dataset, evaluate_instance
 
 
@@ -39,10 +42,14 @@ class BenchmarkRunnerTests(unittest.TestCase):
         self.transport = RecordingGraphTransport()
         self.extractor = DeterministicExtractor()
         self.extraction_store = InMemoryExtractionStore()
-        self.extraction_service = ExtractionService(self.extractor, self.extraction_store)
+        self.extraction_service = ExtractionService(
+            self.extractor, self.extraction_store
+        )
         self.entity_registry = EntityRegistry(allocator=self.allocator)
         self.plan_builder = GraphPlanBuilder(allocator=self.allocator)
-        self.graph_writer = GraphWriter(manifest_store=self.manifest_store, transport=self.transport)
+        self.graph_writer = GraphWriter(
+            manifest_store=self.manifest_store, transport=self.transport
+        )
         self.embedder = DeterministicEmbedder()
 
         self.orchestrator = IngestionOrchestrator(
@@ -74,7 +81,9 @@ class BenchmarkRunnerTests(unittest.TestCase):
         }
 
     def test_evaluate_instance(self) -> None:
-        res = evaluate_instance(self.sample_instance, self.orchestrator, self.mock_retrieval)
+        res = evaluate_instance(
+            self.sample_instance, self.orchestrator, self.mock_retrieval
+        )
         self.assertEqual(res["question_id"], "test_q_001")
         self.assertEqual(res["hypothesis"], "Max is the dog's name.")
         self.mock_retrieval.retrieve_and_answer.assert_called_once()
@@ -136,7 +145,10 @@ class BenchmarkRunnerTests(unittest.TestCase):
 
             metrics_path = out_path.with_suffix(out_path.suffix + ".metrics.jsonl")
             self.assertTrue(metrics_path.exists())
-            records = [json.loads(line) for line in metrics_path.read_text(encoding="utf-8").strip().split("\n")]
+            records = [
+                json.loads(line)
+                for line in metrics_path.read_text(encoding="utf-8").strip().split("\n")
+            ]
 
             summaries = [r for r in records if r["record_type"] == "instance_summary"]
             self.assertEqual(len(summaries), 1)
@@ -151,26 +163,41 @@ class BenchmarkRunnerTests(unittest.TestCase):
                 self.assertIsInstance(summary[key], float)
 
             stages = [r for r in records if r["record_type"] == "stage"]
-            self.assertGreater(len(stages), 0)  # orchestrator.run_batch alone triggers several timed_operation calls
+            self.assertGreater(
+                len(stages), 0
+            )  # orchestrator.run_batch alone triggers several timed_operation calls
             self.assertTrue(all(r["question_id"] == "test_q_001" for r in stages))
-            self.assertTrue(all("elapsed_ms" in r and "operation" in r and "outcome" in r for r in stages))
+            self.assertTrue(
+                all(
+                    "elapsed_ms" in r and "operation" in r and "outcome" in r
+                    for r in stages
+                )
+            )
             operation_names = {r["operation"] for r in stages}
             self.assertIn("orchestrator.run_batch", operation_names)
 
     def test_evaluate_dataset_disables_metrics_collection_when_done(self) -> None:
         """Collection is process-wide global state -- must not leak into
         whatever runs after `evaluate_dataset` returns."""
-        from context_memory.core.logging import drain_metrics, get_logger, timed_operation
+        from context_memory.core.logging import (
+            drain_metrics,
+            get_logger,
+            timed_operation,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             out_path = Path(tmpdir) / "predictions.jsonl"
             evaluate_dataset(
-                instances=[self.sample_instance], orchestrator=self.orchestrator,
-                retrieval_engine=self.mock_retrieval, output_path=out_path,
+                instances=[self.sample_instance],
+                orchestrator=self.orchestrator,
+                retrieval_engine=self.mock_retrieval,
+                output_path=out_path,
             )
         with timed_operation(get_logger("test.leak"), "after_run_op"):
             pass
-        self.assertEqual(drain_metrics(), [])  # collection was disabled -- this op was never captured
+        self.assertEqual(
+            drain_metrics(), []
+        )  # collection was disabled -- this op was never captured
 
 
 class _RecordingBatchExtractor:
@@ -198,8 +225,12 @@ def _make_record(record_id: str) -> ContextRecord:
     from datetime import datetime, timezone
 
     return ContextRecord(
-        record_id=record_id, session_id="session:001", actor_role="user",
-        occurred_at=datetime.now(timezone.utc), content_type="text/plain", content="hello",
+        record_id=record_id,
+        session_id="session:001",
+        actor_role="user",
+        occurred_at=datetime.now(timezone.utc),
+        content_type="text/plain",
+        content="hello",
     )
 
 
@@ -209,11 +240,15 @@ class PrefetchingExtractorTests(unittest.TestCase):
     record; batch_size == 1 (the default) must reproduce today's behavior
     exactly, including against an extractor that has no extract_batch at all."""
 
-    def test_batch_size_one_uses_the_unbatched_per_record_path_even_when_extract_batch_exists(self) -> None:
+    def test_batch_size_one_uses_the_unbatched_per_record_path_even_when_extract_batch_exists(
+        self,
+    ) -> None:
         from evaluation.benchmark_runner import PrefetchingExtractor
 
         inner = _RecordingBatchExtractor()
-        prefetcher = PrefetchingExtractor(inner, max_workers=2, progress_every=1000, batch_size=1)
+        prefetcher = PrefetchingExtractor(
+            inner, max_workers=2, progress_every=1000, batch_size=1
+        )
         records = [_make_record("r1"), _make_record("r2"), _make_record("r3")]
         prefetcher.prefetch(records)
         # batch_size=1 is the default (behavior-preserving) path -- must go
@@ -226,7 +261,9 @@ class PrefetchingExtractorTests(unittest.TestCase):
         from evaluation.benchmark_runner import PrefetchingExtractor
 
         inner = _RecordingBatchExtractor()
-        prefetcher = PrefetchingExtractor(inner, max_workers=2, progress_every=1000, batch_size=2)
+        prefetcher = PrefetchingExtractor(
+            inner, max_workers=2, progress_every=1000, batch_size=2
+        )
         records = [_make_record(f"r{i}") for i in range(5)]
         prefetcher.prefetch(records)
 
@@ -237,18 +274,28 @@ class PrefetchingExtractorTests(unittest.TestCase):
         self.assertEqual(covered, {f"r{i}" for i in range(5)})
 
         for record in records:
-            self.assertEqual(prefetcher.extract(record), (f"draft-for-{record.record_id}",))
+            self.assertEqual(
+                prefetcher.extract(record), (f"draft-for-{record.record_id}",)
+            )
 
-    def test_batch_size_above_one_falls_back_to_unbatched_path_when_inner_lacks_extract_batch(self) -> None:
+    def test_batch_size_above_one_falls_back_to_unbatched_path_when_inner_lacks_extract_batch(
+        self,
+    ) -> None:
         from evaluation.benchmark_runner import PrefetchingExtractor
 
         inner = DeterministicExtractor({"r1": ("solo-draft",)})
-        prefetcher = PrefetchingExtractor(inner, max_workers=2, progress_every=1000, batch_size=4)
+        prefetcher = PrefetchingExtractor(
+            inner, max_workers=2, progress_every=1000, batch_size=4
+        )
         records = [_make_record("r1")]
-        prefetcher.prefetch(records)  # must not raise -- no extract_batch on DeterministicExtractor
+        prefetcher.prefetch(
+            records
+        )  # must not raise -- no extract_batch on DeterministicExtractor
         self.assertEqual(prefetcher.extract(records[0]), ("solo-draft",))
 
-    def test_a_failed_batch_marks_every_record_in_that_group_as_failed_not_silently_empty(self) -> None:
+    def test_a_failed_batch_marks_every_record_in_that_group_as_failed_not_silently_empty(
+        self,
+    ) -> None:
         """§2 fix: a batch call that genuinely fails must surface as an
         exception on consumption -- `prefetch()` itself still swallows it
         (so one bad group doesn't abort every other group's prefetch), but
@@ -261,9 +308,13 @@ class PrefetchingExtractorTests(unittest.TestCase):
                 raise RuntimeError("simulated provider failure for this batch")
 
         inner = _FlakyBatchExtractor()
-        prefetcher = PrefetchingExtractor(inner, max_workers=2, progress_every=1000, batch_size=2)
+        prefetcher = PrefetchingExtractor(
+            inner, max_workers=2, progress_every=1000, batch_size=2
+        )
         records = [_make_record("r1"), _make_record("r2")]
-        prefetcher.prefetch(records)  # must not raise -- failure is deferred to consumption
+        prefetcher.prefetch(
+            records
+        )  # must not raise -- failure is deferred to consumption
         with self.assertRaises(RuntimeError):
             prefetcher.extract(records[0])
         with self.assertRaises(RuntimeError):

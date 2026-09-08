@@ -5,10 +5,6 @@ import uuid
 from unittest.mock import AsyncMock
 
 import pytest
-from google.genai import types
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db.models.participant import Participant
 from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
@@ -25,6 +21,9 @@ from app.models.turn import TurnRequestInput
 from app.session import notification_manager, spectator_manager
 from app.turn import pipeline
 from app.turn.steps import ai_orchestrator
+from google.genai import types
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

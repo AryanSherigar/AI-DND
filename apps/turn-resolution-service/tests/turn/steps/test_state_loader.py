@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from app.exceptions.turn_exceptions import PlaythroughNotActiveError
 from app.turn.steps.state_loader import load_state
 

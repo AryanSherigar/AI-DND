@@ -7,12 +7,11 @@ themselves never touch a repo directly (CLAUDE.md).
 
 import uuid
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.exceptions.session_exceptions import InvalidShareTokenError
 from app.exceptions.turn_exceptions import ParticipantNotFoundError
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.share_repo import ShareRepo
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def validate_spectate_access(

@@ -141,6 +141,14 @@ export function EBookTurnEntry({
         ))}
       </article>
 
+      {turn.image_url && (
+        <img
+          src={turn.image_url}
+          alt="Generated scene depiction"
+          className="my-5 w-full rounded-lg border border-inherit/20"
+        />
+      )}
+
       {turn.chapter_delta && (
         <>
           {turn.chapter_delta.dice_rolls.map((roll, idx) => (

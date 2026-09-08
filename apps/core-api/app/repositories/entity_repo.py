@@ -52,3 +52,11 @@ class EntityRepo:
         """Permanently delete an entity. Cascades to referencing facts (DB-level)."""
         await self.session.delete(entity)
         await self.session.flush()
+
+    async def get_player_entity(self, scenario_id: uuid.UUID) -> Entity | None:
+        """Retrieve the designated player character entity for a scenario, if any."""
+        stmt = select(Entity).where(
+            Entity.scenario_id == scenario_id, Entity.is_player.is_(True)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().first()

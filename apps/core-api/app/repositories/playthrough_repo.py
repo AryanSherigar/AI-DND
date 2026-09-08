@@ -2,10 +2,11 @@
 
 import uuid
 
-from app.db.models.playthrough import Playthrough
-from app.db.models.scenario import Scenario
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models.playthrough import Playthrough
+from app.db.models.scenario import Scenario
 
 
 class PlaythroughRepo:

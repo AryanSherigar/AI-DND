@@ -11,13 +11,14 @@ _TAG_PATTERN = re.compile(
 
 
 class MoodTag(StrEnum):
-    """Canonical 5-mood RPG sound palette."""
+    """Canonical 6-mood RPG sound palette."""
 
     PEACEFUL = "peaceful"
     MYSTERY = "mystery"
     TENSION = "tension"
     COMBAT = "combat"
     MELANCHOLY = "melancholy"
+    TRIUMPH = "triumph"
 
 
 DEFAULT_MOOD = MoodTag.PEACEFUL
@@ -45,6 +46,10 @@ MOOD_SYNONYMS: dict[str, MoodTag] = {
     "sad": MoodTag.MELANCHOLY,
     "grief": MoodTag.MELANCHOLY,
     "tragic": MoodTag.MELANCHOLY,
+    "victory": MoodTag.TRIUMPH,
+    "triumphant": MoodTag.TRIUMPH,
+    "win": MoodTag.TRIUMPH,
+    "celebration": MoodTag.TRIUMPH,
 }
 
 

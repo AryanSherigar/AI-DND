@@ -11,9 +11,8 @@ from __future__ import annotations
 
 import random
 
-from google.genai import types
-
 from app.models.tool_call import ProposedMutation
+from google.genai import types
 
 DEFAULT_DICE_SIDES = 20
 

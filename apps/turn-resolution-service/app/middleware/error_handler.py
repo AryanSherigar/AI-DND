@@ -1,8 +1,7 @@
 import structlog
+from app.exceptions.base import BaseAppException
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-
-from app.exceptions.base import BaseAppException
 
 logger = structlog.get_logger()
 

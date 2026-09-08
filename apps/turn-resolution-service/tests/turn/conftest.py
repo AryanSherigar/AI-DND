@@ -13,7 +13,6 @@ for the duration of that test.
 from uuid import uuid4
 
 import pytest
-
 from app.integrations import memory_client
 from app.models.memory import (
     BatchStatus,

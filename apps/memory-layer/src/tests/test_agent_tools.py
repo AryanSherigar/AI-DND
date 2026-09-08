@@ -11,7 +11,10 @@ import unittest
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from context_memory.core.agent_tools import build_memory_agent_tools, build_rollback_authorization_hook
+from context_memory.core.agent_tools import (
+    build_memory_agent_tools,
+    build_rollback_authorization_hook,
+)
 from context_memory.core.tool_executor import GuardedToolExecutor, HookDecision
 from context_memory.core.tool_loop import run_tool_loop
 from context_memory.ingestion.rollback import RollbackResult, SavePoint
@@ -49,7 +52,9 @@ class FakeEngine:
 
     def rollback_to(self, save_id):
         self.rollback_calls.append(save_id)
-        return RollbackResult(save_id=save_id, archived_fact_ids=("fact-1",), restored_fact_ids=())
+        return RollbackResult(
+            save_id=save_id, archived_fact_ids=("fact-1",), restored_fact_ids=()
+        )
 
 
 class BuildMemoryAgentToolsTests(unittest.TestCase):
@@ -57,9 +62,13 @@ class BuildMemoryAgentToolsTests(unittest.TestCase):
         engine = FakeEngine()
         registry = build_memory_agent_tools(engine, "context-1")
         names = {t.name for t in registry.list()}
-        self.assertEqual(names, {"search_memory", "create_save_point", "rollback_to_save_point"})
+        self.assertEqual(
+            names, {"search_memory", "create_save_point", "rollback_to_save_point"}
+        )
 
-    def test_search_memory_handler_is_closed_over_context_id_not_llm_controllable(self) -> None:
+    def test_search_memory_handler_is_closed_over_context_id_not_llm_controllable(
+        self,
+    ) -> None:
         """The tool's input_schema has no context_id property at all -- the
         model can only ever search the playthrough this agent turn was
         scoped to, never one it names itself."""
@@ -126,7 +135,9 @@ class RollbackAuthorizationHookTests(unittest.TestCase):
         hook = build_rollback_authorization_hook(engine, "context-1")
         registry = build_memory_agent_tools(engine, "context-1")
 
-        result = hook(registry.get("rollback_to_save_point"), {"save_id": "does-not-exist"})
+        result = hook(
+            registry.get("rollback_to_save_point"), {"save_id": "does-not-exist"}
+        )
 
         self.assertEqual(result.decision, HookDecision.DENY)
 
@@ -186,20 +197,43 @@ class EndToEndAgentToolLoopTests(unittest.TestCase):
 
     def test_cross_context_rollback_is_denied_not_executed(self) -> None:
         engine = FakeEngine()
-        engine._save_point_store.seed("save-from-another-playthrough", "someone-elses-context")
+        engine._save_point_store.seed(
+            "save-from-another-playthrough", "someone-elses-context"
+        )
         registry = build_memory_agent_tools(engine, "context-1")
         executor = GuardedToolExecutor(
-            registry, pre_hooks=(build_rollback_authorization_hook(engine, "context-1"),),
+            registry,
+            pre_hooks=(build_rollback_authorization_hook(engine, "context-1"),),
         )
         tool_call = FakeToolCall(
-            "call-1", FakeFunctionCall("rollback_to_save_point", json.dumps({"save_id": "save-from-another-playthrough"}))
+            "call-1",
+            FakeFunctionCall(
+                "rollback_to_save_point",
+                json.dumps({"save_id": "save-from-another-playthrough"}),
+            ),
         )
-        client = FakeToolCallingClient([
-            FakeResponse([FakeChoice(FakeMessage(content=None, tool_calls=[tool_call]))]),
-            FakeResponse([FakeChoice(FakeMessage(content="I can't roll back that save point."))]),
-        ])
+        client = FakeToolCallingClient(
+            [
+                FakeResponse(
+                    [FakeChoice(FakeMessage(content=None, tool_calls=[tool_call]))]
+                ),
+                FakeResponse(
+                    [
+                        FakeChoice(
+                            FakeMessage(content="I can't roll back that save point.")
+                        )
+                    ]
+                ),
+            ]
+        )
 
-        result = run_tool_loop(client, registry, executor, "sys", "roll back to save-from-another-playthrough")
+        result = run_tool_loop(
+            client,
+            registry,
+            executor,
+            "sys",
+            "roll back to save-from-another-playthrough",
+        )
 
         self.assertEqual(result, "I can't roll back that save point.")
         self.assertEqual(engine.rollback_calls, [])  # never actually executed
@@ -230,24 +264,38 @@ class MemoryEngineAgentTurnTests(unittest.TestCase):
         from context_memory.engine import MemoryEngine
 
         return MemoryEngine(
-            FakeOrchestrator(), FakeRetrievalEngine("Whiskers is the cat's name."), llm_client,
-            pool=object(), save_point_store=FakeSavePointStore(),
+            FakeOrchestrator(),
+            FakeRetrievalEngine("Whiskers is the cat's name."),
+            llm_client,
+            pool=object(),
+            save_point_store=FakeSavePointStore(),
         )
 
     def test_agent_turn_answers_directly_when_the_model_calls_no_tool(self) -> None:
-        client = FakeToolCallingClient([FakeResponse([FakeChoice(FakeMessage(content="Hi there!"))])])
+        client = FakeToolCallingClient(
+            [FakeResponse([FakeChoice(FakeMessage(content="Hi there!"))])]
+        )
         engine = self._engine(client)
 
         reply = engine.agent_turn("context-1", "hello")
 
         self.assertEqual(reply, "Hi there!")
 
-    def test_agent_turn_routes_search_memory_through_the_real_search_memories_method(self) -> None:
-        tool_call = FakeToolCall("call-1", FakeFunctionCall("search_memory", json.dumps({"query": "cat's name"})))
-        client = FakeToolCallingClient([
-            FakeResponse([FakeChoice(FakeMessage(content=None, tool_calls=[tool_call]))]),
-            FakeResponse([FakeChoice(FakeMessage(content="Whiskers."))]),
-        ])
+    def test_agent_turn_routes_search_memory_through_the_real_search_memories_method(
+        self,
+    ) -> None:
+        tool_call = FakeToolCall(
+            "call-1",
+            FakeFunctionCall("search_memory", json.dumps({"query": "cat's name"})),
+        )
+        client = FakeToolCallingClient(
+            [
+                FakeResponse(
+                    [FakeChoice(FakeMessage(content=None, tool_calls=[tool_call]))]
+                ),
+                FakeResponse([FakeChoice(FakeMessage(content="Whiskers."))]),
+            ]
+        )
         engine = self._engine(client)
 
         reply = engine.agent_turn("context-1", "what's the cat's name?")

@@ -1,5 +1,5 @@
 export type ScenarioMood =
-  "peaceful" | "mystery" | "tension" | "combat" | "melancholy";
+  "peaceful" | "mystery" | "tension" | "combat" | "melancholy" | "triumph";
 
 export interface AudioSettings {
   is_muted: boolean;

@@ -6,7 +6,6 @@ or fail a turn.
 """
 
 import structlog
-
 from app.config import settings
 from app.integrations import memory_client
 from app.models.memory import MemoryIngestRequest, TurnBatchEntry

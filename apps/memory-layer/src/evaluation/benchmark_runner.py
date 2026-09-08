@@ -14,21 +14,29 @@ import json
 import os
 import sys
 import time
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from context_memory.client.hydradb_http import HydraHttpTransport
 from context_memory.composition import build_ingestion_and_retrieval
 from context_memory.core.config import Config
 from context_memory.core.journal import StepJournal
 from context_memory.core.llm_client import LLMClient
-from context_memory.core.logging import disable_metrics_collection, drain_metrics, enable_metrics_collection
+from context_memory.core.logging import (
+    disable_metrics_collection,
+    drain_metrics,
+    enable_metrics_collection,
+)
 from context_memory.ingestion.embedding import SentenceTransformerEmbedder
 from context_memory.ingestion.model_adapters import LLMExtractor
 from context_memory.ingestion.orchestrator import IngestionOrchestrator
-from context_memory.ingestion.sources.longmemeval import adapt_longmemeval_instance, parse_longmemeval_timestamp
+from context_memory.ingestion.sources.longmemeval import (
+    adapt_longmemeval_instance,
+    parse_longmemeval_timestamp,
+)
 from context_memory.retrieval import HybridRetrievalEngine
 
 
@@ -47,7 +55,13 @@ class PrefetchingExtractor:
     as sequentially as before, and never touches Postgres/HydraDB concurrently.
     """
 
-    def __init__(self, inner: Any, max_workers: int = 8, progress_every: int = 25, batch_size: int = 1) -> None:
+    def __init__(
+        self,
+        inner: Any,
+        max_workers: int = 8,
+        progress_every: int = 25,
+        batch_size: int = 1,
+    ) -> None:
         self._inner = inner
         self._max_workers = max_workers
         self._progress_every = progress_every
@@ -63,7 +77,9 @@ class PrefetchingExtractor:
         self.extractor_name = getattr(inner, "extractor_name", None)
         self.extractor_version = getattr(inner, "extractor_version", None)
 
-    def _report_progress(self, done: int, total: int, failed: int, started: float) -> None:
+    def _report_progress(
+        self, done: int, total: int, failed: int, started: float
+    ) -> None:
         elapsed = time.perf_counter() - started
         rate = done / elapsed if elapsed > 0 else 0.0
         eta = (total - done) / rate if rate > 0 else 0.0
@@ -94,14 +110,20 @@ class PrefetchingExtractor:
 
         use_batching = self._batch_size > 1 and hasattr(self._inner, "extract_batch")
         if use_batching:
-            groups = [records[i : i + self._batch_size] for i in range(0, total, self._batch_size)]
+            groups = [
+                records[i : i + self._batch_size]
+                for i in range(0, total, self._batch_size)
+            ]
             print(
                 f"    prefetching {total} extractions in {len(groups)} batches of up to "
                 f"{self._batch_size} ({self._max_workers} workers)...",
                 flush=True,
             )
             with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
-                futures = {pool.submit(self._inner.extract_batch, group): group for group in groups}
+                futures = {
+                    pool.submit(self._inner.extract_batch, group): group
+                    for group in groups
+                }
                 for future in as_completed(futures):
                     group = futures[future]
                     try:
@@ -115,7 +137,11 @@ class PrefetchingExtractor:
                         # comment already claimed (incorrectly, until now).
                         failed += len(group)
                         record_ids = [r.record_id for r in group]
-                        print(f"  prefetch batch extraction failed for {record_ids}: {exc}", file=sys.stderr, flush=True)
+                        print(
+                            f"  prefetch batch extraction failed for {record_ids}: {exc}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
                         for record in group:
                             self._cache[record.record_id] = exc
                     done += len(group)
@@ -124,9 +150,15 @@ class PrefetchingExtractor:
                         self._report_progress(done, total, failed, started)
             return
 
-        print(f"    prefetching {total} extractions ({self._max_workers} workers)...", flush=True)
+        print(
+            f"    prefetching {total} extractions ({self._max_workers} workers)...",
+            flush=True,
+        )
         with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
-            futures = {pool.submit(self._inner.extract, record): record.record_id for record in records}
+            futures = {
+                pool.submit(self._inner.extract, record): record.record_id
+                for record in records
+            }
             for future in as_completed(futures):
                 record_id = futures[future]
                 try:
@@ -135,7 +167,11 @@ class PrefetchingExtractor:
                     # §2 fix: cache the exception, not `()` -- see the
                     # batched branch above for why.
                     failed += 1
-                    print(f"  prefetch extraction failed for {record_id}: {exc}", file=sys.stderr, flush=True)
+                    print(
+                        f"  prefetch extraction failed for {record_id}: {exc}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
                     self._cache[record_id] = exc
                 done += 1
                 if done % self._progress_every == 0 or done == total:
@@ -207,7 +243,9 @@ def create_pipeline(
 
     if extraction_workers > 0:
         extractor = PrefetchingExtractor(
-            extractor, max_workers=extraction_workers, progress_every=progress_every,
+            extractor,
+            max_workers=extraction_workers,
+            progress_every=progress_every,
             batch_size=config.extraction_batch_size,
         )
 
@@ -286,18 +324,20 @@ def evaluate_instance(
     )
 
     if metrics_writer is not None:
-        metrics_writer({
-            "record_type": "instance_summary",
-            "question_id": question_id,
-            "question_type": instance.get("question_type"),
-            "turns": turns,
-            "completed_chunks": batch_result.completed_count,
-            "accepted_facts": accepted_facts,
-            "prefetch_s": round(prefetch_s, 3),
-            "ingest_s": round(ingest_s, 3),
-            "retrieve_s": round(retrieve_s, 3),
-            "total_s": round(prefetch_s + ingest_s + retrieve_s, 3),
-        })
+        metrics_writer(
+            {
+                "record_type": "instance_summary",
+                "question_id": question_id,
+                "question_type": instance.get("question_type"),
+                "turns": turns,
+                "completed_chunks": batch_result.completed_count,
+                "accepted_facts": accepted_facts,
+                "prefetch_s": round(prefetch_s, 3),
+                "ingest_s": round(ingest_s, 3),
+                "retrieve_s": round(retrieve_s, 3),
+                "total_s": round(prefetch_s + ingest_s + retrieve_s, 3),
+            }
+        )
         for stage_record in drain_metrics():
             stage_record["record_type"] = "stage"
             stage_record["question_id"] = question_id
@@ -354,47 +394,101 @@ def evaluate_dataset(
 
     enable_metrics_collection()
     try:
-        with output_path.open(mode, encoding="utf-8") as out_file, metrics_path.open(metrics_mode, encoding="utf-8") as metrics_file:
+        with (
+            output_path.open(mode, encoding="utf-8") as out_file,
+            metrics_path.open(metrics_mode, encoding="utf-8") as metrics_file,
+        ):
+
             def write_metric(record: dict[str, Any]) -> None:
-                metrics_file.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+                metrics_file.write(
+                    json.dumps(record, ensure_ascii=False, default=str) + "\n"
+                )
                 metrics_file.flush()
 
             for idx, instance in enumerate(selected_instances, start=1):
                 q_id = instance.get("question_id", f"unknown-{idx}")
                 t0 = time.perf_counter()
                 try:
-                    record = evaluate_instance(instance, orchestrator, retrieval_engine, extractor, metrics_writer=write_metric)
+                    record = evaluate_instance(
+                        instance,
+                        orchestrator,
+                        retrieval_engine,
+                        extractor,
+                        metrics_writer=write_metric,
+                    )
                     results.append(record)
                     out_file.write(json.dumps(record, ensure_ascii=False) + "\n")
                     out_file.flush()
                     dur = time.perf_counter() - t0
-                    print(f"[{idx}/{total}] question_id={q_id} ({dur:.2f}s) -> hypothesis={record['hypothesis'][:60]!r}...")
+                    print(
+                        f"[{idx}/{total}] question_id={q_id} ({dur:.2f}s) -> hypothesis={record['hypothesis'][:60]!r}..."
+                    )
                 except Exception as exc:
                     dur = time.perf_counter() - t0
-                    print(f"[{idx}/{total}] question_id={q_id} ({dur:.2f}s) ERROR: {exc}", file=sys.stderr)
-                    fallback_record = {"question_id": str(q_id), "hypothesis": "I do not have enough information to answer."}
+                    print(
+                        f"[{idx}/{total}] question_id={q_id} ({dur:.2f}s) ERROR: {exc}",
+                        file=sys.stderr,
+                    )
+                    fallback_record = {
+                        "question_id": str(q_id),
+                        "hypothesis": "I do not have enough information to answer.",
+                    }
                     results.append(fallback_record)
-                    out_file.write(json.dumps(fallback_record, ensure_ascii=False) + "\n")
+                    out_file.write(
+                        json.dumps(fallback_record, ensure_ascii=False) + "\n"
+                    )
                     out_file.flush()
-                    write_metric({"record_type": "instance_error", "question_id": str(q_id), "duration_s": round(dur, 3), "error": str(exc)})
+                    write_metric(
+                        {
+                            "record_type": "instance_error",
+                            "question_id": str(q_id),
+                            "duration_s": round(dur, 3),
+                            "error": str(exc),
+                        }
+                    )
     finally:
         disable_metrics_collection()
 
     total_dur = time.perf_counter() - start_time
     avg_speed = total / total_dur if total_dur > 0 else 0.0
-    print(f"Finished benchmark run: {len(results)} evaluated in {total_dur:.2f}s ({avg_speed:.2f} questions/s)")
+    print(
+        f"Finished benchmark run: {len(results)} evaluated in {total_dur:.2f}s ({avg_speed:.2f} questions/s)"
+    )
     return results
 
 
 def parse_args(args: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", required=True, type=Path, help="Path to local LongMemEval JSON dataset")
-    parser.add_argument("--output", required=True, type=Path, help="Path to write the output hypotheses JSONL")
-    parser.add_argument("--limit", type=int, default=None, help="Maximum benchmark instances to evaluate")
-    parser.add_argument("--offset", type=int, default=0, help="Starting index in the dataset (for resuming)")
+    parser.add_argument(
+        "--input",
+        required=True,
+        type=Path,
+        help="Path to local LongMemEval JSON dataset",
+    )
+    parser.add_argument(
+        "--output",
+        required=True,
+        type=Path,
+        help="Path to write the output hypotheses JSONL",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Maximum benchmark instances to evaluate",
+    )
+    parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="Starting index in the dataset (for resuming)",
+    )
     parser.add_argument(
         "--database-url",
-        default=os.environ.get("CONTEXT_MEMORY_DATABASE_URL", "postgresql://context_memory@127.0.0.1:54329/context_memory"),
+        default=os.environ.get(
+            "CONTEXT_MEMORY_DATABASE_URL",
+            "postgresql://context_memory@127.0.0.1:54329/context_memory",
+        ),
         help="PostgreSQL connection string",
     )
     parser.add_argument(
@@ -452,7 +546,9 @@ def main() -> int:
     args = parse_args()
 
     import logging as _logging
+
     from context_memory.core.logging import setup_logging
+
     setup_logging(level=getattr(_logging, args.log_level))
 
     if not args.input.exists():
@@ -461,7 +557,10 @@ def main() -> int:
 
     payload = json.loads(args.input.read_text(encoding="utf-8"))
     if not isinstance(payload, list):
-        print("Error: input dataset must contain a JSON array of instances.", file=sys.stderr)
+        print(
+            "Error: input dataset must contain a JSON array of instances.",
+            file=sys.stderr,
+        )
         return 1
 
     from psycopg_pool import ConnectionPool
@@ -489,7 +588,9 @@ def main() -> int:
     ) as pg_pool:
         pg_pool.wait(timeout=config.postgres_pool_timeout_seconds)
         from pathlib import Path
+
         from context_memory.persistence.migrations import apply_migrations
+
         migrations_dir = Path(__file__).resolve().parents[2] / "db" / "migrations"
         if migrations_dir.exists():
             with pg_pool.connection() as pg_conn:
@@ -505,9 +606,11 @@ def main() -> int:
 
         if args.extractor == "deterministic":
             from context_memory.ingestion.fakes import DeterministicExtractor
+
             extractor_impl = DeterministicExtractor()
         else:
             from context_memory.ingestion.model_adapters import LLMExtractor
+
             extractor_impl = LLMExtractor(llm_client, config)
 
         tpm = _report_rate_limits(llm_client)
@@ -538,9 +641,13 @@ def main() -> int:
             config=config,
         )
         if args.extraction_workers > 0:
-            print(f"Extraction prefetch enabled: {args.extraction_workers} concurrent calls per instance")
+            print(
+                f"Extraction prefetch enabled: {args.extraction_workers} concurrent calls per instance"
+            )
         if config.ingestion_write_batch_size > 1:
-            print(f"Graph/embedding write batching enabled: {config.ingestion_write_batch_size} chunks per flush")
+            print(
+                f"Graph/embedding write batching enabled: {config.ingestion_write_batch_size} chunks per flush"
+            )
 
         evaluate_dataset(
             instances=payload,

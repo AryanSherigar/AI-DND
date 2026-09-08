@@ -25,6 +25,7 @@ from app.routers import (
     minigames,
     playthroughs,
     scenario_entity_types,
+    scenario_music,
     scenarios,
     share,
     uploads,
@@ -60,6 +61,7 @@ app.middleware("http")(request_context_middleware)
 setup_error_handlers(app)
 app.include_router(auth.router)
 app.include_router(scenarios.router)
+app.include_router(scenario_music.router)
 app.include_router(entities.router)
 app.include_router(scenario_entity_types.router)
 app.include_router(facts.router)

@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-
 from app.config import settings
 from app.models.turn import LoadedState, TurnRequest
 from app.turn.steps import memory_writer

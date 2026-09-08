@@ -282,3 +282,29 @@ async def test_entity_access_denied_for_non_creator(
         headers=headers2,
     )
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_entity_player_designation_endpoints(
+    async_client: AsyncClient, dev_user, master_scenario_id: str
+):
+    headers = {"x-dev-user-id": str(dev_user.user_id)}
+    create_resp = await async_client.post(
+        f"/v1/scenarios/{master_scenario_id}/entities",
+        json={
+            "entity_type": "character",
+            "canonical_name": "The Protagonist",
+            "is_player": True,
+        },
+        headers=headers,
+    )
+    assert create_resp.status_code == 201
+    assert create_resp.json()["is_player"] is True
+    entity_id = create_resp.json()["entity_id"]
+
+    get_resp = await async_client.get(
+        f"/v1/scenarios/{master_scenario_id}/entities/{entity_id}",
+        headers=headers,
+    )
+    assert get_resp.status_code == 200
+    assert get_resp.json()["is_player"] is True

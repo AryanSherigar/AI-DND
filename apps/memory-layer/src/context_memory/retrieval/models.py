@@ -43,6 +43,7 @@ class RetrievedFact:
     falls back to the fact's linked ABOUT entity and `object` falls back to
     the full extracted sentence -- still the previous, pragmatic behavior,
     now the exception rather than the rule."""
+
     fact_id: str
     subject: str
     predicate: str
@@ -103,7 +104,10 @@ class DurationAnswer(BaseModel):
     dates remove both failure modes: Python parses them and derives the
     unit-converted difference itself, so unit and operand encoding are no
     longer things the model can get inconsistent with each other."""
-    operation: Literal["ago_since", "between", "sum", "insufficient_evidence"] = "insufficient_evidence"
+
+    operation: Literal["ago_since", "between", "sum", "insufficient_evidence"] = (
+        "insufficient_evidence"
+    )
     start_date: str | None = None
     end_date: str | None = None
     unit: Literal["days", "weeks", "months", "years"] | None = None

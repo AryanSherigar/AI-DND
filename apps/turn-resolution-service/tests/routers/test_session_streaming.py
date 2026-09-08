@@ -3,10 +3,9 @@
 import asyncio
 from typing import Any
 
-from sse_starlette.sse import EventSourceResponse
-
 from app.config import settings
 from app.routers.session import _relay
+from sse_starlette.sse import EventSourceResponse
 
 
 async def test_relay_yields_events_as_they_arrive() -> None:

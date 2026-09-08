@@ -3,12 +3,11 @@
 import uuid
 
 import pytest
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db.models.scenario import Scenario
 from app.db.models.user import User
 from app.repositories.scenario_repo import ScenarioRepo
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def _seed_scenario(session: AsyncSession) -> Scenario:

@@ -34,6 +34,7 @@ class TurnLogResponse(BaseModel):
     narration_text: str | None
     tool_calls: list[ToolCallLogEntry] = Field(default_factory=list)
     created_at: datetime
+    image_url: str | None = None
 
 
 class TurnLogListResponse(BaseModel):

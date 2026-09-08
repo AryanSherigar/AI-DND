@@ -44,15 +44,26 @@ class HydraFactLookup:
     def __init__(self, transport: HydraHttpTransport) -> None:
         self._transport = transport
 
-    def find_existing(self, context_id: str, subject_entity_id: int, predicate_key: str) -> list[FactState]:
+    def find_existing(
+        self, context_id: str, subject_entity_id: int, predicate_key: str
+    ) -> list[FactState]:
         with timed_operation(
-            logger, "fact_lookup.find_existing",
-            {"context_id": context_id, "subject_entity_id": subject_entity_id, "predicate_key": predicate_key},
+            logger,
+            "fact_lookup.find_existing",
+            {
+                "context_id": context_id,
+                "subject_entity_id": subject_entity_id,
+                "predicate_key": predicate_key,
+            },
         ) as ctx:
             try:
                 rows = self._transport.read(
                     _FIND_EXISTING_CYPHER,
-                    {"context_id": context_id, "predicate_key": predicate_key, "subject_id": subject_entity_id},
+                    {
+                        "context_id": context_id,
+                        "predicate_key": predicate_key,
+                        "subject_id": subject_entity_id,
+                    },
                     None,
                 )
             except Exception as error:
@@ -61,7 +72,10 @@ class HydraFactLookup:
                 # as if this callable were never supplied), not a dropped turn.
                 logger.warning(
                     "find_existing_facts lookup failed for %s/%s/%s: %s",
-                    context_id, subject_entity_id, predicate_key, error,
+                    context_id,
+                    subject_entity_id,
+                    predicate_key,
+                    error,
                 )
                 return []
 
@@ -81,8 +95,14 @@ class HydraFactLookup:
                             subject_entity_id=subject_entity_id,
                             predicate_key=predicate_key,
                             text=str(text),
-                            observed_at=datetime.fromtimestamp(int(observed_at), tz=timezone.utc),
-                            valid_from=datetime.fromtimestamp(int(valid_from), tz=timezone.utc) if valid_from else None,
+                            observed_at=datetime.fromtimestamp(
+                                int(observed_at), tz=timezone.utc
+                            ),
+                            valid_from=datetime.fromtimestamp(
+                                int(valid_from), tz=timezone.utc
+                            )
+                            if valid_from
+                            else None,
                             # 9999999999 is the sentinel "no upper bound" (see
                             # graph_plan_builder.py's _fact_node) — real None,
                             # not a real-world date near year 2286.
@@ -94,7 +114,11 @@ class HydraFactLookup:
                         )
                     )
                 except Exception as error:
-                    logger.warning("find_existing_facts: skipping malformed row for %s: %s", logical_key, error)
+                    logger.warning(
+                        "find_existing_facts: skipping malformed row for %s: %s",
+                        logical_key,
+                        error,
+                    )
 
             ctx["found"] = len(results)
             return results

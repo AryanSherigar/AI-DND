@@ -42,6 +42,9 @@ class EntityService:
         """Create a new entity owned by the given scenario."""
         await self._ensure_scenario_owner(scenario_id, user_id)
         await self._ensure_valid_entity_type(scenario_id, data.entity_type)
+        self._validate_player_entity_type(data.entity_type, data.is_player)
+        if data.is_player:
+            await self._handle_player_designation(scenario_id, None)
 
         entity = Entity(
             scenario_id=scenario_id,
@@ -54,6 +57,7 @@ class EntityService:
                 key: field.model_dump() for key, field in data.attributes_schema.items()
             },
             narrator_instruction=data.narrator_instruction,
+            is_player=data.is_player,
         )
         created = await self.entity_repo.create(entity)
         return EntityResponse.model_validate(created)
@@ -97,10 +101,16 @@ class EntityService:
         # model_dump() recursively dumps nested AttributeFieldSchema models to
         # plain dicts, matching the JSONB column shape — no special-casing needed.
         update_dict = data.model_dump(exclude_unset=True)
+        next_type = update_dict.get("entity_type", entity.entity_type)
+        next_is_player = update_dict.get("is_player", entity.is_player)
         if "entity_type" in update_dict:
             await self._ensure_valid_entity_type(
                 scenario_id, update_dict["entity_type"]
             )
+        self._validate_player_entity_type(next_type, next_is_player)
+        if update_dict.get("is_player") is True:
+            await self._handle_player_designation(scenario_id, entity_id)
+
         for field, value in update_dict.items():
             setattr(entity, field, value)
 
@@ -187,3 +197,21 @@ class EntityService:
             raise ScenarioNotFoundError()
         if scenario.creator_id != user_id:
             raise ScenarioAccessDeniedError()
+
+    def _validate_player_entity_type(
+        self, entity_type: str, is_player: bool | None
+    ) -> None:
+        """Reject designating a non-character entity as the player."""
+        if is_player and entity_type != "character":
+            raise EntityValidationError(
+                "Only character entities can be designated as the player"
+            )
+
+    async def _handle_player_designation(
+        self, scenario_id: uuid.UUID, current_entity_id: uuid.UUID | None
+    ) -> None:
+        """Ensure only one entity per scenario has is_player=True."""
+        existing = await self.entity_repo.get_player_entity(scenario_id)
+        if existing and existing.entity_id != current_entity_id:
+            existing.is_player = False
+            await self.entity_repo.update(existing)

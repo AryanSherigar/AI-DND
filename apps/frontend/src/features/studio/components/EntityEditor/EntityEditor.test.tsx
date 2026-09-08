@@ -261,4 +261,72 @@ describe("EntityEditor", () => {
       expect(screen.getByLabelText(/entity type/i)).toHaveValue("item"),
     );
   });
+
+  it("allows designating a character as player protagonist and displays PLAYER badge", async () => {
+    let createdEntityPayload: unknown = null;
+    server.use(
+      http.get(`${API_URL}/v1/scenarios/${SCENARIO_ID}/entities`, () =>
+        HttpResponse.json({
+          items: [
+            {
+              entity_id: "player-1",
+              scenario_id: SCENARIO_ID,
+              entity_type: "character",
+              canonical_name: "The Hero",
+              aliases: [],
+              description: "The main hero.",
+              obtainable: null,
+              attributes_schema: {},
+              narrator_instruction: null,
+              is_player: true,
+              fact_count: 2,
+            },
+          ],
+        }),
+      ),
+      http.post(
+        `${API_URL}/v1/scenarios/${SCENARIO_ID}/entities`,
+        async ({ request }) => {
+          createdEntityPayload = await request.json();
+          return HttpResponse.json({
+            entity_id: "player-2",
+            scenario_id: SCENARIO_ID,
+            ...(createdEntityPayload as Record<string, unknown>),
+            aliases: [],
+            attributes_schema: {},
+            fact_count: 0,
+          });
+        },
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderEntityEditor();
+
+    // Verify existing player entity shows PLAYER badge
+    expect(await screen.findByText("The Hero")).toBeInTheDocument();
+    expect(screen.getByText("PLAYER")).toBeInTheDocument();
+
+    // Create a new entity and check is_player
+    await user.click(screen.getByRole("button", { name: /new entity/i }));
+    await user.type(
+      screen.getByPlaceholderText(/canonical name/i),
+      "The Wanderer",
+    );
+    const playerCheckbox = screen.getByRole("checkbox", {
+      name: /player character \(protagonist\)/i,
+    });
+    expect(playerCheckbox).toBeInTheDocument();
+    await user.click(playerCheckbox);
+
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(createdEntityPayload).toMatchObject({
+        canonical_name: "The Wanderer",
+        entity_type: "character",
+        is_player: true,
+      }),
+    );
+  });
 });

@@ -4,12 +4,11 @@ import uuid
 from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy.exc import SQLAlchemyError
-
 from app.config import settings
 from app.exceptions.turn_exceptions import OptimisticLockError, StateWriteError
 from app.models.turn import LoadedState, TurnRequest
 from app.turn.steps.state_writer import write_turn
+from sqlalchemy.exc import SQLAlchemyError
 
 
 def _turn_request() -> TurnRequest:

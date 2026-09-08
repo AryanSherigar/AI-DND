@@ -3,15 +3,14 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
 from app.config import settings
 from app.db.connection import close_db_connection
 from app.logging_config import configure_logging
 from app.middleware.error_handler import setup_error_handlers
 from app.middleware.request_context import request_context_middleware
 from app.routers import assistant, session, turn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 configure_logging(settings.log_level, settings.log_format)
 

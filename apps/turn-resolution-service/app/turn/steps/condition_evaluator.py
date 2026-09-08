@@ -18,7 +18,6 @@ from __future__ import annotations
 import time
 
 import structlog
-
 from app.models.turn import LoadedState
 from app.turn import state_paths
 from app.turn.expression_evaluator import evaluate, extract_field_paths

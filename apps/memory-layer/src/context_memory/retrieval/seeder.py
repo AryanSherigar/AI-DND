@@ -11,16 +11,29 @@ logger = get_logger(__name__)
 
 
 class CandidateSeeder:
-    def __init__(self, pool: object, embedder: Embedder, config: Config | None = None) -> None:
+    def __init__(
+        self, pool: object, embedder: Embedder, config: Config | None = None
+    ) -> None:
         self._pool = pool
         self._embedder = embedder
         self._config = config or Config()
 
     def seed(
-        self, context_id: str, question: str, expanded_query: QueryRewriterOutput, top_k: int
+        self,
+        context_id: str,
+        question: str,
+        expanded_query: QueryRewriterOutput,
+        top_k: int,
     ) -> dict[str, ScoredFact]:
-        with timed_operation(logger, "retrieval.phase1.seeding", {"context_id": context_id, "top_k": top_k}) as ctx:
-            limit = max(top_k * self._config.retrieval_overfetch_multiplier, self._config.retrieval_overfetch_floor)
+        with timed_operation(
+            logger,
+            "retrieval.phase1.seeding",
+            {"context_id": context_id, "top_k": top_k},
+        ) as ctx:
+            limit = max(
+                top_k * self._config.retrieval_overfetch_multiplier,
+                self._config.retrieval_overfetch_floor,
+            )
             facts = {}
 
             # 1. Semantic Search
@@ -43,7 +56,7 @@ class CandidateSeeder:
             with self._pool.connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
-                        f"""
+                        """
                         SELECT subject_id, embedding <=> %s::vector AS distance
                         FROM memory_embeddings
                         WHERE context_id = %s AND subject_kind = 'fact' AND is_active = true
@@ -51,21 +64,42 @@ class CandidateSeeder:
                         ORDER BY distance ASC
                         LIMIT %s
                         """,
-                        (vector_literal, context_id, model_name, model_version, limit)
+                        (vector_literal, context_id, model_name, model_version, limit),
                     )
                     for position, row in enumerate(cursor.fetchall(), start=1):
                         fact_id = str(row[0])
                         distance = float(row[1]) if row[1] is not None else 0.0
                         semantic_score = 1.0 / (1.0 + distance)
                         if fact_id not in facts:
-                            facts[fact_id] = ScoredFact(fact_id, "", semantic_score=semantic_score, semantic_rank=position)
+                            facts[fact_id] = ScoredFact(
+                                fact_id,
+                                "",
+                                semantic_score=semantic_score,
+                                semantic_rank=position,
+                            )
                         else:
-                            facts[fact_id].semantic_score = max(facts[fact_id].semantic_score, semantic_score)
-                            facts[fact_id].semantic_rank = min(facts[fact_id].semantic_rank or position, position)
+                            facts[fact_id].semantic_score = max(
+                                facts[fact_id].semantic_score, semantic_score
+                            )
+                            facts[fact_id].semantic_rank = min(
+                                facts[fact_id].semantic_rank or position, position
+                            )
 
             # 2. Keyword Search (BM25). Use websearch_to_tsquery with OR combination and @@ matching
-            terms = [t.strip() for t in (expanded_query.synonyms + expanded_query.decomposed_queries + [question]) if t.strip()]
-            search_query_str = " OR ".join(f'"{t}"' if " " in t else t for t in terms) if terms else question
+            terms = [
+                t.strip()
+                for t in (
+                    expanded_query.synonyms
+                    + expanded_query.decomposed_queries
+                    + [question]
+                )
+                if t.strip()
+            ]
+            search_query_str = (
+                " OR ".join(f'"{t}"' if " " in t else t for t in terms)
+                if terms
+                else question
+            )
             if search_query_str:
                 with self._pool.connection() as conn:
                     with conn.cursor() as cursor:
@@ -77,7 +111,7 @@ class CandidateSeeder:
                             ORDER BY rank DESC
                             LIMIT %s
                             """,
-                            (search_query_str, context_id, search_query_str, limit)
+                            (search_query_str, context_id, search_query_str, limit),
                         )
                         position = 0
                         for row in cursor.fetchall():
@@ -89,10 +123,19 @@ class CandidateSeeder:
                             position += 1  # dense rank over accepted rows only, not the raw fetch
                             keyword_score = rank / (1.0 + rank)
                             if fact_id not in facts:
-                                facts[fact_id] = ScoredFact(fact_id, raw_text, keyword_score=keyword_score, keyword_rank=position)
+                                facts[fact_id] = ScoredFact(
+                                    fact_id,
+                                    raw_text,
+                                    keyword_score=keyword_score,
+                                    keyword_rank=position,
+                                )
                             else:
-                                facts[fact_id].keyword_score = max(facts[fact_id].keyword_score, keyword_score)
-                                facts[fact_id].keyword_rank = min(facts[fact_id].keyword_rank or position, position)
+                                facts[fact_id].keyword_score = max(
+                                    facts[fact_id].keyword_score, keyword_score
+                                )
+                                facts[fact_id].keyword_rank = min(
+                                    facts[fact_id].keyword_rank or position, position
+                                )
                                 if not facts[fact_id].text:
                                     facts[fact_id].text = raw_text
 

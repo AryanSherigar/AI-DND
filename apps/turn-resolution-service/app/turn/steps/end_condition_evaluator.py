@@ -5,7 +5,6 @@ sequencer — this file does not call state_writer or memory_writer itself).
 """
 
 import structlog
-
 from app.models.turn import LoadedState
 from app.turn.expression_evaluator import evaluate
 

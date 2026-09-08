@@ -7,18 +7,19 @@ Wire-shape only (dependency-override fake engine), same approach as
 
 from __future__ import annotations
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from api.routes import get_engine, router
 from context_memory.ingestion.batch_models import BatchStatus
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 class FakeEngine:
     def __init__(self) -> None:
         self.submitted: list[tuple[str, list]] = []
         self.retried: list[str] = []
-        self._status = BatchStatus(batch_id="ingest-fake", status="pending", facts_created=0)
+        self._status = BatchStatus(
+            batch_id="ingest-fake", status="pending", facts_created=0
+        )
 
     def submit_batch(self, context_id, turns_batch):
         self.submitted.append((context_id, turns_batch))
@@ -45,8 +46,16 @@ _INGEST_BODY = {
     "scenario_id": "11111111-1111-1111-1111-111111111111",
     "playthrough_id": "22222222-2222-2222-2222-222222222222",
     "turns_batch": [
-        {"turn_number": 1, "text": "The player enters the cave.", "participant_id": "33333333-3333-3333-3333-333333333333"},
-        {"turn_number": 2, "text": "A ghost appears.", "participant_id": "33333333-3333-3333-3333-333333333333"},
+        {
+            "turn_number": 1,
+            "text": "The player enters the cave.",
+            "participant_id": "33333333-3333-3333-3333-333333333333",
+        },
+        {
+            "turn_number": 2,
+            "text": "A ghost appears.",
+            "participant_id": "33333333-3333-3333-3333-333333333333",
+        },
     ],
     "recent_context_turns": [],
 }
@@ -76,15 +85,24 @@ def test_ingest_forwards_playthrough_id_as_context_id_and_all_turns():
 
 def test_batch_status_round_trips_wire_shape():
     fake = FakeEngine()
-    fake._status = BatchStatus(batch_id="ingest-fake", status="partial", facts_created=4, error="mem1 flaky", retryable=True)
+    fake._status = BatchStatus(
+        batch_id="ingest-fake",
+        status="partial",
+        facts_created=4,
+        error="mem1 flaky",
+        retryable=True,
+    )
     client = _client_with(fake)
 
     response = client.get("/v1/memory/batch/ingest-fake/status")
 
     assert response.status_code == 200
     assert response.json() == {
-        "batch_id": "ingest-fake", "status": "partial", "facts_created": 4,
-        "error": "mem1 flaky", "retryable": True,
+        "batch_id": "ingest-fake",
+        "status": "partial",
+        "facts_created": 4,
+        "error": "mem1 flaky",
+        "retryable": True,
     }
 
 

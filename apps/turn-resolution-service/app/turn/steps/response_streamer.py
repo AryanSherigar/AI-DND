@@ -7,11 +7,10 @@ directly; pipeline.py is the sole sequencer (CLAUDE.md).
 import json
 from collections.abc import AsyncIterator
 
-from sse_starlette.sse import EventSourceResponse, ServerSentEvent
-
 from app.config import settings
 from app.models.minigame_event import MinigameEventPayload
 from app.models.turn_summary import TurnSummaryPayload
+from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 
 
 def narration_event(chunk: str) -> ServerSentEvent:
@@ -56,6 +55,13 @@ def minigame_event(payload: MinigameEventPayload) -> ServerSentEvent:
     tiered_outcomes/timeout_mutation/narrator_instruction_template — those
     stay server-side only (§3.6's "Always" boundary)."""
     return ServerSentEvent(event="minigame", data=payload.model_dump_json())
+
+
+def scene_image_event(url: str) -> ServerSentEvent:
+    """Format a generated 'see'-action scene image URL as an SSE event,
+    emitted once (best-effort — only when generation succeeded) after
+    narration finishes streaming, before state persistence."""
+    return ServerSentEvent(event="scene_image", data=url)
 
 
 def done_event() -> ServerSentEvent:

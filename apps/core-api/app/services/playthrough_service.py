@@ -5,9 +5,11 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 
 import structlog
+
 from app.db.models.participant import Participant
 from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
+from app.db.models.scenario_music import MOOD_SLOTS
 from app.exceptions.playthrough_exceptions import (
     InvalidSetupValuesError,
     InvalidShareTokenError,
@@ -24,7 +26,7 @@ from app.exceptions.scenario_exceptions import (
 )
 from app.integrations import memory_client
 from app.logging_config import log_audit_event
-from app.models.memory import MemoryTemplateCloneRequest
+from app.models.memory import FactIngestPayload, MemoryTemplateCloneRequest
 from app.models.minigame import DodgeConfig
 from app.models.playthrough import (
     ParticipantSummary,
@@ -41,6 +43,7 @@ from app.repositories.map_repo import MapRepo
 from app.repositories.minigame_repo import MinigameRepo
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
+from app.repositories.scenario_music_repo import ScenarioMusicRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.share_repo import ShareRepo
 from app.repositories.turn_log_repo import TurnLogRepo
@@ -85,6 +88,7 @@ class PlaythroughService:
         end_condition_repo: EndConditionRepo,
         map_repo: MapRepo,
         minigame_repo: MinigameRepo,
+        scenario_music_repo: ScenarioMusicRepo,
     ) -> None:
         self.playthrough_repo = playthrough_repo
         self.participant_repo = participant_repo
@@ -97,6 +101,7 @@ class PlaythroughService:
         self.end_condition_repo = end_condition_repo
         self.map_repo = map_repo
         self.minigame_repo = minigame_repo
+        self.scenario_music_repo = scenario_music_repo
 
     async def create_playtest(
         self, scenario_id: uuid.UUID, user_id: uuid.UUID
@@ -149,6 +154,19 @@ class PlaythroughService:
         # must run before anything is added to the session (see the
         # atomicity note on _clone_memory_space).
         playthrough_id = uuid.uuid4()
+        snapshot = await self._build_snapshot(scenario, map_data)
+        (
+            player_name,
+            player_aliases,
+            setup_facts,
+            canonical_names,
+        ) = _prepare_player_setup(
+            scenario.mode,
+            scenario.setup_schema,
+            data.setup_values,
+            snapshot.get("entities", []),  # type: ignore[arg-type]
+        )
+
         playthrough = Playthrough(
             playthrough_id=playthrough_id,
             scenario_id=scenario.scenario_id,
@@ -158,7 +176,7 @@ class PlaythroughService:
                 map_data.start_entity_id if map_data else None,
             ),
             scenario_version=scenario.current_version,
-            scenario_snapshot=await self._build_snapshot(scenario, map_data),
+            scenario_snapshot=snapshot,
             is_playtest=is_playtest,
         )
         participant = Participant(
@@ -168,7 +186,14 @@ class PlaythroughService:
             turn_order_position=1,
         )
 
-        await self._clone_memory_space(scenario.scenario_id, playthrough_id)
+        await self._clone_memory_space(
+            scenario.scenario_id,
+            playthrough_id,
+            player_entity_canonical_name=player_name,
+            player_entity_aliases=player_aliases,
+            setup_facts=setup_facts,
+            canonical_names=canonical_names,
+        )
 
         created = await self.playthrough_repo.create(playthrough)
         created_participant = await self.participant_repo.create(participant)
@@ -364,14 +389,25 @@ class PlaythroughService:
         raise PlaythroughAccessDeniedError()
 
     async def _clone_memory_space(
-        self, scenario_id: uuid.UUID, playthrough_id: uuid.UUID
+        self,
+        scenario_id: uuid.UUID,
+        playthrough_id: uuid.UUID,
+        player_entity_canonical_name: str | None = None,
+        player_entity_aliases: list[str] | None = None,
+        setup_facts: list[FactIngestPayload] | None = None,
+        canonical_names: dict[uuid.UUID, str] | None = None,
     ) -> None:
         """Trigger the memory-layer template clone before any DB write happens."""
         try:
             await memory_client.clone_template_memory_space(
                 MemoryTemplateCloneRequest(
-                    scenario_id=scenario_id, playthrough_id=playthrough_id
-                )
+                    scenario_id=scenario_id,
+                    playthrough_id=playthrough_id,
+                    player_entity_canonical_name=player_entity_canonical_name,
+                    player_entity_aliases=player_entity_aliases or [],
+                    setup_facts=setup_facts or [],
+                ),
+                canonical_names=canonical_names,
             )
         except Exception as exc:
             raise PlaythroughMemoryCloneError(str(exc)) from exc
@@ -417,6 +453,7 @@ class PlaythroughService:
             "state_schema": scenario.state_schema,
             "checkpoints": scenario.checkpoints,
             "narration_font": scenario.narration_font,
+            "music_tracks": await self._snapshot_music_tracks(scenario.scenario_id),
         }
         if scenario.mode == "master":
             snapshot["entities"] = await self._snapshot_entities(scenario.scenario_id)
@@ -464,6 +501,7 @@ class PlaythroughService:
                 "attributes_schema": e.attributes_schema,
                 "obtainable": e.obtainable,
                 "narrator_instruction": e.narrator_instruction,
+                "is_player": e.is_player,
             }
             for e in entities
         ]
@@ -512,6 +550,18 @@ class PlaythroughService:
             ],
             start_entity_id=start_entity_id,
         )
+
+    async def _snapshot_music_tracks(
+        self, scenario_id: uuid.UUID
+    ) -> dict[str, str | None]:
+        """Pin the resolved track URL for each of the 6 mood slots (None for
+        a slot left on the built-in default, resolved client-side)."""
+        rows = await self.scenario_music_repo.get_by_scenario(scenario_id)
+        rows_by_mood = {row.mood: row for row in rows}
+        return {
+            mood: rows_by_mood[mood].track_url if mood in rows_by_mood else None
+            for mood in MOOD_SLOTS
+        }
 
     async def _snapshot_conditions(
         self, scenario_id: uuid.UUID
@@ -704,3 +754,86 @@ def _to_response(
             playthrough.state,
         ),
     )
+
+
+def _extract_name_field_key(setup_schema: list[object]) -> str | None:
+    """Find the key of the field designated as the character name."""
+    for field in setup_schema:
+        if not isinstance(field, dict):
+            continue
+        if field.get("is_character_name"):
+            return str(field.get("key") or field.get("field_key") or "")
+        key = str(field.get("key") or field.get("field_key") or "")
+        if key in ("character_name", "characterName", "name"):
+            return key
+    return None
+
+
+def _format_fact_object(val: object) -> str:
+    """Format a setup value as an object string for a fact."""
+    if isinstance(val, list):
+        return ", ".join(str(item) for item in val)
+    return str(val)
+
+
+def _build_setup_facts(
+    setup_schema: list[object],
+    setup_values: dict[str, object],
+    subject_id: uuid.UUID,
+    name_field_key: str | None,
+) -> list[FactIngestPayload]:
+    """Generate ground-truth facts for custom setup choices."""
+    facts: list[FactIngestPayload] = []
+    for field in setup_schema:
+        if not isinstance(field, dict):
+            continue
+        key = str(field.get("key") or field.get("field_key") or "")
+        if not key or key == name_field_key or key not in setup_values:
+            continue
+        val = setup_values[key]
+        if val is None or val == "" or val == []:
+            continue
+        predicate = str(field.get("predicate") or f"has_{key}")
+        facts.append(
+            FactIngestPayload(
+                fact_id=uuid.uuid4(),
+                subject_entity_id=subject_id,
+                predicate=predicate,
+                object_literal=_format_fact_object(val),
+            )
+        )
+    return facts
+
+
+def _prepare_player_setup(
+    scenario_mode: str,
+    setup_schema: list[object],
+    setup_values: dict[str, object],
+    snapshot_entities: list[dict[str, object]],
+) -> tuple[str | None, list[str], list[FactIngestPayload], dict[uuid.UUID, str]]:
+    """Resolve custom player character name and facts from setup values."""
+    if scenario_mode != "master":
+        return None, [], [], {}
+    player_ent = next(
+        (e for e in snapshot_entities if isinstance(e, dict) and e.get("is_player")),
+        None,
+    )
+    if not player_ent:
+        return None, [], [], {}
+
+    subject_id = uuid.UUID(str(player_ent["entity_id"]))
+    name_key = _extract_name_field_key(setup_schema)
+    raw_name = str(setup_values.get(name_key or "", "")).strip() if name_key else ""
+    default_name = str(player_ent.get("canonical_name") or "")
+    chosen_name = raw_name or default_name
+
+    aliases = list(player_ent.get("aliases") or [])  # type: ignore[arg-type]
+    if raw_name and default_name != raw_name and default_name not in aliases:
+        aliases.insert(0, default_name)
+    player_ent["canonical_name"] = chosen_name
+    player_ent["aliases"] = aliases
+    setup_values["character_name"] = chosen_name
+    setup_values["player_entity_id"] = str(subject_id)
+
+    facts = _build_setup_facts(setup_schema, setup_values, subject_id, name_key)
+    return chosen_name, aliases, facts, {subject_id: chosen_name}

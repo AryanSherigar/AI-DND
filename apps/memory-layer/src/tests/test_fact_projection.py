@@ -16,7 +16,12 @@ from __future__ import annotations
 import unittest
 
 from context_memory.ingestion.fact_projection import FactProjectionWriter
-from context_memory.ingestion.fakes import DeterministicEmbedder, InMemoryChunkStore, InMemoryEmbeddingStore, InMemorySearchIndexStore
+from context_memory.ingestion.fakes import (
+    DeterministicEmbedder,
+    InMemoryChunkStore,
+    InMemoryEmbeddingStore,
+    InMemorySearchIndexStore,
+)
 
 
 def _writer(embedder=None):
@@ -24,7 +29,14 @@ def _writer(embedder=None):
     embedding_store = InMemoryEmbeddingStore()
     search_index_store = InMemorySearchIndexStore()
     chunk_store = InMemoryChunkStore()
-    return FactProjectionWriter(embedder, embedding_store, search_index_store, chunk_store), embedding_store, search_index_store, chunk_store
+    return (
+        FactProjectionWriter(
+            embedder, embedding_store, search_index_store, chunk_store
+        ),
+        embedding_store,
+        search_index_store,
+        chunk_store,
+    )
 
 
 class ProjectTests(unittest.TestCase):
@@ -42,10 +54,14 @@ class ProjectTests(unittest.TestCase):
 
         writer.project("ctx-1", 142, "Sukuna status alive")
 
-        [(_key, embedding)] = [(k, v) for k, v in embedding_store._rows.items() if k[2] == "142"]
+        [(_key, embedding)] = [
+            (k, v) for k, v in embedding_store._rows.items() if k[2] == "142"
+        ]
         self.assertIsNotNone(chunks.get("ctx-1", embedding.source_chunk_id))
 
-    def test_repeated_project_for_the_same_context_does_not_duplicate_the_placeholder_chunk(self):
+    def test_repeated_project_for_the_same_context_does_not_duplicate_the_placeholder_chunk(
+        self,
+    ):
         """PostgresChunkStore.put()'s immutability check would raise
         ImmutableRecordConflictError if the placeholder's own content
         (occurred_at included) weren't identical across calls."""
@@ -60,7 +76,9 @@ class ProjectCopyTests(unittest.TestCase):
         writer, embedding_store, search_index_store, _chunks = _writer()
         writer.project("template-ctx", 7, "Sukuna status alive")
 
-        writer.project_copy("template-ctx", "7", "playthrough-1", 501, "Sukuna status alive")
+        writer.project_copy(
+            "template-ctx", "7", "playthrough-1", 501, "Sukuna status alive"
+        )
 
         self.assertTrue(embedding_store.contains("playthrough-1", "fact", "501"))
         self.assertTrue(search_index_store.contains("playthrough-1", "501"))
@@ -83,7 +101,9 @@ class ProjectCopyTests(unittest.TestCase):
         writer.project("template-ctx", 7, "Sukuna status alive")
         embedder.embed_calls.clear()
 
-        writer.project_copy("template-ctx", "7", "playthrough-1", 501, "Sukuna status alive")
+        writer.project_copy(
+            "template-ctx", "7", "playthrough-1", 501, "Sukuna status alive"
+        )
 
         self.assertEqual(embedder.embed_calls, [])
 
@@ -93,7 +113,13 @@ class ProjectCopyTests(unittest.TestCase):
         cloned copy."""
         writer, embedding_store, search_index_store, _chunks = _writer()
 
-        writer.project_copy("template-ctx", "unknown-source-id", "playthrough-1", 501, "Sukuna status alive")
+        writer.project_copy(
+            "template-ctx",
+            "unknown-source-id",
+            "playthrough-1",
+            501,
+            "Sukuna status alive",
+        )
 
         self.assertTrue(embedding_store.contains("playthrough-1", "fact", "501"))
         self.assertTrue(search_index_store.contains("playthrough-1", "501"))
@@ -112,19 +138,27 @@ class ProjectCopyTests(unittest.TestCase):
         del embedding_store._rows[stale_key]
 
         # Must not raise, and must still index the clone.
-        writer.project_copy("template-ctx", "7", "playthrough-1", 501, "Sukuna status alive")
+        writer.project_copy(
+            "template-ctx", "7", "playthrough-1", 501, "Sukuna status alive"
+        )
 
         self.assertTrue(embedding_store.contains("playthrough-1", "fact", "501"))
 
-    def test_two_clones_of_the_same_template_fact_land_under_distinct_target_identities(self):
+    def test_two_clones_of_the_same_template_fact_land_under_distinct_target_identities(
+        self,
+    ):
         """The whole point of using the target's own new_fact_graph_id as the
         row identity, not a content hash: cloning the SAME fact into two
         different playthroughs must never collide."""
         writer, embedding_store, search_index_store, _chunks = _writer()
         writer.project("template-ctx", 7, "Sukuna status alive")
 
-        writer.project_copy("template-ctx", "7", "playthrough-1", 501, "Sukuna status alive")
-        writer.project_copy("template-ctx", "7", "playthrough-2", 9001, "Sukuna status alive")
+        writer.project_copy(
+            "template-ctx", "7", "playthrough-1", 501, "Sukuna status alive"
+        )
+        writer.project_copy(
+            "template-ctx", "7", "playthrough-2", 9001, "Sukuna status alive"
+        )
 
         self.assertTrue(embedding_store.contains("playthrough-1", "fact", "501"))
         self.assertTrue(embedding_store.contains("playthrough-2", "fact", "9001"))

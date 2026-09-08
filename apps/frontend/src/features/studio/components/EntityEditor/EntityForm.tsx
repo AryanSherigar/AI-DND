@@ -35,6 +35,7 @@ const buildInitialState = (
   obtainable: entity?.obtainable ?? false,
   narratorInstruction: entity?.narrator_instruction ?? "",
   attributesSchema: entity?.attributes_schema ?? {},
+  isPlayer: entity?.is_player ?? false,
 });
 
 const parseAliases = (aliasesText: string): string[] =>
@@ -69,6 +70,7 @@ export const EntityForm: React.FC<EntityFormProps> = ({
 
   const isNewCustomType = formState.entityType === NEW_CUSTOM_TYPE_VALUE;
   const isItemType = formState.entityType === "item";
+  const isCharacterType = formState.entityType === "character";
 
   const entityTypeOptions: SelectOption[] = [
     ...ENTITY_TYPES.map((type) => ({ value: type, label: type })),
@@ -157,6 +159,7 @@ export const EntityForm: React.FC<EntityFormProps> = ({
       obtainable: finalEntityType === "item" ? formState.obtainable : undefined,
       narrator_instruction: formState.narratorInstruction || undefined,
       attributes_schema: finalAttributesSchema,
+      is_player: finalEntityType === "character" ? formState.isPlayer : false,
     });
   };
 
@@ -213,6 +216,27 @@ export const EntityForm: React.FC<EntityFormProps> = ({
           />
           Obtainable
         </label>
+      )}
+      {isCharacterType && !isNewCustomType && (
+        <div className="space-y-1">
+          <label className="flex items-center gap-2 text-sm text-content-muted cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formState.isPlayer}
+              onChange={(e) =>
+                setFormState({ ...formState, isPlayer: e.target.checked })
+              }
+            />
+            <span className="font-medium text-content">
+              Player Character (Protagonist)
+            </span>
+          </label>
+          <p className="text-xs text-content-subtle pl-5">
+            Designates this character as the player protagonist. Interactive
+            setup inputs and facts link to this entity during campaign
+            initiation.
+          </p>
+        </div>
       )}
       <textarea
         value={formState.narratorInstruction}

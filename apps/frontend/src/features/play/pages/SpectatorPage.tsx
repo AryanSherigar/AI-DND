@@ -3,6 +3,7 @@ import { SpectatorView } from "../components/SpectatorView/SpectatorView";
 import { usePlaythroughTurns } from "../hooks/useTurns";
 import { useSpectator } from "../hooks/useSpectator";
 import { usePlaythrough } from "../hooks/usePlaythrough";
+import { ScenarioMood } from "@/shared/types/audio.types";
 
 export function SpectatorPage() {
   const { id } = useParams<{ id: string }>();
@@ -14,7 +15,12 @@ export function SpectatorPage() {
     id,
     shareToken ? { share_token: shareToken } : {},
   );
-  const { streamingText, isLive } = useSpectator(id ?? null, shareToken);
+  const { streamingText, isLive } = useSpectator(
+    id ?? null,
+    shareToken,
+    playthrough?.scenario_snapshot?.music_tracks as
+      Partial<Record<ScenarioMood, string | null>> | undefined,
+  );
 
   if (!id || !shareToken) {
     return (

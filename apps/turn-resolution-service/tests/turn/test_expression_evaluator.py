@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-
 from app.turn.expression_evaluator import evaluate, extract_field_paths
 
 

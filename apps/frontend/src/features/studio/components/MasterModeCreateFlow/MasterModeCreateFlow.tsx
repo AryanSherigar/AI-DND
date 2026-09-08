@@ -54,6 +54,9 @@ export const MasterModeCreateFlow: React.FC = () => {
           value={coverImageUrl}
           onChange={setCoverImageUrl}
           className="text-left"
+          generatePrompt={
+            title.trim() ? { title: title.trim(), genreTags: [] } : null
+          }
         />
         <Button
           type="submit"

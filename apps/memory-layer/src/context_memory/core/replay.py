@@ -74,15 +74,21 @@ def load_journal_fixture(path: str | Path) -> dict[tuple[str, str], list[Recorde
     fixture: dict[tuple[str, str], list[RecordedStep]] = {}
     for row in raw["steps"]:
         step = RecordedStep(
-            step_type=row["step_type"], call_role=row.get("call_role"), idempotency_key=row["idempotency_key"],
-            model_name=row.get("model_name"), response_payload=row.get("response_payload"), outcome=row["outcome"],
+            step_type=row["step_type"],
+            call_role=row.get("call_role"),
+            idempotency_key=row["idempotency_key"],
+            model_name=row.get("model_name"),
+            response_payload=row.get("response_payload"),
+            outcome=row["outcome"],
             error_message=row.get("error_message"),
         )
         fixture.setdefault((step.step_type, step.idempotency_key), []).append(step)
     return fixture
 
 
-def export_journal_fixture(connection: object, *, correlation_id: str, path: str | Path) -> int:
+def export_journal_fixture(
+    connection: object, *, correlation_id: str, path: str | Path
+) -> int:
     """Exports every `journal_steps` row for one recorded request/turn
     (`correlation_id`) to a fixture file. Returns the row count written.
     This is the "production failures become regression tests without
@@ -105,14 +111,21 @@ def export_journal_fixture(connection: object, *, correlation_id: str, path: str
         rows = cursor.fetchall()
     steps = [
         {
-            "step_type": step_type, "call_role": call_role, "idempotency_key": idempotency_key,
-            "model_name": model_name, "response_payload": response_payload, "outcome": outcome,
+            "step_type": step_type,
+            "call_role": call_role,
+            "idempotency_key": idempotency_key,
+            "model_name": model_name,
+            "response_payload": response_payload,
+            "outcome": outcome,
             "error_message": error_message,
         }
         for step_type, call_role, idempotency_key, model_name, response_payload, outcome, error_message in rows
     ]
     Path(path).write_text(
-        json.dumps({"correlation_id": correlation_id, "steps": steps}, indent=2, sort_keys=True), encoding="utf-8"
+        json.dumps(
+            {"correlation_id": correlation_id, "steps": steps}, indent=2, sort_keys=True
+        ),
+        encoding="utf-8",
     )
     return len(steps)
 
@@ -124,7 +137,12 @@ class ReplayingLLMClient:
     `getattr(self._inner, "model", None)` reads it the same way, so a
     `ReplayingLLMClient` composes with journaling unchanged if ever needed."""
 
-    def __init__(self, fixture: dict[tuple[str, str], list[RecordedStep]], call_role: str, model: str) -> None:
+    def __init__(
+        self,
+        fixture: dict[tuple[str, str], list[RecordedStep]],
+        call_role: str,
+        model: str,
+    ) -> None:
         self._fixture = fixture
         self._call_role = call_role
         self.model = model
@@ -139,30 +157,48 @@ class ReplayingLLMClient:
         at all"."""
         steps = self._fixture.get((step_type, idempotency_key))
         if not steps:
-            raise ReplayMissError(f"no recorded {step_type} step for idempotency_key={idempotency_key!r}")
+            raise ReplayMissError(
+                f"no recorded {step_type} step for idempotency_key={idempotency_key!r}"
+            )
         step = steps.pop(0)
         if step.outcome != "ok":
-            raise ReplayedError(step.error_message or f"recorded {step_type} step failed with no error_message")
+            raise ReplayedError(
+                step.error_message
+                or f"recorded {step_type} step failed with no error_message"
+            )
         return step
 
     def structured_completion(
-        self, system_prompt: str, user_prompt: str, response_schema: type[BaseModel], **_: Any
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_schema: type[BaseModel],
+        **_: Any,
     ) -> BaseModel:
         schema_name = response_schema.__name__
         step_type = f"llm.structured_completion[{schema_name}]"
-        idempotency_key = hash_request(self._call_role, self.model, system_prompt, user_prompt, schema_name)
+        idempotency_key = hash_request(
+            self._call_role, self.model, system_prompt, user_prompt, schema_name
+        )
         step = self._lookup(step_type, idempotency_key)
         return response_schema.model_validate(step.response_payload)
 
-    def text_completion(self, system_prompt: str, user_prompt: str, *_: Any, **__: Any) -> str:
+    def text_completion(
+        self, system_prompt: str, user_prompt: str, *_: Any, **__: Any
+    ) -> str:
         step_type = "llm.text_completion"
-        idempotency_key = hash_request(self._call_role, self.model, system_prompt, user_prompt)
+        idempotency_key = hash_request(
+            self._call_role, self.model, system_prompt, user_prompt
+        )
         step = self._lookup(step_type, idempotency_key)
         payload = step.response_payload or {}
         return payload.get("text", "")
 
     def chat_with_tools(
-        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None, **_: Any
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        **_: Any,
     ) -> Any:
         """§10 fix: tool calls were entirely unreplayable before this --
         `ReplayingLLMClient` had no method at all, so anything driving a
@@ -173,7 +209,10 @@ class ReplayingLLMClient:
         name`/`.arguments`) from the journaled `response_payload`."""
         step_type = "llm.chat_with_tools"
         idempotency_key = hash_request(
-            self._call_role, self.model, json.dumps(messages, sort_keys=True), json.dumps(tools or [], sort_keys=True),
+            self._call_role,
+            self.model,
+            json.dumps(messages, sort_keys=True),
+            json.dumps(tools or [], sort_keys=True),
         )
         step = self._lookup(step_type, idempotency_key)
         payload = step.response_payload or {}
@@ -189,13 +228,17 @@ class _ReplayedFunctionCall:
 class _ReplayedToolCall:
     def __init__(self, raw: dict[str, Any]) -> None:
         self.id = raw.get("id")
-        self.function = _ReplayedFunctionCall(raw.get("name", ""), raw.get("arguments", ""))
+        self.function = _ReplayedFunctionCall(
+            raw.get("name", ""), raw.get("arguments", "")
+        )
 
 
 class _ReplayedMessage:
     def __init__(self, payload: dict[str, Any]) -> None:
         self.content = payload.get("content")
-        self.tool_calls = [_ReplayedToolCall(tc) for tc in (payload.get("tool_calls") or [])]
+        self.tool_calls = [
+            _ReplayedToolCall(tc) for tc in (payload.get("tool_calls") or [])
+        ]
 
 
 class _ReplayedChoice:

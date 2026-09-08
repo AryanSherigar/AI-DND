@@ -3,11 +3,10 @@
 import uuid
 from collections.abc import AsyncIterator
 
-from google.genai import types
-from httpx import AsyncClient
-
 from app.exceptions.turn_exceptions import GeminiUnavailableError
 from app.integrations import gemini_client
+from google.genai import types
+from httpx import AsyncClient
 
 
 def _make_auth_headers() -> dict[str, str]:

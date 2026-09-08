@@ -4,6 +4,7 @@ import {
   ALLOWED_COVER_IMAGE_TYPES,
   MAX_COVER_IMAGE_BYTES,
 } from "../../constants/upload";
+import { useGenerateCoverImage } from "../../hooks/useGenerateCoverImage";
 import { useUploadCoverImage } from "../../hooks/useUploadCoverImage";
 import { CoverImageUploaderProps } from "./CoverImageUploader.types";
 
@@ -14,11 +15,14 @@ export const CoverImageUploader: React.FC<CoverImageUploaderProps> = ({
   description,
   disabled = false,
   className = "",
+  generatePrompt = null,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadCoverImage = useUploadCoverImage();
+  const generateCoverImage = useGenerateCoverImage();
+  const isBusy = uploadCoverImage.isPending || generateCoverImage.isPending;
 
   const validateFile = (file: File): string | null => {
     if (!ALLOWED_COVER_IMAGE_TYPES.includes(file.type)) {
@@ -31,7 +35,7 @@ export const CoverImageUploader: React.FC<CoverImageUploaderProps> = ({
   };
 
   const handleFileProcess = (file: File): void => {
-    if (disabled || uploadCoverImage.isPending) return;
+    if (disabled || isBusy) return;
     setErrorMessage(null);
     const validationError = validateFile(file);
     if (validationError) {
@@ -42,6 +46,23 @@ export const CoverImageUploader: React.FC<CoverImageUploaderProps> = ({
       onSuccess: (data) => onChange(data.url),
       onError: () => setErrorMessage("Upload failed — please try again."),
     });
+  };
+
+  const handleGenerateClick = (): void => {
+    if (disabled || isBusy || !generatePrompt) return;
+    setErrorMessage(null);
+    generateCoverImage.mutate(
+      {
+        title: generatePrompt.title,
+        genre_tags: generatePrompt.genreTags,
+        opening_scene: generatePrompt.openingScene,
+      },
+      {
+        onSuccess: (data) => onChange(data.url),
+        onError: () =>
+          setErrorMessage("Image generation failed — please try again."),
+      },
+    );
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
@@ -72,7 +93,7 @@ export const CoverImageUploader: React.FC<CoverImageUploaderProps> = ({
   };
 
   const handleBoxClick = (): void => {
-    if (!disabled && !uploadCoverImage.isPending) {
+    if (!disabled && !isBusy) {
       fileInputRef.current?.click();
     }
   };
@@ -93,7 +114,7 @@ export const CoverImageUploader: React.FC<CoverImageUploaderProps> = ({
         type="file"
         accept={ALLOWED_COVER_IMAGE_ACCEPT}
         onChange={handleInputChange}
-        disabled={disabled || uploadCoverImage.isPending}
+        disabled={disabled || isBusy}
         className="hidden"
         aria-label={label || "Upload cover image"}
       />
@@ -105,14 +126,28 @@ export const CoverImageUploader: React.FC<CoverImageUploaderProps> = ({
             alt="Scenario cover preview"
             className="w-full h-44 object-cover"
           />
-          <button
-            type="button"
-            onClick={handleRemove}
-            disabled={disabled}
-            className="absolute top-2 right-2 rounded-md px-3 py-1.5 bg-surface/80 text-content text-xs font-semibold uppercase tracking-wide border border-border-strong hover:bg-surface-overlay transition-colors disabled:opacity-50"
-          >
-            Remove image
-          </button>
+          <div className="absolute top-2 right-2 flex gap-2">
+            {generatePrompt && (
+              <button
+                type="button"
+                onClick={handleGenerateClick}
+                disabled={disabled || isBusy}
+                className="rounded-md px-3 py-1.5 bg-surface/80 text-content text-xs font-semibold uppercase tracking-wide border border-border-strong hover:bg-surface-overlay transition-colors disabled:opacity-50"
+              >
+                {generateCoverImage.isPending
+                  ? "Generating…"
+                  : "Regenerate with AI"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleRemove}
+              disabled={disabled}
+              className="rounded-md px-3 py-1.5 bg-surface/80 text-content text-xs font-semibold uppercase tracking-wide border border-border-strong hover:bg-surface-overlay transition-colors disabled:opacity-50"
+            >
+              Remove image
+            </button>
+          </div>
         </div>
       ) : (
         <div
@@ -133,10 +168,14 @@ export const CoverImageUploader: React.FC<CoverImageUploaderProps> = ({
                 : "border-border-subtle bg-surface-inset hover:border-border-strong"
           }`}
         >
-          {uploadCoverImage.isPending ? (
+          {isBusy ? (
             <div className="flex items-center gap-2 text-content-muted">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-content-muted border-t-transparent" />
-              <span>Uploading image…</span>
+              <span>
+                {generateCoverImage.isPending
+                  ? "Generating image…"
+                  : "Uploading image…"}
+              </span>
             </div>
           ) : (
             <>
@@ -149,6 +188,17 @@ export const CoverImageUploader: React.FC<CoverImageUploaderProps> = ({
             </>
           )}
         </div>
+      )}
+
+      {!value && generatePrompt && (
+        <button
+          type="button"
+          onClick={handleGenerateClick}
+          disabled={disabled || isBusy}
+          className="w-full rounded-lg px-3 py-2 bg-surface-inset text-content-muted text-xs font-semibold uppercase tracking-wide border border-border-subtle hover:border-border-strong transition-colors disabled:opacity-50"
+        >
+          {generateCoverImage.isPending ? "Generating…" : "Generate with AI"}
+        </button>
       )}
 
       {errorMessage && <p className="text-xs text-danger">{errorMessage}</p>}

@@ -10,7 +10,9 @@ from context_memory.core.ports import Embedder
 
 
 class SiblingExpander:
-    def __init__(self, pool: object, embedder: Embedder, config: Config | None = None) -> None:
+    def __init__(
+        self, pool: object, embedder: Embedder, config: Config | None = None
+    ) -> None:
         self._pool = pool
         self._embedder = embedder
         self._config = config or Config()
@@ -76,10 +78,9 @@ class SiblingExpander:
         lam = self._config.retrieval_sibling_continuity_penalty
         gamma = self._config.retrieval_sibling_relevance_ratio
 
-        with self._pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
+        with self._pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                """
                     SELECT sibling.subject_id, fsi.raw_text, emc.observed_at,
                            (anchor.embedding <=> %s::vector) AS anchor_query_distance,
                            (sibling.embedding <=> %s::vector) AS sibling_query_distance,
@@ -99,9 +100,9 @@ class SiblingExpander:
                       AND anchor.subject_id = ANY(%s)
                       AND sibling.subject_id != ALL(%s)
                     """,
-                    (vector_literal, vector_literal, context_id, fact_ids, fact_ids),
-                )
-                rows = cursor.fetchall()
+                (vector_literal, vector_literal, context_id, fact_ids, fact_ids),
+            )
+            rows = cursor.fetchall()
 
         # pgvector's <=> is cosine DISTANCE (0 = identical), so similarity is
         # (1 - distance). A sibling reachable via more than one anchor in this
@@ -117,9 +118,16 @@ class SiblingExpander:
             if score <= gamma * anchor_relevance:
                 continue
             fact_id = str(fact_id)
-            observed_epoch = int(observed_at.timestamp()) if observed_at is not None else None
+            observed_epoch = (
+                int(observed_at.timestamp()) if observed_at is not None else None
+            )
             if fact_id not in best or score > best[fact_id][0]:
                 best[fact_id] = (score, raw_text, observed_epoch)
 
-        ranked = sorted(best.items(), key=lambda kv: -kv[1][0])[: self._config.retrieval_sibling_fact_limit]
-        return {fact_id: (text, observed_epoch) for fact_id, (_, text, observed_epoch) in ranked}
+        ranked = sorted(best.items(), key=lambda kv: -kv[1][0])[
+            : self._config.retrieval_sibling_fact_limit
+        ]
+        return {
+            fact_id: (text, observed_epoch)
+            for fact_id, (_, text, observed_epoch) in ranked
+        }

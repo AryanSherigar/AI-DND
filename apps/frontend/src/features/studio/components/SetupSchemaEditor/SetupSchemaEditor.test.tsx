@@ -61,4 +61,60 @@ describe("SetupSchemaEditor", () => {
       "player.health": 100,
     });
   });
+
+  it("configures player setup fields and saves setup_schema", async () => {
+    let savedPayload: unknown = null;
+    server.use(
+      http.get(`${API_URL}/v1/scenarios/${SCENARIO_ID}`, () =>
+        HttpResponse.json({
+          scenario_id: SCENARIO_ID,
+          setup_schema: [],
+          setup_archetypes: [],
+        }),
+      ),
+      http.patch(
+        `${API_URL}/v1/scenarios/${SCENARIO_ID}`,
+        async ({ request }) => {
+          savedPayload = await request.json();
+          return HttpResponse.json({
+            scenario_id: SCENARIO_ID,
+            ...(savedPayload as Record<string, unknown>),
+          });
+        },
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderEditor();
+
+    await user.click(
+      await screen.findByRole("button", { name: /add input field/i }),
+    );
+
+    const labelInput = screen.getByLabelText(/field label/i);
+    await user.clear(labelInput);
+    await user.type(labelInput, "Character Name");
+
+    const keyInput = screen.getByLabelText(/field key/i);
+    await user.clear(keyInput);
+    await user.type(keyInput, "character_name");
+
+    await user.click(
+      screen.getByRole("checkbox", { name: /is character name/i }),
+    );
+
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    const payload = savedPayload as {
+      setup_schema: {
+        label: string;
+        key: string;
+        is_character_name: boolean;
+      }[];
+    };
+    expect(payload.setup_schema).toHaveLength(1);
+    expect(payload.setup_schema[0].label).toBe("Character Name");
+    expect(payload.setup_schema[0].key).toBe("character_name");
+    expect(payload.setup_schema[0].is_character_name).toBe(true);
+  });
 });

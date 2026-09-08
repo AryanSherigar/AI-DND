@@ -2,13 +2,12 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
-from sse_starlette.sse import EventSourceResponse
-
 from app.middleware.auth import get_current_user
 from app.models.assistant import AssistantChatRequest
 from app.models.auth import CurrentUser
 from app.services.assistant_service import stream_assistant_chat
+from fastapi import APIRouter, Depends
+from sse_starlette.sse import EventSourceResponse
 
 router = APIRouter(prefix="/v1/studio", tags=["Studio Assistant"])
 

@@ -20,6 +20,8 @@ export interface SetupInputField {
   required: boolean;
   options: SetupInputOption[];
   defaultValue?: string | string[] | number;
+  is_character_name?: boolean;
+  predicate?: string;
 }
 
 export interface StoryCard {

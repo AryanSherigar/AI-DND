@@ -26,6 +26,17 @@ turn, end_condition_evaluator is skipped entirely (minigame wins over an
 end condition matching the same turn) and a minigame SSE event is yielded
 after turn_summary_event, before playthrough_ended_event/done_event (see
 docs/specs/master-mode-minigames.spec.md §2).
+
+After the narration loop completes and before state_writer, if the incoming
+request's action_mode is "see", scene_image_generator generates a scene
+image (grounded in the current location entity from scenario_snapshot in
+master mode, and the prior scene image generated for that same location in
+this playthrough, for visual consistency — newbie mode falls back to
+narration text alone). On success, a scene_image SSE event is yielded and
+the image URL/location/prompt are persisted onto the turn's TurnLog row via
+state_writer; on any failure this step returns None and the turn proceeds
+exactly as if action_mode were not "see" (a missing image never degrades a
+turn).
 """
 
 import uuid
@@ -33,10 +44,6 @@ from collections.abc import AsyncIterator
 
 import httpx
 import structlog
-from sqlalchemy.ext.asyncio import AsyncSession
-from sse_starlette.sse import EventSourceResponse, ServerSentEvent
-from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt
-
 from app.config import settings
 from app.db.models.participant import Participant
 from app.exceptions.turn_exceptions import (
@@ -64,13 +71,18 @@ from app.turn.steps import (
     minigame_trigger_evaluator,
     request_receiver,
     response_streamer,
+    scene_image_generator,
     state_loader,
     state_writer,
     turn_summary_builder,
 )
 from app.turn.steps.end_condition_evaluator import MatchedOutcome
 from app.turn.steps.minigame_trigger_evaluator import MatchedMinigameTrigger
+from app.turn.steps.state_writer import SceneImageResult
 from app.turn.turn_order import expected_participant
+from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse, ServerSentEvent
+from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt
 
 logger = structlog.get_logger()
 
@@ -196,6 +208,17 @@ async def _run_turn_events(
                 working_state, matched_trigger
             )
 
+    scene_image: SceneImageResult | None = None
+    if turn_request.action_mode == "see":
+        scene_image = await _generate_turn_scene_image(
+            turn_request, loaded_state, working_state, "".join(chunks), turn_log_repo
+        )
+        if scene_image:
+            await spectator_manager.publish(
+                turn_request.playthrough_id, "scene_image", scene_image.image_url
+            )
+            yield response_streamer.scene_image_event(scene_image.image_url)
+
     try:
         updated_state = await state_writer.write_turn(
             turn_request,
@@ -207,6 +230,7 @@ async def _run_turn_events(
             working_state=working_state,
             tool_calls=tool_calls,
             mutated_paths=mutated_paths or None,
+            scene_image=scene_image,
         )
     except OptimisticLockError:
         logger.warning(
@@ -288,6 +312,38 @@ def _evaluate_master_mode_intake(
     active_instructions += evaluation.active_instructions
     mutated_paths |= evaluation.mutated_paths
     return loaded_state, active_instructions, mutated_paths
+
+
+async def _generate_turn_scene_image(
+    turn_request: TurnRequest,
+    loaded_state: LoadedState,
+    working_state: dict[str, object] | None,
+    narration_text: str,
+    turn_log_repo: TurnLogRepo,
+) -> SceneImageResult | None:
+    """Generate this 'see' action turn's scene image, grounded in the current
+    location (master mode) and the prior image generated for that same
+    location in this playthrough, if any."""
+    state = working_state if working_state is not None else loaded_state.state
+    current_location_id = state.get("current_location_id")
+    location = scene_image_generator.find_location_entity(
+        loaded_state.scenario_snapshot, current_location_id
+    )
+    prior_prompt = None
+    if current_location_id:
+        prior = await turn_log_repo.find_latest_by_location(
+            turn_request.playthrough_id, str(current_location_id)
+        )
+        prior_prompt = prior.scene_image_prompt if prior else None
+
+    result = await scene_image_generator.generate_scene_image(
+        narration_text, location, prior_prompt, settings.imagen_timeout_seconds
+    )
+    if not result:
+        return None
+    image_url, composed_prompt = result
+    location_id = str(current_location_id) if current_location_id else None
+    return SceneImageResult(image_url, location_id, composed_prompt)
 
 
 async def _stamp_pending_minigame(

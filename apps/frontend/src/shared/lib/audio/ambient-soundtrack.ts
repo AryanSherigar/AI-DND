@@ -1,4 +1,5 @@
-import { ScenarioMood } from "@/features/play/types/audio.types";
+import { ScenarioMood } from "@/shared/types/audio.types";
+import { DEFAULT_MOOD_TRACK_URLS } from "@/shared/constants/audio";
 
 const CROSSFADE_DURATION_SECONDS = 4.0;
 const MIN_COOLDOWN_MS = 45000;
@@ -25,6 +26,7 @@ export class AmbientSoundtrackController {
   private channelB: AudioChannel | null = null;
   private activeChannelIndex: 0 | 1 = 0;
   private currentMood: ScenarioMood | null = null;
+  private currentTrackUrl: string | null = null;
   private lastTransitionTime = 0;
   private volume = 0.6;
   private isMuted = false;
@@ -55,6 +57,10 @@ export class AmbientSoundtrackController {
 
   public getMood(): ScenarioMood | null {
     return this.currentMood;
+  }
+
+  public getCurrentTrackUrl(): string | null {
+    return this.currentTrackUrl;
   }
 
   public getVolume(): number {
@@ -117,6 +123,7 @@ export class AmbientSoundtrackController {
 
   public transitionTo(
     newMood: ScenarioMood,
+    trackUrl: string = DEFAULT_MOOD_TRACK_URLS[newMood],
     isForce: boolean = false,
   ): boolean {
     if (!this.shouldAllowTransition(newMood, isForce)) {
@@ -125,8 +132,9 @@ export class AmbientSoundtrackController {
 
     this.init();
     this.ensureContextRunning();
-    this.executeCrossfade(newMood);
+    this.executeCrossfade(trackUrl);
     this.currentMood = newMood;
+    this.currentTrackUrl = trackUrl;
     this.lastTransitionTime = Date.now();
     this.notifyMoodChange(newMood);
     return true;
@@ -140,6 +148,7 @@ export class AmbientSoundtrackController {
       this.channelB.element.pause();
     }
     this.currentMood = null;
+    this.currentTrackUrl = null;
   }
 
   private shouldAllowTransition(
@@ -191,7 +200,7 @@ export class AmbientSoundtrackController {
     return { element: audio, sourceNode, gainNode };
   }
 
-  private executeCrossfade(newMood: ScenarioMood): void {
+  private executeCrossfade(trackUrl: string): void {
     if (!this.channelA || !this.channelB || !this.audioContext) return;
 
     const outgoing =
@@ -202,7 +211,7 @@ export class AmbientSoundtrackController {
 
     const now = this.audioContext.currentTime;
     this.fadeChannelOut(outgoing, now);
-    this.fadeChannelIn(incoming, newMood, now);
+    this.fadeChannelIn(incoming, trackUrl, now);
   }
 
   private fadeChannelOut(channel: AudioChannel, now: number): void {
@@ -225,10 +234,10 @@ export class AmbientSoundtrackController {
 
   private fadeChannelIn(
     channel: AudioChannel,
-    newMood: ScenarioMood,
+    trackUrl: string,
     now: number,
   ): void {
-    channel.element.src = `/audio/moods/${newMood}.wav`;
+    channel.element.src = trackUrl;
     const playPromise = channel.element.play();
     if (playPromise !== undefined) {
       playPromise.catch(() => {

@@ -109,6 +109,11 @@ export const Step1Meta: React.FC = () => {
           label="Cover Image"
           value={newbieDraft.cover_image_url}
           onChange={(url) => updateNewbieDraft({ cover_image_url: url || "" })}
+          generatePrompt={{
+            title: newbieDraft.title,
+            genreTags: newbieDraft.genre_tags || [],
+            openingScene: newbieDraft.logline,
+          }}
         />
         <div className="space-y-3">
           <label className="block text-sm font-semibold tracking-wide text-content-muted uppercase">

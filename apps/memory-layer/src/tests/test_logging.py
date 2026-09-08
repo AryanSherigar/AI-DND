@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import unittest
+
 from context_memory.core.logging import (
     disable_metrics_collection,
     drain_metrics,
@@ -47,7 +48,9 @@ class MetricsCollectionTests(unittest.TestCase):
         logger = get_logger("test.metrics.disabled")
         with timed_operation(logger, "some_op", {"chunk_id": "c1"}):
             pass
-        self.assertEqual(drain_metrics(), [])  # never enabled -- draining a None sink is an empty list, not an error
+        self.assertEqual(
+            drain_metrics(), []
+        )  # never enabled -- draining a None sink is an empty list, not an error
 
     def test_enabled_collects_operation_name_elapsed_and_metadata(self) -> None:
         enable_metrics_collection()
@@ -61,12 +64,16 @@ class MetricsCollectionTests(unittest.TestCase):
         self.assertEqual(record["outcome"], "done")
         self.assertEqual(record["chunk_id"], "c1")
         self.assertEqual(record["facts"], 3)
-        self.assertEqual(record["accepted"], 2)  # context mutated inside the `with` block is captured too
+        self.assertEqual(
+            record["accepted"], 2
+        )  # context mutated inside the `with` block is captured too
         self.assertIsInstance(record["elapsed_ms"], float)
         self.assertGreaterEqual(record["elapsed_ms"], 0.0)
         self.assertIn("wall_time", record)
 
-    def test_failed_operation_is_recorded_with_error_metadata_and_still_reraises(self) -> None:
+    def test_failed_operation_is_recorded_with_error_metadata_and_still_reraises(
+        self,
+    ) -> None:
         enable_metrics_collection()
         logger = get_logger("test.metrics.fail")
         with self.assertRaises(ValueError):
@@ -79,7 +86,9 @@ class MetricsCollectionTests(unittest.TestCase):
         self.assertIn("boom", records[0]["error"])
         self.assertEqual(records[0]["chunk_id"], "c2")
 
-    def test_drain_clears_the_buffer_so_the_next_drain_only_sees_whats_new(self) -> None:
+    def test_drain_clears_the_buffer_so_the_next_drain_only_sees_whats_new(
+        self,
+    ) -> None:
         enable_metrics_collection()
         logger = get_logger("test.metrics.drain")
         with timed_operation(logger, "op_one"):
@@ -102,7 +111,9 @@ class MetricsCollectionTests(unittest.TestCase):
         disable_metrics_collection()
         with timed_operation(logger, "op_after"):
             pass
-        self.assertEqual(drain_metrics(), [])  # disabled before op_after ran, and disabling drops what was pending
+        self.assertEqual(
+            drain_metrics(), []
+        )  # disabled before op_after ran, and disabling drops what was pending
 
 
 if __name__ == "__main__":

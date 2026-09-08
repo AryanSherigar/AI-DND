@@ -2,10 +2,9 @@
 
 import uuid
 
+from app.db.models.participant import Participant
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db.models.participant import Participant
 
 
 class ParticipantRepo:

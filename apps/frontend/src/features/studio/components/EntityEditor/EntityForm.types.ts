@@ -21,4 +21,5 @@ export interface EntityFormState {
   obtainable: boolean;
   narratorInstruction: string;
   attributesSchema: Record<string, AttributeFieldSchema>;
+  isPlayer: boolean;
 }

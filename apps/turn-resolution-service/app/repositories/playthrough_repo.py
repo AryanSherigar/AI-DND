@@ -2,11 +2,10 @@
 
 import uuid
 
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db.models.playthrough import Playthrough
 from app.exceptions.turn_exceptions import OptimisticLockError
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class PlaythroughRepo:

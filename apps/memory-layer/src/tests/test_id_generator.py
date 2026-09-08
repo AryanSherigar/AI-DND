@@ -1,9 +1,10 @@
 import uuid
+
 import pytest
 from context_memory.core.id_generator import (
-    IdGenerator,
     CollisionRegistry,
     HashCollisionError,
+    IdGenerator,
     InvalidSemanticInputError,
 )
 

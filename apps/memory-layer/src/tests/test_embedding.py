@@ -3,7 +3,10 @@ from __future__ import annotations
 import os
 import unittest
 
-from context_memory.ingestion.embedding import EmbeddingError, SentenceTransformerEmbedder
+from context_memory.ingestion.embedding import (
+    EmbeddingError,
+    SentenceTransformerEmbedder,
+)
 
 
 class _FakeModel:

@@ -6,6 +6,8 @@ from app.db.models.entity import Entity
 from app.db.models.fact import Fact
 from app.db.models.map_connection import MapConnection
 from app.db.models.map_pin import MapPin
+from app.db.models.music_generation_job import MusicGenerationJob
+from app.db.models.music_generation_log import MusicGenerationLog
 from app.db.models.participant import Participant
 from app.db.models.playthrough import Playthrough
 from app.db.models.review import ScenarioReview
@@ -15,6 +17,7 @@ from app.db.models.scenario_condition import ScenarioCondition
 from app.db.models.scenario_entity_type import ScenarioEntityType
 from app.db.models.scenario_map import ScenarioMap
 from app.db.models.scenario_minigame import ScenarioMinigame
+from app.db.models.scenario_music import ScenarioMusic
 from app.db.models.share import PlaythroughShare
 from app.db.models.turn_log import TurnLog
 from app.db.models.user import User
@@ -26,6 +29,8 @@ __all__ = [
     "Fact",
     "MapConnection",
     "MapPin",
+    "MusicGenerationJob",
+    "MusicGenerationLog",
     "Participant",
     "Playthrough",
     "PlaythroughShare",
@@ -35,6 +40,7 @@ __all__ = [
     "ScenarioEntityType",
     "ScenarioMap",
     "ScenarioMinigame",
+    "ScenarioMusic",
     "ScenarioReview",
     "TurnLog",
     "User",

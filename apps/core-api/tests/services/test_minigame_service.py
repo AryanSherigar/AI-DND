@@ -24,6 +24,7 @@ from app.repositories.map_repo import MapRepo
 from app.repositories.minigame_repo import MinigameRepo
 from app.repositories.participant_repo import ParticipantRepo
 from app.repositories.playthrough_repo import PlaythroughRepo
+from app.repositories.scenario_music_repo import ScenarioMusicRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.share_repo import ShareRepo
 from app.repositories.turn_log_repo import TurnLogRepo
@@ -349,6 +350,7 @@ async def test_playthrough_snapshot_includes_minigames_sorted_by_priority(
         end_condition_repo=EndConditionRepo(db_session),
         map_repo=MapRepo(db_session),
         minigame_repo=MinigameRepo(db_session),
+        scenario_music_repo=ScenarioMusicRepo(db_session),
     )
     result = await playthrough_service.create_playthrough(
         user_id=creator.user_id,

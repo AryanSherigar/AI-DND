@@ -3,10 +3,11 @@
 import uuid
 
 import pytest
-from app.db.models.scenario import Scenario
-from app.repositories.user_repo import UserRepo
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models.scenario import Scenario
+from app.repositories.user_repo import UserRepo
 
 
 @pytest.fixture

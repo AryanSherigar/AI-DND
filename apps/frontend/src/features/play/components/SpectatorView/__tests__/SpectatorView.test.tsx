@@ -12,6 +12,7 @@ const mockTurn: TurnLogResponse = {
   participant_id: null,
   tool_calls: [],
   created_at: new Date().toISOString(),
+  image_url: null,
 };
 
 describe("SpectatorView", () => {

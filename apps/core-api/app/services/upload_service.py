@@ -4,12 +4,16 @@ import uuid
 import wave
 from io import BytesIO
 
+from app.config import settings
 from app.exceptions.upload_exceptions import UploadValidationError
-from app.integrations import storage_client
+from app.integrations import image_gen_client, storage_client
+from app.models.image_generation import CoverImageGenerationRequest
 
 MAX_COVER_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_SCENARIO_AUDIO_BYTES = 10 * 1024 * 1024
 MAX_SCENARIO_AUDIO_SECONDS = 300
+
+_GENERATED_COVER_IMAGE_CONTENT_TYPE = "image/png"
 
 ALLOWED_COVER_IMAGE_CONTENT_TYPES: dict[str, str] = {
     "image/jpeg": ".jpg",
@@ -61,7 +65,9 @@ class UploadService:
         """Validate and upload a bounded, creator-selected Dodge audio track."""
         extension = ALLOWED_SCENARIO_AUDIO_CONTENT_TYPES.get(content_type)
         if extension is None:
-            raise UploadValidationError("Unsupported audio format. Allowed: MP3, OGG, WAV.")
+            raise UploadValidationError(
+                "Unsupported audio format. Allowed: MP3, OGG, WAV."
+            )
         if len(content) > MAX_SCENARIO_AUDIO_BYTES:
             raise UploadValidationError("Audio exceeds the 10MB size limit.")
         # WAV duration can be verified with the standard library. MP3/Ogg
@@ -74,6 +80,32 @@ class UploadService:
             except (wave.Error, EOFError, ZeroDivisionError) as exc:
                 raise UploadValidationError("Invalid WAV audio file.") from exc
             if duration > MAX_SCENARIO_AUDIO_SECONDS:
-                raise UploadValidationError("Audio duration exceeds the 5 minute limit.")
+                raise UploadValidationError(
+                    "Audio duration exceeds the 5 minute limit."
+                )
         object_key = f"scenario-audio/{uuid.uuid4()}{extension}"
         return await storage_client.upload_image(content, content_type, object_key)
+
+    async def generate_and_upload_cover_image(
+        self, request: CoverImageGenerationRequest
+    ) -> str:
+        """Generate a scenario cover image with AI and upload it, returning its public URL."""
+        prompt = self._build_cover_prompt(request)
+        image_bytes = await image_gen_client.generate_image(
+            prompt, settings.imagen_timeout_seconds
+        )
+        return await self._upload_with_prefix(
+            image_bytes, _GENERATED_COVER_IMAGE_CONTENT_TYPE, "scenario-covers"
+        )
+
+    def _build_cover_prompt(self, request: CoverImageGenerationRequest) -> str:
+        """Compose a text-to-image prompt from scenario metadata."""
+        parts = [
+            f"A cinematic cover illustration for a tabletop RPG scenario titled '{request.title}'."
+        ]
+        if request.genre_tags:
+            parts.append(f"Genre: {', '.join(request.genre_tags)}.")
+        if request.opening_scene:
+            parts.append(f"Opening scene: {request.opening_scene}")
+        parts.append("No text or lettering in the image.")
+        return " ".join(parts)

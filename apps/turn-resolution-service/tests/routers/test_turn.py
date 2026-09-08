@@ -2,14 +2,13 @@
 
 import uuid
 
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db.models.participant import Participant
 from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
 from app.db.models.user import User
 from app.turn.steps import ai_orchestrator
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def _seed_playthrough(session: AsyncSession) -> tuple[Playthrough, Participant]:

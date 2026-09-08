@@ -9,7 +9,6 @@ layer must not be a precondition for them to pass.
 from uuid import uuid4
 
 import pytest
-
 from app.integrations import memory_client
 from app.models.memory import MemoryIngestResponse, MemoryQueryResponse
 

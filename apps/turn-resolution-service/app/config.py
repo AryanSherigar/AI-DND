@@ -22,12 +22,12 @@ class Settings(BaseSettings):
 
     gemini_api_key: str = ""
     gemini_model_name: str = "gemini-3.5-flash-lite"
-    gemini_temperature: float = 0.7
-    gemini_max_output_tokens: int = 200
+    gemini_temperature: float = 0.75
+    gemini_max_output_tokens: int = 350
     gemini_top_p: float = 0.95
     gemini_timeout_seconds: int = 30
     gemini_max_retries: int = 2
-    turn_history_window_size: int = 10
+    turn_history_window_size: int = 6
     play_count_increment_turn_threshold: int = 10
     state_write_max_retries: int = 2
     memory_batch_turn_interval: int = 5
@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
     sse_ping_interval_seconds: int = 15
+    imagen_model_name: str = "imagen-3.0-generate-002"
+    imagen_timeout_seconds: int = 30
+    gcs_bucket_name: str = ""
+    local_upload_dir: str = "uploads"
+    firebase_credentials_path: str = ""
 
 
 settings = Settings()

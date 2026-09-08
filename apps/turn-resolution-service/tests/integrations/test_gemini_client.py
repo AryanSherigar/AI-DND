@@ -3,11 +3,10 @@
 import asyncio
 
 import pytest
-from google.genai import errors as genai_errors
-from google.genai import types
-
 from app.exceptions.turn_exceptions import GeminiUnavailableError
 from app.integrations import gemini_client
+from google.genai import errors as genai_errors
+from google.genai import types
 
 
 def _chunk(text: str | None) -> types.GenerateContentResponse:

@@ -3,13 +3,12 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
+from context_memory.core.journal import JournalContext, StepJournal, correlation_scope
+from context_memory.core.tracing import configure_tracing
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
-
-from context_memory.core.journal import JournalContext, StepJournal, correlation_scope
-from context_memory.core.tracing import configure_tracing
 
 
 def _local_tracer():

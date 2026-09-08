@@ -5,7 +5,6 @@ import time
 import uuid
 
 import structlog
-
 from app.exceptions.turn_exceptions import PlaythroughNotActiveError
 from app.models.turn import LoadedState
 from app.repositories.playthrough_repo import PlaythroughRepo

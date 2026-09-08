@@ -8,10 +8,6 @@ import json
 import uuid
 
 import pytest
-from google.genai import types
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db.models.participant import Participant
 from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
@@ -24,6 +20,9 @@ from app.models.auth import CurrentUser
 from app.models.turn import TurnRequestInput
 from app.turn import pipeline
 from app.turn.steps import ai_orchestrator, end_condition_evaluator
+from google.genai import types
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

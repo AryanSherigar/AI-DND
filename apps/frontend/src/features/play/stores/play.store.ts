@@ -16,8 +16,9 @@ import {
 } from "@/shared/lib/request-id";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { queryClient } from "@/shared/lib/query-client";
-import { ScenarioMood } from "../types/audio.types";
+import { ScenarioMood } from "@/shared/types/audio.types";
 import { ambientSoundtrack } from "@/shared/lib/audio/ambient-soundtrack";
+import { resolveMoodTrackUrl } from "@/shared/constants/audio";
 import {
   MinigameEventPayload,
   MinigameResultPayload,
@@ -35,6 +36,7 @@ interface TurnStreamBody {
   participant_id: string;
   action_text: string;
   action_kind: "narrative" | "minigame_result";
+  action_mode: ActionMode;
   minigame_result?: MinigameResultPayload;
 }
 
@@ -99,6 +101,9 @@ interface PlayStoreState {
   // until the in-flight turn commits — mirrors pending_chapter_delta exactly
   // — so the ending only ever renders once the triggering turn is committed.
   pending_playthrough_ended: PlaythroughEndedPayload | null;
+  // Set when a `scene_image` SSE event arrives for a "see" action turn, held
+  // until the in-flight turn commits — mirrors pending_chapter_delta exactly.
+  pending_scene_image_url: string | null;
   // The minigame currently taking over the play surface full-screen, or one
   // resumed on reload from PlaythroughData.pending_minigame. Null renders
   // nothing (MinigameOverlay is an unconditional, guarded no-op mount).
@@ -165,6 +170,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   pending_chapter_delta: null,
   pending_minigame_trigger: null,
   pending_playthrough_ended: null,
+  pending_scene_image_url: null,
   active_minigame: null,
   pending_minigame_result: null,
   reader_font_override:
@@ -195,7 +201,8 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
 
     if (isNewPlaythrough) {
       const initialMood = data.initial_mood || "peaceful";
-      ambientSoundtrack.transitionTo(initialMood, true);
+      const trackUrl = resolveMoodTrackUrl(initialMood, data.music_tracks);
+      ambientSoundtrack.transitionTo(initialMood, trackUrl, true);
       // Resume a minigame the player left mid-resolution — reload must not
       // require a fresh SSE "minigame" event to show the overlay again.
     }
@@ -217,7 +224,8 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     set({ is_audio_muted: isMuted });
   },
   setMood: (mood: ScenarioMood) => {
-    ambientSoundtrack.transitionTo(mood, true);
+    const trackUrl = resolveMoodTrackUrl(mood, get().playthrough?.music_tracks);
+    ambientSoundtrack.transitionTo(mood, trackUrl, true);
   },
   setActiveMode: (mode: ActionMode) => set({ active_mode: mode }),
   setEBookTheme: (theme: EBookTheme) => set({ ebook_theme: theme }),
@@ -250,7 +258,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
   },
 
   submitTurn: (actionText: string) => {
-    const { playthrough, active_minigame } = get();
+    const { playthrough, active_minigame, active_mode } = get();
     if (!playthrough || !actionText.trim() || playthrough.is_spectator) return;
     if (active_minigame) return;
     if (!playthrough.participant_id) return;
@@ -262,6 +270,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
         participant_id: playthrough.participant_id,
         action_text: actionText,
         action_kind: "narrative",
+        action_mode: active_mode,
       },
       actionText,
     );
@@ -426,6 +435,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
         participant_id: playthrough.participant_id,
         action_text: MINIGAME_RESULT_ACTION_TEXT,
         action_kind: "minigame_result",
+        action_mode: "do",
         minigame_result: result,
       },
       MINIGAME_RESULT_ACTION_TEXT,
@@ -448,6 +458,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       pending_minigame_trigger: null,
       pending_playthrough_ended: null,
       stream_generation: get().stream_generation + 1,
+      pending_scene_image_url: null,
     });
   },
 
@@ -536,7 +547,11 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
         if (!ownsStream()) return;
         if (eventName === "mood") {
           const mood = data as ScenarioMood;
-          ambientSoundtrack.transitionTo(mood);
+          const trackUrl = resolveMoodTrackUrl(
+            mood,
+            get().playthrough?.music_tracks,
+          );
+          ambientSoundtrack.transitionTo(mood, trackUrl);
         } else if (eventName === "narration") {
           set((s) => ({ streaming_text: s.streaming_text + data }));
         } else if (eventName === "turn_summary") {
@@ -558,6 +573,10 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
           // reachedTerminalEvent, since "done" still follows normally.
           const payload = JSON.parse(data) as PlaythroughEndedPayload;
           set({ pending_playthrough_ended: payload });
+        } else if (eventName === "scene_image") {
+          // Buffered like pending_chapter_delta — does NOT set
+          // reachedTerminalEvent, since "done" still follows normally.
+          set({ pending_scene_image_url: data });
         } else if (eventName === "done") {
           reachedTerminalEvent = true;
           get()._commitStreamedTurn(actionTextForLog);
@@ -604,6 +623,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       pending_chapter_delta,
       pending_minigame_trigger,
       pending_playthrough_ended,
+      pending_scene_image_url,
     } = get();
     if (!playthrough) return;
 
@@ -615,6 +635,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       narration_text: streaming_text,
       created_at: new Date().toISOString(),
       chapter_delta: pending_chapter_delta ?? undefined,
+      image_url: pending_scene_image_url ?? undefined,
     };
 
     set({
@@ -642,6 +663,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       pending_minigame_trigger: null,
       pending_playthrough_ended: null,
       pending_minigame_result: null,
+      pending_scene_image_url: null,
       // Promote the buffered trigger into the overlay-driving field now that
       // the triggering turn is fully committed — mirrors pending_chapter_delta
       // being attached to newTurn above. When nothing triggered this turn,
@@ -668,6 +690,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       pending_chapter_delta: null,
       pending_minigame_trigger: null,
       pending_playthrough_ended: null,
+      pending_scene_image_url: null,
       degraded_message: message,
     });
   },

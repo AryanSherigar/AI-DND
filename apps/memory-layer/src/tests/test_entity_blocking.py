@@ -30,15 +30,30 @@ class TrigramJaccardCalibrationTests(unittest.TestCase):
     threshold's justification silently goes stale too."""
 
     def test_true_positive_pairs_score_above_threshold(self) -> None:
-        self.assertGreaterEqual(char_trigram_jaccard_similarity("dave", "david"), TRIGRAM_JACCARD_BLOCKING_THRESHOLD)
-        self.assertGreaterEqual(char_trigram_jaccard_similarity("sherlock holmes", "holmes"), TRIGRAM_JACCARD_BLOCKING_THRESHOLD)
-        self.assertGreaterEqual(char_trigram_jaccard_similarity("sherlock holmes", "sherlock"), TRIGRAM_JACCARD_BLOCKING_THRESHOLD)
+        self.assertGreaterEqual(
+            char_trigram_jaccard_similarity("dave", "david"),
+            TRIGRAM_JACCARD_BLOCKING_THRESHOLD,
+        )
+        self.assertGreaterEqual(
+            char_trigram_jaccard_similarity("sherlock holmes", "holmes"),
+            TRIGRAM_JACCARD_BLOCKING_THRESHOLD,
+        )
+        self.assertGreaterEqual(
+            char_trigram_jaccard_similarity("sherlock holmes", "sherlock"),
+            TRIGRAM_JACCARD_BLOCKING_THRESHOLD,
+        )
 
     def test_true_negative_pair_scores_below_threshold(self) -> None:
-        self.assertLess(char_trigram_jaccard_similarity("dave", "dan"), TRIGRAM_JACCARD_BLOCKING_THRESHOLD)
+        self.assertLess(
+            char_trigram_jaccard_similarity("dave", "dan"),
+            TRIGRAM_JACCARD_BLOCKING_THRESHOLD,
+        )
 
     def test_symmetry(self) -> None:
-        self.assertEqual(char_trigram_jaccard_similarity("dave", "david"), char_trigram_jaccard_similarity("david", "dave"))
+        self.assertEqual(
+            char_trigram_jaccard_similarity("dave", "david"),
+            char_trigram_jaccard_similarity("david", "dave"),
+        )
 
     def test_identical_strings_score_one(self) -> None:
         self.assertEqual(char_trigram_jaccard_similarity("dave", "dave"), 1.0)
@@ -54,11 +69,17 @@ class EntropyGateTests(unittest.TestCase):
         self.assertFalse(is_stable_for_fuzzy_matching("a"))
 
     def test_ordinary_short_name_is_stable(self) -> None:
-        self.assertGreaterEqual(surface_shannon_entropy("max"), MIN_ENTROPY_FOR_FUZZY_MATCHING)
+        self.assertGreaterEqual(
+            surface_shannon_entropy("max"), MIN_ENTROPY_FOR_FUZZY_MATCHING
+        )
         self.assertTrue(is_stable_for_fuzzy_matching("max"))
 
-    def test_length_gate_excludes_single_character_surfaces_regardless_of_entropy(self) -> None:
-        self.assertLess(1, MIN_LENGTH_FOR_FUZZY_MATCHING + 1)  # sanity: gate constant is what the test assumes
+    def test_length_gate_excludes_single_character_surfaces_regardless_of_entropy(
+        self,
+    ) -> None:
+        self.assertLess(
+            1, MIN_LENGTH_FOR_FUZZY_MATCHING + 1
+        )  # sanity: gate constant is what the test assumes
         self.assertFalse(is_stable_for_fuzzy_matching("x"))
 
     def test_empty_surface_is_unstable(self) -> None:
@@ -78,7 +99,9 @@ class FindFuzzyCandidatesTests(unittest.TestCase):
         profiles = [_FakeProfile(1, "maxwell", aliases=("dave",))]
         self.assertEqual(find_fuzzy_candidates("david", profiles), [1])
 
-    def test_sherlock_holmes_example_from_the_microsoft_graphrag_dedup_issue(self) -> None:
+    def test_sherlock_holmes_example_from_the_microsoft_graphrag_dedup_issue(
+        self,
+    ) -> None:
         """The exact case Microsoft GraphRAG's own issue #401 cites as
         unresolved: 'Sherlock Holmes' fragmenting into separate nodes for
         'Holmes', 'Sherlock', and other partial forms."""
@@ -90,7 +113,9 @@ class FindFuzzyCandidatesTests(unittest.TestCase):
         self.assertEqual(find_fuzzy_candidates("dave", []), [])
 
     def test_custom_threshold_is_respected(self) -> None:
-        profiles = [_FakeProfile(1, "dan")]  # 'dave'/'dan' = 0.222, below default but above a looser threshold
+        profiles = [
+            _FakeProfile(1, "dan")
+        ]  # 'dave'/'dan' = 0.222, below default but above a looser threshold
         self.assertEqual(find_fuzzy_candidates("dave", profiles, threshold=0.9), [])
         self.assertEqual(find_fuzzy_candidates("dave", profiles, threshold=0.2), [1])
 
@@ -111,16 +136,27 @@ class NicknameTableTests(unittest.TestCase):
         for group in NICKNAME_GROUPS:
             for name in group:
                 self.assertNotIn(
-                    name, seen,
+                    name,
+                    seen,
                     f"{name!r} appears in two groups: {seen.get(name)} and {group} -- merge them",
                 )
                 seen[name] = group
 
     def test_classic_root_different_nickname_pairs_are_covered(self) -> None:
         """The exact cases the trigram pass alone cannot catch."""
-        pairs = [("bob", "robert"), ("bill", "william"), ("dick", "richard"), ("jack", "john"), ("peggy", "margaret")]
+        pairs = [
+            ("bob", "robert"),
+            ("bill", "william"),
+            ("dick", "richard"),
+            ("jack", "john"),
+            ("peggy", "margaret"),
+        ]
         for nickname, formal in pairs:
-            self.assertIn(formal, nickname_equivalents(nickname), f"{nickname!r} should be a recorded equivalent of {formal!r}")
+            self.assertIn(
+                formal,
+                nickname_equivalents(nickname),
+                f"{nickname!r} should be a recorded equivalent of {formal!r}",
+            )
 
     def test_name_outside_the_table_has_no_equivalents(self) -> None:
         self.assertEqual(nickname_equivalents("xerxes"), frozenset())
@@ -129,7 +165,9 @@ class NicknameTableTests(unittest.TestCase):
         profiles = [_FakeProfile(1, "robert")]
         self.assertEqual(find_nickname_candidates("bob", profiles), [1])
 
-    def test_find_nickname_candidates_matches_via_alias_not_just_canonical(self) -> None:
+    def test_find_nickname_candidates_matches_via_alias_not_just_canonical(
+        self,
+    ) -> None:
         profiles = [_FakeProfile(1, "the landlord", aliases=("robert",))]
         self.assertEqual(find_nickname_candidates("bob", profiles), [1])
 
@@ -144,7 +182,9 @@ class NicknameTableTests(unittest.TestCase):
         profiles = [_FakeProfile(1, "harold"), _FakeProfile(2, "henry")]
         self.assertEqual(sorted(find_nickname_candidates("harry", profiles)), [1, 2])
 
-    def test_short_surface_still_matches_despite_normally_failing_the_stability_gate(self) -> None:
+    def test_short_surface_still_matches_despite_normally_failing_the_stability_gate(
+        self,
+    ) -> None:
         """'bob' (3 chars, entropy ~1.5) would pass the general fuzzy gate
         anyway, but the point of nickname lookup is it doesn't need to --
         confirmed by a name short enough that trigram similarity alone

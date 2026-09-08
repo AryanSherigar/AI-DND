@@ -1,3 +1,9 @@
+export interface CoverImageGeneratePrompt {
+  title: string;
+  genreTags: string[];
+  openingScene?: string;
+}
+
 export interface CoverImageUploaderProps {
   value?: string | null;
   onChange: (url: string | null) => void;
@@ -5,4 +11,5 @@ export interface CoverImageUploaderProps {
   description?: string;
   disabled?: boolean;
   className?: string;
+  generatePrompt?: CoverImageGeneratePrompt | null;
 }

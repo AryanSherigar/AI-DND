@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from context_memory.ingestion.ports import ChunkStore
 from context_memory.core.models import ContextBatch
 from context_memory.core.validation import chunk_from_record
+from context_memory.ingestion.ports import ChunkStore
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,9 @@ class IngestionPartialFailure(RuntimeError):
     def __init__(self, persisted_chunk_ids: tuple[str, ...], cause: Exception) -> None:
         self.persisted_chunk_ids = persisted_chunk_ids
         self.cause = cause
-        super().__init__(f"ingestion stopped after {len(persisted_chunk_ids)} durable chunk(s): {cause}")
+        super().__init__(
+            f"ingestion stopped after {len(persisted_chunk_ids)} durable chunk(s): {cause}"
+        )
 
 
 class IngestionService:

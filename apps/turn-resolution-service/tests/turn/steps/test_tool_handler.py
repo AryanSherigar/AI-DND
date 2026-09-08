@@ -1,8 +1,7 @@
 """Unit tests for tool_handler.py."""
 
-from google.genai import types
-
 from app.turn.steps import tool_handler
+from google.genai import types
 
 
 def test_prepare_mutation_set_field() -> None:

@@ -4,15 +4,14 @@ import os
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-
 from api.routes import require_api_key, router
 from api.stream import streamer
 from context_memory.composition import build_memory_engine
 from context_memory.core.logging import get_logger, setup_logging
 from context_memory.ingestion.graph_writer import GraphWriter
+from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 setup_logging()
 logger = get_logger("api.server")

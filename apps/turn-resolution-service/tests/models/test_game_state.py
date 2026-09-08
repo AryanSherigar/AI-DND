@@ -1,9 +1,8 @@
 """Unit tests for models/game_state.py's dynamic Pydantic model builder."""
 
 import pytest
-from pydantic import ValidationError
-
 from app.models.game_state import get_entity_attribute_model, get_state_model
+from pydantic import ValidationError
 
 _STATE_SCHEMA = {
     "player": {

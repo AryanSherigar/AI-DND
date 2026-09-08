@@ -1,4 +1,4 @@
-import { ScenarioMood } from "./audio.types";
+import { ScenarioMood } from "@/shared/types/audio.types";
 import { MinigameEventPayload } from "@/shared/types/minigame.types";
 
 export type ActionMode = "say" | "do" | "story" | "see";
@@ -93,6 +93,9 @@ export interface TurnLogItem {
   // Populated for master mode: live via SSE, or reconstructed from
   // tool_calls on reload — see utils/chapterDelta.ts.
   chapter_delta?: ChapterDelta;
+  // Populated for a "see" action turn that generated a scene image, live via
+  // the `scene_image` SSE event or from the persisted TurnLog on reload.
+  image_url?: string;
 }
 
 export interface CharacterSetupField {
@@ -114,6 +117,10 @@ export interface PlaythroughData {
   scenario_title: string;
   mode: "newbie" | "master";
   initial_mood?: ScenarioMood;
+  // Per-scenario mood → track URL, pinned into scenario_snapshot at
+  // playthrough creation (ADR-8). A missing/null entry means the mood slot
+  // was left on the built-in default track.
+  music_tracks?: Partial<Record<ScenarioMood, string | null>>;
   narration_font?: string | null;
   creator_name: string;
   cover_image_url?: string;

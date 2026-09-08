@@ -173,15 +173,29 @@ async def ingest_scenario_template(
 
 async def clone_template_memory_space(
     request: MemoryTemplateCloneRequest,
+    canonical_names: dict[UUID, str] | None = None,
 ) -> MemoryTemplateCloneResponse:
     """Clone a scenario's template memory space into a new playthrough space."""
     path = f"/v1/memory/playthrough/{request.playthrough_id}/init"
+    names = canonical_names or {}
+    wire_facts = [
+        _fact_to_wire(f, names)
+        for f in request.setup_facts
+        if f.subject_entity_id in names
+    ]
+    body = {
+        "scenario_id": str(request.scenario_id),
+        "playthrough_id": str(request.playthrough_id),
+        "player_entity_canonical_name": request.player_entity_canonical_name,
+        "player_entity_aliases": request.player_entity_aliases,
+        "setup_facts": wire_facts,
+    }
     data = await _request(
         "POST",
         path,
         settings.memory_clone_timeout_seconds,
         EVENT_MEMORY_CLONE_ERROR,
-        request.model_dump(mode="json"),
+        body,
     )
     return MemoryTemplateCloneResponse.model_validate(data)
 

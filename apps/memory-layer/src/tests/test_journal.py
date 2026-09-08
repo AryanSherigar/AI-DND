@@ -4,8 +4,6 @@ import threading
 import unittest
 from contextlib import nullcontext
 
-from pydantic import BaseModel
-
 from context_memory.core.journal import (
     JournalContext,
     JournaledLLMClient,
@@ -14,6 +12,7 @@ from context_memory.core.journal import (
     current_correlation,
     hash_request,
 )
+from pydantic import BaseModel
 
 
 class _Answer(BaseModel):

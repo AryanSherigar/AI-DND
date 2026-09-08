@@ -5,9 +5,6 @@ import re
 from collections.abc import AsyncIterator
 
 import structlog
-from google.genai import types
-from sse_starlette.sse import ServerSentEvent
-
 from app.exceptions.turn_exceptions import GeminiUnavailableError
 from app.integrations import gemini_client
 from app.models.assistant import (
@@ -20,6 +17,8 @@ from app.services.expression_validator import (
     build_available_field_paths,
     validate_expression_tree,
 )
+from google.genai import types
+from sse_starlette.sse import ServerSentEvent
 
 logger = structlog.get_logger()
 

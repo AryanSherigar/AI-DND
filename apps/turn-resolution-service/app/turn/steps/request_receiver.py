@@ -4,7 +4,6 @@ import time
 import uuid
 
 import structlog
-
 from app.db.models.participant import Participant
 from app.db.models.playthrough import Playthrough as PlaythroughModel
 from app.exceptions.turn_exceptions import (
@@ -58,6 +57,7 @@ async def receive_request(
         participant_id=turn_input.participant_id,
         action_text=turn_input.action_text,
         action_kind=turn_input.action_kind,
+        action_mode=turn_input.action_mode,
         minigame_result=turn_input.minigame_result,
         turn_count=playthrough.turn_count,
     )

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, UploadFile, status
 from app.db.models.user import User
 from app.exceptions.upload_exceptions import UploadValidationError
 from app.middleware.auth import get_current_user
+from app.models.image_generation import CoverImageGenerationRequest
 from app.models.upload import ImageUploadResponse
 from app.services.upload_service import (
     MAX_COVER_IMAGE_BYTES,
@@ -29,7 +30,9 @@ async def _read_capped(file: UploadFile, max_bytes: int) -> bytes:
     while chunk := await file.read(64 * 1024):
         total += len(chunk)
         if total > max_bytes:
-            raise UploadValidationError(f"Upload exceeds the {max_bytes // (1024 * 1024)}MB size limit.")
+            raise UploadValidationError(
+                f"Upload exceeds the {max_bytes // (1024 * 1024)}MB size limit."
+            )
         chunks.append(chunk)
     return b"".join(chunks)
 
@@ -111,4 +114,19 @@ async def upload_scenario_audio(
     """Upload bounded MP3, OGG, or WAV audio for a Dodge encounter."""
     content = await _read_capped(file, MAX_SCENARIO_AUDIO_BYTES)
     url = await service.upload_scenario_audio(content, file.content_type or "")
+    return ImageUploadResponse(url=url)
+
+
+@router.post(
+    "/generate-cover-image",
+    response_model=ImageUploadResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def generate_scenario_cover_image(
+    user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[UploadService, Depends(get_upload_service)],
+    body: CoverImageGenerationRequest,
+) -> ImageUploadResponse:
+    """Generate a scenario cover image with AI and return its public URL."""
+    url = await service.generate_and_upload_cover_image(body)
     return ImageUploadResponse(url=url)

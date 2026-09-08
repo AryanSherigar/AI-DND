@@ -7,9 +7,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from context_memory.core.models import ContextBatch
 from context_memory.ingestion.fakes import InMemoryChunkStore
 from context_memory.ingestion.service import IngestionPartialFailure, IngestionService
-from context_memory.core.models import ContextBatch
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "docs" / "fixtures"

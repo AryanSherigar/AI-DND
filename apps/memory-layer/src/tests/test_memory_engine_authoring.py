@@ -13,7 +13,10 @@ import unittest
 from context_memory.cloning.template_clone import CloneResult
 from context_memory.engine import MemoryEngine
 from context_memory.ingestion.direct_authoring import DirectEntityInput, DirectFactInput
-from context_memory.ingestion.fakes import InMemoryGraphIdAllocator, InMemoryGraphManifestStore
+from context_memory.ingestion.fakes import (
+    InMemoryGraphIdAllocator,
+    InMemoryGraphManifestStore,
+)
 from context_memory.ingestion.graph_writer import GraphWriter
 
 
@@ -59,7 +62,13 @@ class _RecordingWriteTransport:
 
 def _engine(**authoring_kwargs) -> tuple[MemoryEngine, FakeOrchestrator]:
     orchestrator = FakeOrchestrator()
-    engine = MemoryEngine(orchestrator, retrieval_engine=None, llm_client=None, pool=object(), **authoring_kwargs)
+    engine = MemoryEngine(
+        orchestrator,
+        retrieval_engine=None,
+        llm_client=None,
+        pool=object(),
+        **authoring_kwargs,
+    )
     return engine, orchestrator
 
 
@@ -67,11 +76,15 @@ class MissingDependencyTests(unittest.TestCase):
     def test_write_template_entity_without_deps_raises(self):
         engine, _ = _engine()
         with self.assertRaises(RuntimeError):
-            engine.write_template_entity("ctx", DirectEntityInput(canonical_name="Sukuna", entity_type="character"))
+            engine.write_template_entity(
+                "ctx",
+                DirectEntityInput(canonical_name="Sukuna", entity_type="character"),
+            )
 
     def test_clone_without_hydra_transport_raises(self):
         engine, _ = _engine(
-            graph_id_allocator=InMemoryGraphIdAllocator(), authoring_graph_writer=_writer()
+            graph_id_allocator=InMemoryGraphIdAllocator(),
+            authoring_graph_writer=_writer(),
         )
         with self.assertRaises(RuntimeError):
             engine.clone_playthrough_space("template-ctx", "playthrough-ctx")
@@ -80,10 +93,13 @@ class MissingDependencyTests(unittest.TestCase):
 class DirectAuthoringWiringTests(unittest.TestCase):
     def test_write_template_entity_reaches_the_graph_writer(self):
         writer = _writer()
-        engine, _ = _engine(graph_id_allocator=InMemoryGraphIdAllocator(), authoring_graph_writer=writer)
+        engine, _ = _engine(
+            graph_id_allocator=InMemoryGraphIdAllocator(), authoring_graph_writer=writer
+        )
 
         graph_id = engine.write_template_entity(
-            "scenario-template::s1", DirectEntityInput(canonical_name="Sukuna", entity_type="character")
+            "scenario-template::s1",
+            DirectEntityInput(canonical_name="Sukuna", entity_type="character"),
         )
 
         self.assertIsInstance(graph_id, int)
@@ -93,13 +109,24 @@ class DirectAuthoringWiringTests(unittest.TestCase):
         allocator = InMemoryGraphIdAllocator()
         writer = _writer()
         engine, _ = _engine(graph_id_allocator=allocator, authoring_graph_writer=writer)
-        engine.write_template_entity("ctx", DirectEntityInput(canonical_name="Sukuna", entity_type="character"))
-
-        engine.write_template_fact(
-            "ctx", DirectFactInput(predicate="is_strongest", subject_canonical_name="Sukuna", object_literal="true")
+        engine.write_template_entity(
+            "ctx", DirectEntityInput(canonical_name="Sukuna", entity_type="character")
         )
 
-        fact_writes = [w for w in writer._transport.writes if "Fact" in w[0] and "Entity" not in w[0]]
+        engine.write_template_fact(
+            "ctx",
+            DirectFactInput(
+                predicate="is_strongest",
+                subject_canonical_name="Sukuna",
+                object_literal="true",
+            ),
+        )
+
+        fact_writes = [
+            w
+            for w in writer._transport.writes
+            if "Fact" in w[0] and "Entity" not in w[0]
+        ]
         self.assertEqual(len(fact_writes), 1)
 
 
@@ -110,11 +137,14 @@ class IngestTemplateLoreTests(unittest.TestCase):
         # facts before re-extracting), which needs the same authoring deps
         # write_template_fact/entity already require.
         engine, orchestrator = _engine(
-            graph_id_allocator=InMemoryGraphIdAllocator(), authoring_graph_writer=_writer(),
+            graph_id_allocator=InMemoryGraphIdAllocator(),
+            authoring_graph_writer=_writer(),
             hydra_transport=FakeHydraTransport(),
         )
 
-        engine.ingest_template_lore("scenario-template::s1", "A cursed realm where Sukuna rules.")
+        engine.ingest_template_lore(
+            "scenario-template::s1", "A cursed realm where Sukuna rules."
+        )
 
         self.assertEqual(len(orchestrator.batches), 1)
         batch = orchestrator.batches[0]
@@ -122,19 +152,28 @@ class IngestTemplateLoreTests(unittest.TestCase):
         self.assertEqual(batch.records[0].content, "A cursed realm where Sukuna rules.")
         # record_id is now content-addressed (a republish fix) -- still
         # namespaced under this context's own template-lore prefix.
-        self.assertTrue(batch.records[0].record_id.startswith("scenario-template::s1:template-lore:"))
+        self.assertTrue(
+            batch.records[0].record_id.startswith(
+                "scenario-template::s1:template-lore:"
+            )
+        )
 
     def test_republish_with_different_lore_text_does_not_collide(self):
         """The bug this fix closes: before content-addressing, a second
         publish of the same scenario with EDITED lore text reused the same
         fixed record_id, and chunk immutability rejected it outright."""
         engine, orchestrator = _engine(
-            graph_id_allocator=InMemoryGraphIdAllocator(), authoring_graph_writer=_writer(),
+            graph_id_allocator=InMemoryGraphIdAllocator(),
+            authoring_graph_writer=_writer(),
             hydra_transport=FakeHydraTransport(),
         )
 
-        engine.ingest_template_lore("scenario-template::s1", "A cursed realm where Sukuna rules.")
-        engine.ingest_template_lore("scenario-template::s1", "A peaceful realm where Sukuna was sealed away.")
+        engine.ingest_template_lore(
+            "scenario-template::s1", "A cursed realm where Sukuna rules."
+        )
+        engine.ingest_template_lore(
+            "scenario-template::s1", "A peaceful realm where Sukuna was sealed away."
+        )
 
         self.assertEqual(len(orchestrator.batches), 2)
         first_id = orchestrator.batches[0].records[0].record_id
@@ -142,18 +181,25 @@ class IngestTemplateLoreTests(unittest.TestCase):
         self.assertNotEqual(first_id, second_id)
 
     def test_republish_archives_facts_from_the_prior_version(self):
-        transport = FakeHydraTransport(rows_by_query={
-            "MATCH (f:Fact": [{"id": 7, "logical_key": "fact:old-lore-fact"}],
-        })
+        transport = FakeHydraTransport(
+            rows_by_query={
+                "MATCH (f:Fact": [{"id": 7, "logical_key": "fact:old-lore-fact"}],
+            }
+        )
         engine, orchestrator = _engine(
-            graph_id_allocator=InMemoryGraphIdAllocator(), authoring_graph_writer=_writer(),
+            graph_id_allocator=InMemoryGraphIdAllocator(),
+            authoring_graph_writer=_writer(),
             hydra_transport=transport,
         )
 
-        engine.ingest_template_lore("scenario-template::s1", "A new version of the lore.")
+        engine.ingest_template_lore(
+            "scenario-template::s1", "A new version of the lore."
+        )
 
         archived_rows = [
-            row for _, rows in engine._authoring_graph_writer._transport.writes for row in rows
+            row
+            for _, rows in engine._authoring_graph_writer._transport.writes
+            for row in rows
             if row.get("id") == 7
         ]
         self.assertEqual(len(archived_rows), 1)
@@ -165,12 +211,27 @@ class ClonePlaythroughSpaceTests(unittest.TestCase):
     def test_delegates_to_template_clone_with_configured_deps(self):
         allocator = InMemoryGraphIdAllocator()
         writer = _writer()
-        transport = FakeHydraTransport(rows_by_query={
-            "MATCH (n:Entity": [{"id": 1, "logical_key": "entity:Sukuna", "canonical_name": "Sukuna", "entity_type": "character"}],
-        })
-        engine, _ = _engine(graph_id_allocator=allocator, authoring_graph_writer=writer, hydra_transport=transport)
+        transport = FakeHydraTransport(
+            rows_by_query={
+                "MATCH (n:Entity": [
+                    {
+                        "id": 1,
+                        "logical_key": "entity:Sukuna",
+                        "canonical_name": "Sukuna",
+                        "entity_type": "character",
+                    }
+                ],
+            }
+        )
+        engine, _ = _engine(
+            graph_id_allocator=allocator,
+            authoring_graph_writer=writer,
+            hydra_transport=transport,
+        )
 
-        result = engine.clone_playthrough_space("scenario-template::s1", "playthrough-1")
+        result = engine.clone_playthrough_space(
+            "scenario-template::s1", "playthrough-1"
+        )
 
         self.assertIsInstance(result, CloneResult)
         self.assertEqual(result.entities_cloned, 1)
@@ -179,11 +240,35 @@ class ClonePlaythroughSpaceTests(unittest.TestCase):
 class FakeFactMetadataStore:
     def __init__(self):
         self.puts: list[tuple[str, int, str | None, dict | None, str | None, bool]] = []
-        self._by_context: dict[str, dict[int, tuple[str | None, dict | None, str | None, bool]]] = {}
+        self._by_context: dict[
+            str, dict[int, tuple[str | None, dict | None, str | None, bool]]
+        ] = {}
 
-    def put(self, context_id, fact_id, checkpoint, when_active, visible_to_participant_id=None, hidden=False):
-        self.puts.append((context_id, fact_id, checkpoint, when_active, visible_to_participant_id, hidden))
-        self._by_context.setdefault(context_id, {})[fact_id] = (checkpoint, when_active, visible_to_participant_id, hidden)
+    def put(
+        self,
+        context_id,
+        fact_id,
+        checkpoint,
+        when_active,
+        visible_to_participant_id=None,
+        hidden=False,
+    ):
+        self.puts.append(
+            (
+                context_id,
+                fact_id,
+                checkpoint,
+                when_active,
+                visible_to_participant_id,
+                hidden,
+            )
+        )
+        self._by_context.setdefault(context_id, {})[fact_id] = (
+            checkpoint,
+            when_active,
+            visible_to_participant_id,
+            hidden,
+        )
 
     def get_many(self, context_id, fact_ids):
         rows = self._by_context.get(context_id, {})
@@ -202,21 +287,30 @@ class Milestone45WiringTests(unittest.TestCase):
     def test_write_template_fact_persists_when_active_and_checkpoint(self):
         fact_metadata_store = FakeFactMetadataStore()
         engine, _ = _engine(
-            graph_id_allocator=InMemoryGraphIdAllocator(), authoring_graph_writer=_writer(),
+            graph_id_allocator=InMemoryGraphIdAllocator(),
+            authoring_graph_writer=_writer(),
             fact_metadata_store=fact_metadata_store,
         )
-        engine.write_template_entity("ctx", DirectEntityInput(canonical_name="Sukuna", entity_type="character"))
+        engine.write_template_entity(
+            "ctx", DirectEntityInput(canonical_name="Sukuna", entity_type="character")
+        )
 
         when_active = {"field": "player.health", "op": "<", "value": 5}
         fact_id = engine.write_template_fact(
             "ctx",
             DirectFactInput(
-                predicate="is_pursued_by_ghost", subject_canonical_name="Sukuna", object_literal="true",
-                when_active=when_active, checkpoint="chapter_2",
+                predicate="is_pursued_by_ghost",
+                subject_canonical_name="Sukuna",
+                object_literal="true",
+                when_active=when_active,
+                checkpoint="chapter_2",
             ),
         )
 
-        self.assertEqual(fact_metadata_store.puts, [("ctx", fact_id, "chapter_2", when_active, None, False)])
+        self.assertEqual(
+            fact_metadata_store.puts,
+            [("ctx", fact_id, "chapter_2", when_active, None, False)],
+        )
 
     def test_write_template_fact_persists_participant_visibility_alone(self):
         """§5 fix: `visible_to_participant_id` alone (no when_active/
@@ -224,31 +318,49 @@ class Milestone45WiringTests(unittest.TestCase):
         to one participant needs that persisted even with nothing else set."""
         fact_metadata_store = FakeFactMetadataStore()
         engine, _ = _engine(
-            graph_id_allocator=InMemoryGraphIdAllocator(), authoring_graph_writer=_writer(),
+            graph_id_allocator=InMemoryGraphIdAllocator(),
+            authoring_graph_writer=_writer(),
             fact_metadata_store=fact_metadata_store,
         )
-        engine.write_template_entity("ctx", DirectEntityInput(canonical_name="Sukuna", entity_type="character"))
+        engine.write_template_entity(
+            "ctx", DirectEntityInput(canonical_name="Sukuna", entity_type="character")
+        )
 
         fact_id = engine.write_template_fact(
             "ctx",
             DirectFactInput(
-                predicate="knows_secret", subject_canonical_name="Sukuna", object_literal="true",
+                predicate="knows_secret",
+                subject_canonical_name="Sukuna",
+                object_literal="true",
                 visible_to_participant_id="participant-1",
             ),
         )
 
-        self.assertEqual(fact_metadata_store.puts, [("ctx", fact_id, None, None, "participant-1", False)])
+        self.assertEqual(
+            fact_metadata_store.puts,
+            [("ctx", fact_id, None, None, "participant-1", False)],
+        )
 
-    def test_write_template_fact_without_when_active_or_checkpoint_writes_no_metadata(self):
+    def test_write_template_fact_without_when_active_or_checkpoint_writes_no_metadata(
+        self,
+    ):
         fact_metadata_store = FakeFactMetadataStore()
         engine, _ = _engine(
-            graph_id_allocator=InMemoryGraphIdAllocator(), authoring_graph_writer=_writer(),
+            graph_id_allocator=InMemoryGraphIdAllocator(),
+            authoring_graph_writer=_writer(),
             fact_metadata_store=fact_metadata_store,
         )
-        engine.write_template_entity("ctx", DirectEntityInput(canonical_name="Sukuna", entity_type="character"))
+        engine.write_template_entity(
+            "ctx", DirectEntityInput(canonical_name="Sukuna", entity_type="character")
+        )
 
         engine.write_template_fact(
-            "ctx", DirectFactInput(predicate="is_strongest", subject_canonical_name="Sukuna", object_literal="true")
+            "ctx",
+            DirectFactInput(
+                predicate="is_strongest",
+                subject_canonical_name="Sukuna",
+                object_literal="true",
+            ),
         )
 
         self.assertEqual(fact_metadata_store.puts, [])
@@ -257,9 +369,14 @@ class Milestone45WiringTests(unittest.TestCase):
         checkpoint_store = FakeCheckpointStore()
         engine, _ = _engine(checkpoint_store=checkpoint_store)
 
-        engine.write_scenario_checkpoints("scenario-template::s1", ["chapter_1", "chapter_2", "chapter_3"])
+        engine.write_scenario_checkpoints(
+            "scenario-template::s1", ["chapter_1", "chapter_2", "chapter_3"]
+        )
 
-        self.assertEqual(checkpoint_store.puts, [("scenario-template::s1", ["chapter_1", "chapter_2", "chapter_3"])])
+        self.assertEqual(
+            checkpoint_store.puts,
+            [("scenario-template::s1", ["chapter_1", "chapter_2", "chapter_3"])],
+        )
 
     # clone_playthrough_space's fact-metadata cloning (Milestones 4-5) is
     # covered directly in test_template_clone.py::FactMetadataCloneTests,
@@ -272,12 +389,19 @@ class GetEntityTests(unittest.TestCase):
     """AI-DND memory-layer contract §4.5: GET /v1/memory/entity/{entity_id}."""
 
     def test_returns_the_entity_when_found(self):
-        transport = FakeHydraTransport(rows_by_query={
-            "MATCH (n:Entity": [{
-                "id": 1, "canonical_name": "Sukuna", "entity_type": "character",
-                "description": "A cursed spirit", "aliases": "King of Curses, Ryomen",
-            }],
-        })
+        transport = FakeHydraTransport(
+            rows_by_query={
+                "MATCH (n:Entity": [
+                    {
+                        "id": 1,
+                        "canonical_name": "Sukuna",
+                        "entity_type": "character",
+                        "description": "A cursed spirit",
+                        "aliases": "King of Curses, Ryomen",
+                    }
+                ],
+            }
+        )
         engine, _ = _engine(hydra_transport=transport)
 
         entity = engine.get_entity("ctx-1", "Sukuna")
@@ -296,4 +420,3 @@ class GetEntityTests(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             engine.get_entity("ctx-1", "Sukuna")
-

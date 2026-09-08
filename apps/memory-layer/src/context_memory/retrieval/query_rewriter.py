@@ -39,7 +39,9 @@ class JsonFileRewriteCache(MutableMapping):
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._path.with_suffix(self._path.suffix + ".tmp")
-            tmp.write_text(json.dumps({k: v.model_dump() for k, v in self._data.items()}))
+            tmp.write_text(
+                json.dumps({k: v.model_dump() for k, v in self._data.items()})
+            )
             tmp.replace(self._path)
         except Exception as error:
             logger.warning("rewrite cache write failed: %s", error)
@@ -72,8 +74,12 @@ class QueryRewriter:
     synonym sets change BM25 hits, which changes the retrieved facts and the answer.
     """
 
-    def __init__(self, llm_client: LLMClient, config: Config | None = None,
-                 cache: MutableMapping[str, QueryRewriterOutput] | None = None) -> None:
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        config: Config | None = None,
+        cache: MutableMapping[str, QueryRewriterOutput] | None = None,
+    ) -> None:
         self._llm = llm_client
         self._config = config or Config()
         self._cache = cache
@@ -89,11 +95,16 @@ class QueryRewriter:
         return result
 
     def _rewrite_uncached(self, question: str) -> QueryRewriterOutput:
-        with timed_operation(logger, "retrieval.phase0.query_rewriter", {"question_len": len(question)}) as ctx:
+        with timed_operation(
+            logger, "retrieval.phase0.query_rewriter", {"question_len": len(question)}
+        ) as ctx:
             try:
                 response = self._llm.structured_completion(
-                    self._config.query_rewriter_system_prompt, question, QueryRewriterOutput,
-                    temperature=self._config.llm_temperature, max_tokens=self._config.query_rewriter_max_tokens,
+                    self._config.query_rewriter_system_prompt,
+                    question,
+                    QueryRewriterOutput,
+                    temperature=self._config.llm_temperature,
+                    max_tokens=self._config.query_rewriter_max_tokens,
                     timeout=self._config.query_rewriter_timeout_seconds,
                     max_retries=self._config.llm_structured_retry_attempts,
                 )

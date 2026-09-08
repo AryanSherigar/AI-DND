@@ -32,6 +32,7 @@ class EntityCreate(BaseModel):
     obtainable: bool | None = None
     attributes_schema: dict[str, AttributeFieldSchema] = Field(default_factory=dict)
     narrator_instruction: str | None = None
+    is_player: bool = False
 
 
 class EntityUpdate(BaseModel):
@@ -46,6 +47,7 @@ class EntityUpdate(BaseModel):
     obtainable: bool | None = None
     attributes_schema: dict[str, AttributeFieldSchema] | None = None
     narrator_instruction: str | None = None
+    is_player: bool | None = None
 
 
 class EntityResponse(BaseModel):
@@ -62,6 +64,7 @@ class EntityResponse(BaseModel):
     obtainable: bool | None = None
     attributes_schema: dict[str, object] = Field(default_factory=dict)
     narrator_instruction: str | None = None
+    is_player: bool = False
     fact_count: int = 0
 
 

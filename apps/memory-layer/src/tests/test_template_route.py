@@ -5,11 +5,11 @@ approach as test_memory_query_route.py / test_batch_ingest_route.py.
 
 from __future__ import annotations
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from api.routes import get_engine, router
 from context_memory.cloning.template_clone import CloneResult
+from context_memory.ingestion.direct_authoring import DirectEntityInput
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 class FakeEngine:
@@ -34,6 +34,9 @@ class FakeEngine:
         self.cloned.append((template_context_id, playthrough_context_id))
         return CloneResult(entities_cloned=1, facts_cloned=2, relationships_cloned=3)
 
+    def begin_template_republish(self, context_id):
+        pass
+
 
 def _client_with(fake_engine: FakeEngine) -> TestClient:
     app = FastAPI()
@@ -53,8 +56,20 @@ def test_master_mode_ingest_writes_every_entity_and_fact():
         "scenario_id": _SCENARIO_ID,
         "mode": "master",
         "world_data": {
-            "entities": [{"canonical_name": "Sukuna", "entity_type": "character", "aliases": ["King of Curses"]}],
-            "facts": [{"predicate": "is_strongest", "subject_canonical_name": "Sukuna", "object_literal": "true"}],
+            "entities": [
+                {
+                    "canonical_name": "Sukuna",
+                    "entity_type": "character",
+                    "aliases": ["King of Curses"],
+                }
+            ],
+            "facts": [
+                {
+                    "predicate": "is_strongest",
+                    "subject_canonical_name": "Sukuna",
+                    "object_literal": "true",
+                }
+            ],
         },
     }
 
@@ -71,12 +86,18 @@ def test_master_mode_ingest_writes_every_entity_and_fact():
 def test_newbie_mode_ingest_calls_lore_path():
     fake = FakeEngine()
     client = _client_with(fake)
-    body = {"scenario_id": _SCENARIO_ID, "mode": "newbie", "world_data": {"lore_text": "A cursed realm."}}
+    body = {
+        "scenario_id": _SCENARIO_ID,
+        "mode": "newbie",
+        "world_data": {"lore_text": "A cursed realm."},
+    }
 
     response = client.post("/v1/memory/template/ingest", json=body)
 
     assert response.status_code == 200
-    assert fake.lore_ingested == [(f"scenario-template::{_SCENARIO_ID}", "A cursed realm.")]
+    assert fake.lore_ingested == [
+        (f"scenario-template::{_SCENARIO_ID}", "A cursed realm.")
+    ]
     assert fake.entities_written == []
 
 
@@ -92,8 +113,12 @@ def test_newbie_mode_without_lore_text_is_rejected():
 def test_master_mode_entity_missing_required_field_is_rejected():
     client = _client_with(FakeEngine())
     body = {
-        "scenario_id": _SCENARIO_ID, "mode": "master",
-        "world_data": {"entities": [{"canonical_name": "Sukuna"}], "facts": []},  # missing entity_type
+        "scenario_id": _SCENARIO_ID,
+        "mode": "master",
+        "world_data": {
+            "entities": [{"canonical_name": "Sukuna"}],
+            "facts": [],
+        },  # missing entity_type
     }
 
     response = client.post("/v1/memory/template/ingest", json=body)
@@ -125,3 +150,43 @@ def test_init_playthrough_rejects_mismatched_body_and_path_ids():
     )
 
     assert response.status_code == 400
+
+
+def test_init_playthrough_writes_player_entity_and_setup_facts():
+    fake = FakeEngine()
+    client = _client_with(fake)
+
+    body = {
+        "scenario_id": _SCENARIO_ID,
+        "playthrough_id": _PLAYTHROUGH_ID,
+        "player_entity_canonical_name": "Kaelen",
+        "player_entity_aliases": ["The Wanderer"],
+        "setup_facts": [
+            {
+                "subject_canonical_name": "Kaelen",
+                "predicate": "has_class",
+                "object_literal": "Paladin",
+            }
+        ],
+    }
+
+    response = client.post(
+        f"/v1/memory/playthrough/{_PLAYTHROUGH_ID}/init",
+        json=body,
+    )
+
+    assert response.status_code == 200
+    assert len(fake.entities_written) == 1
+    assert fake.entities_written[0] == (
+        _PLAYTHROUGH_ID,
+        DirectEntityInput(
+            canonical_name="Kaelen",
+            entity_type="character",
+            aliases=("The Wanderer",),
+        ),
+    )
+    assert len(fake.facts_written) == 1
+    assert fake.facts_written[0][0] == _PLAYTHROUGH_ID
+    assert fake.facts_written[0][1].subject_canonical_name == "Kaelen"
+    assert fake.facts_written[0][1].predicate == "has_class"
+    assert fake.facts_written[0][1].object_literal == "Paladin"

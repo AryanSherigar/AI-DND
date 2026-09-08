@@ -128,6 +128,9 @@ class MemoryTemplateCloneRequest(BaseModel):
 
     scenario_id: UUID
     playthrough_id: UUID
+    player_entity_canonical_name: str | None = None
+    player_entity_aliases: list[str] = Field(default_factory=list)
+    setup_facts: list[FactIngestPayload] = Field(default_factory=list)
 
 
 class MemoryTemplateCloneResponse(BaseModel):

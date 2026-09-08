@@ -20,7 +20,12 @@ class EmbeddingError(RuntimeError):
 class SentenceTransformerEmbedder:
     """`ingestion.ports.Embedder` backed by a local sentence-transformers model."""
 
-    def __init__(self, model: Any | None = None, model_name: str = DEFAULT_MODEL_NAME, device: str = "cpu") -> None:
+    def __init__(
+        self,
+        model: Any | None = None,
+        model_name: str = DEFAULT_MODEL_NAME,
+        device: str = "cpu",
+    ) -> None:
         self._model = model
         self.model_name = model_name
         self.model_version = "1"

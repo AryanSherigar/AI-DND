@@ -3,10 +3,9 @@ from __future__ import annotations
 import time
 from unittest.mock import MagicMock, patch
 
-from fastapi.testclient import TestClient
-
 from api.routes import _ping_postgres_pool
 from api.server import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 

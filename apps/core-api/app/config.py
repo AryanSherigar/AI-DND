@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     gcs_bucket_name: str = ""
     core_api_public_url: str = "http://localhost:8000"
     local_upload_dir: str = "uploads"
+    gemini_api_key: str = ""
+    imagen_model_name: str = "imagen-3.0-generate-002"
+    imagen_timeout_seconds: int = 30
+    lyria_model_name: str = "lyria-002"
+    lyria_timeout_seconds: int = 60
     # Memory layer (apps/memory-layer) -- unconsumed by memory_client.py
     # until it stops being a mock (see its own module docstring, "Phase 4"),
     # but declared here now so the real client has settings to read.

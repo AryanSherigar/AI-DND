@@ -16,12 +16,11 @@ violated when its expression evaluates False against the mutated state.
 
 from __future__ import annotations
 
-from pydantic import ValidationError
-
 from app.models import game_state
 from app.models.tool_call import ProposedMutation, ValidationResult
 from app.turn import state_paths
 from app.turn.expression_evaluator import evaluate
+from pydantic import ValidationError
 
 # System-maintained by map_state_sync.py (docs/specs/master-mode-maps.spec.md)
 # — never a valid direct tool-call target, matching the derived-field

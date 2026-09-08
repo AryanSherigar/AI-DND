@@ -2,13 +2,12 @@
 
 from collections.abc import AsyncGenerator
 
+from app.config import settings
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-
-from app.config import settings
 
 async_engine = create_async_engine(
     settings.database_url,

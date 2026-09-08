@@ -2,8 +2,6 @@
 
 import json
 
-from sse_starlette.sse import EventSourceResponse
-
 from app.models.turn_summary import DiceRoll, StatChange, TurnSummaryPayload
 from app.turn.steps.response_streamer import (
     build_sse_response,
@@ -12,6 +10,7 @@ from app.turn.steps.response_streamer import (
     narration_event,
     turn_summary_event,
 )
+from sse_starlette.sse import EventSourceResponse
 
 
 def test_narration_event_carries_chunk_as_data() -> None:

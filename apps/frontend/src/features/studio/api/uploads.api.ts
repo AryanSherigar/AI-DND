@@ -17,6 +17,22 @@ export const uploadCoverImage = async (
   return response.data;
 };
 
+export interface CoverImageGenerationRequest {
+  title: string;
+  genre_tags: string[];
+  opening_scene?: string;
+}
+
+export const generateCoverImage = async (
+  body: CoverImageGenerationRequest,
+): Promise<ImageUploadResponse> => {
+  const response = await apiClient.post<ImageUploadResponse>(
+    "/v1/uploads/generate-cover-image",
+    body,
+  );
+  return response.data;
+};
+
 export const uploadMapImage = async (
   file: File,
 ): Promise<ImageUploadResponse> => {

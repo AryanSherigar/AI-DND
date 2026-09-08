@@ -22,7 +22,9 @@ class CandidateFuser:
         self._config = config or Config()
 
     @staticmethod
-    def _query_entity_terms(question: str, expanded_query: QueryRewriterOutput | None) -> set[str]:
+    def _query_entity_terms(
+        question: str, expanded_query: QueryRewriterOutput | None
+    ) -> set[str]:
         """Lowercased tokens from the question (and its rewritten forms) used to
         decide whether a fact's linked entity is one the *query* mentions."""
         parts = [question]
@@ -33,25 +35,36 @@ class CandidateFuser:
         return {token for token in re.findall(r"[a-z0-9]+", text) if len(token) > 2}
 
     def fuse(
-        self, question: str, facts: dict[str, ScoredFact], graph_data: dict, top_k: int,
-        expanded_query: QueryRewriterOutput | None = None, skip_reranker: bool = False,
+        self,
+        question: str,
+        facts: dict[str, ScoredFact],
+        graph_data: dict,
+        top_k: int,
+        expanded_query: QueryRewriterOutput | None = None,
+        skip_reranker: bool = False,
     ) -> list[ScoredFact] | None:
         """Returns the deduped, reranked candidate list (reader slices to
         `[:top_k]`), or `None` on abstention -- caller substitutes
         `config.retrieval_abstention_message`."""
-        with timed_operation(logger, "retrieval.phase3.fuse", {"facts_to_score": len(facts)}) as ctx:
+        with timed_operation(
+            logger, "retrieval.phase3.fuse", {"facts_to_score": len(facts)}
+        ) as ctx:
             path_cap = self._config.retrieval_structural_path_cap
             boost_cap = self._config.retrieval_entity_boost_cap
             rrf_k = self._config.retrieval_rrf_k
             query_terms = self._query_entity_terms(question, expanded_query)
 
             for f_id, fact in facts.items():
-                g = graph_data.get(f_id, {"hop_count": 1, "path_count": 0, "entity_fact_count": 0})
+                g = graph_data.get(
+                    f_id, {"hop_count": 1, "path_count": 0, "entity_fact_count": 0}
+                )
                 hop_count = g.get("hop_count", 1) or 1
                 path_count = g.get("path_count", 0)
                 entity_fact_count = g.get("entity_fact_count", 0)
 
-                fact.structural_score = (1.0 / hop_count) * min(path_count, path_cap) / path_cap
+                fact.structural_score = (
+                    (1.0 / hop_count) * min(path_count, path_cap) / path_cap
+                )
 
                 # Boost only entities the QUERY mentions -- FINAL_ARCHITECTURE.md
                 # §"Entity boost" gates on `if entity in query_entities`, and
@@ -68,10 +81,14 @@ class CandidateFuser:
                 entity_key = g.get("entity_key") or ""
                 canonical = entity_key.split(":", 1)[-1].casefold()
                 entity_matches_query = bool(canonical) and any(
-                    token in query_terms for token in re.findall(r"[a-z0-9]+", canonical) if len(token) > 2
+                    token in query_terms
+                    for token in re.findall(r"[a-z0-9]+", canonical)
+                    if len(token) > 2
                 )
                 if entity_fact_count > 0 and entity_matches_query:
-                    fact.entity_boost = min(boost_cap / max(entity_fact_count, 1), boost_cap)
+                    fact.entity_boost = min(
+                        boost_cap / max(entity_fact_count, 1), boost_cap
+                    )
                 else:
                     fact.entity_boost = 0.0
 
@@ -96,14 +113,20 @@ class CandidateFuser:
             structural_rank_by_id = {
                 f.fact_id: position
                 for position, f in enumerate(
-                    sorted((f for f in facts.values() if f.structural_score > 0), key=lambda f: -f.structural_score),
+                    sorted(
+                        (f for f in facts.values() if f.structural_score > 0),
+                        key=lambda f: -f.structural_score,
+                    ),
                     start=1,
                 )
             }
             entity_rank_by_id = {
                 f.fact_id: position
                 for position, f in enumerate(
-                    sorted((f for f in facts.values() if f.entity_boost > 0), key=lambda f: -f.entity_boost),
+                    sorted(
+                        (f for f in facts.values() if f.entity_boost > 0),
+                        key=lambda f: -f.entity_boost,
+                    ),
                     start=1,
                 )
             }
@@ -120,7 +143,9 @@ class CandidateFuser:
                 )
 
             # Sort facts
-            ranked = sorted(facts.values(), key=lambda f: f.composite_score, reverse=True)
+            ranked = sorted(
+                facts.values(), key=lambda f: f.composite_score, reverse=True
+            )
 
             # Abstention check. Was semantic-only: a fact found purely by BM25
             # keyword match (e.g. an exact name/term the embedding missed) with
@@ -166,7 +191,11 @@ class CandidateFuser:
             # AI-DND memory-layer contract (Bug 3): call-local skip, mirroring
             # Reranker.rerank()'s own config-gated no-op shape -- RRF order
             # stands as final for retrieve_facts's lean path.
-            ranked = ranked if skip_reranker else self._reranker.rerank(question, ranked, top_k)
+            ranked = (
+                ranked
+                if skip_reranker
+                else self._reranker.rerank(question, ranked, top_k)
+            )
 
             top_facts = ranked[:top_k]
             excluded = ranked[top_k:]
@@ -184,8 +213,11 @@ class CandidateFuser:
                 logger.info(
                     "Retrieval: reader window cutoff (top_k=%d) — last included "
                     "(score=%.3f): %r | first excluded (score=%.3f): %r",
-                    top_k, top_facts[-1].composite_score, (top_facts[-1].text or "")[:80],
-                    excluded[0].composite_score, (excluded[0].text or "")[:80],
+                    top_k,
+                    top_facts[-1].composite_score,
+                    (top_facts[-1].text or "")[:80],
+                    excluded[0].composite_score,
+                    (excluded[0].text or "")[:80],
                 )
 
             # Ordered fact ids that reached the reader -- consumed by the

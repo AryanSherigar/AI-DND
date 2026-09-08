@@ -8,15 +8,15 @@ from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 
 from context_memory.core.config import Config
-from context_memory.core.llm_client import LLMClient
 from context_memory.retrieval import HybridRetrievalEngine
-from context_memory.retrieval.query_rewriter import QueryRewriter
 from context_memory.retrieval.fuser import CandidateFuser
 from context_memory.retrieval.graph_expander import GraphExpander
-from context_memory.retrieval.models import ScoredFact, DateRange, QueryRewriterOutput
+from context_memory.retrieval.models import DateRange, QueryRewriterOutput, ScoredFact
+from context_memory.retrieval.query_rewriter import QueryRewriter
 from context_memory.retrieval.reranker import Reranker
 from context_memory.retrieval.sibling_expander import SiblingExpander
 from context_memory.retrieval.temporal_resolver import TemporalQueryResolver
+
 
 class FakeLLMClient:
     """Dispatches by the requested schema's type, not by call order.
@@ -44,16 +44,20 @@ class FakeLLMClient:
             self.structured_calls += 1
             queue = self._by_type[schema]
             if not queue:
-                raise AssertionError(f"FakeLLMClient: no queued response for schema {schema.__name__}")
+                raise AssertionError(
+                    f"FakeLLMClient: no queued response for schema {schema.__name__}"
+                )
             return queue.pop(0)
 
     def text_completion(self, system, user, *args, **kwargs):
         self.last_reader_system_prompt = system
         return self.text_response
 
+
 class FakeEmbedder:
     def embed(self, text):
         return (0.1, 0.2, 0.3)
+
 
 class FakeCursor:
     """Recognizes which query it's answering by content, not call order — the
@@ -62,8 +66,14 @@ class FakeCursor:
     positional results list silently misaligns whenever that happens."""
 
     def __init__(
-        self, semantic_rows=(), bm25_rows=(), registry_rows=(), missing_text_rows=(), sibling_rows=(),
-        fact_metadata_rows=(), checkpoint_row=None,
+        self,
+        semantic_rows=(),
+        bm25_rows=(),
+        registry_rows=(),
+        missing_text_rows=(),
+        sibling_rows=(),
+        fact_metadata_rows=(),
+        checkpoint_row=None,
     ):
         self.semantic_rows = list(semantic_rows)
         self.bm25_rows = list(bm25_rows)
@@ -102,25 +112,43 @@ class FakeCursor:
             return self.checkpoint_row
         return None
 
-    def __enter__(self): return self
-    def __exit__(self, *args): pass
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
 
 class FakeConnection:
     def __init__(
-        self, semantic_rows=(), bm25_rows=(), registry_rows=(), missing_text_rows=(), sibling_rows=(),
-        fact_metadata_rows=(), checkpoint_row=None,
+        self,
+        semantic_rows=(),
+        bm25_rows=(),
+        registry_rows=(),
+        missing_text_rows=(),
+        sibling_rows=(),
+        fact_metadata_rows=(),
+        checkpoint_row=None,
     ):
         self.cursor_obj = FakeCursor(
-            semantic_rows, bm25_rows, registry_rows, missing_text_rows, sibling_rows,
-            fact_metadata_rows, checkpoint_row,
+            semantic_rows,
+            bm25_rows,
+            registry_rows,
+            missing_text_rows,
+            sibling_rows,
+            fact_metadata_rows,
+            checkpoint_row,
         )
+
     def cursor(self):
         return self.cursor_obj
+
     def connection(self):
         """Doubles as its own fake pool: retrieval classes now acquire a
         connection per call via `pool.connection()` -- yielding self keeps
         every existing test's stubbed cursor/rows working unchanged."""
         return nullcontext(self)
+
 
 class FakeHydra:
     def __init__(self, return_paths=True):
@@ -132,17 +160,26 @@ class FakeHydra:
         if "SUPERSEDES" in cypher:
             return []
         if "OPTIONAL MATCH" in cypher:
-            return [{
-                "text": None, "speaker": None,
-                "valid_from": 0, "valid_to": 9999999999,
-                "observed_at": 1000, "superseded_at": 9999999999,
-                "memory_scope": None, "entity_key": "entity-1",
-            }]
+            return [
+                {
+                    "text": None,
+                    "speaker": None,
+                    "valid_from": 0,
+                    "valid_to": 9999999999,
+                    "observed_at": 1000,
+                    "superseded_at": 9999999999,
+                    "memory_scope": None,
+                    "entity_key": "entity-1",
+                }
+            ]
         if "algo.MSpaths" in cypher:
             if not self.return_paths:
                 return []
-            return [{"path": [{"logical_key": "entity-1"}, {}, {"logical_key": "entity-2"}]}]
+            return [
+                {"path": [{"logical_key": "entity-1"}, {}, {"logical_key": "entity-2"}]}
+            ]
         return []
+
 
 class FakeHydraWithEntities:
     """Like FakeHydra but resolves OPTIONAL MATCH's entity_key per fact id, so a
@@ -166,12 +203,18 @@ class FakeHydraWithEntities:
         if "OPTIONAL MATCH" in cypher:
             match = self._ID_PATTERN.search(cypher)
             fid = int(match.group(1)) if match else None
-            return [{
-                "text": None, "speaker": None,
-                "valid_from": 0, "valid_to": 9999999999,
-                "observed_at": 1000, "superseded_at": 9999999999,
-                "memory_scope": None, "entity_key": self.entity_key_by_fid.get(fid),
-            }]
+            return [
+                {
+                    "text": None,
+                    "speaker": None,
+                    "valid_from": 0,
+                    "valid_to": 9999999999,
+                    "observed_at": 1000,
+                    "superseded_at": 9999999999,
+                    "memory_scope": None,
+                    "entity_key": self.entity_key_by_fid.get(fid),
+                }
+            ]
         if "algo.MSpaths" in cypher:
             return []
         return []
@@ -182,29 +225,38 @@ class TestRetrievalEngine(unittest.TestCase):
         base_time = datetime(2026, 8, 19, tzinfo=timezone.utc)
         llm = FakeLLMClient([DateRange(valid_from=base_time, valid_to=base_time)])
         resolver = TemporalQueryResolver(llm)
-        
+
         result = resolver.resolve("What happened today?", base_time)
-        
+
         # Buffer is 2 days (172800 seconds)
         expected_from = base_time - timedelta(seconds=172800)
         expected_to = base_time + timedelta(seconds=172800)
-        
+
         self.assertEqual(result.valid_from, expected_from)
         self.assertEqual(result.valid_to, expected_to)
 
     def test_query_rewriter(self):
-        llm = FakeLLMClient([QueryRewriterOutput(decomposed_queries=["where is dog"], synonyms=["puppy"])])
+        llm = FakeLLMClient(
+            [
+                QueryRewriterOutput(
+                    decomposed_queries=["where is dog"], synonyms=["puppy"]
+                )
+            ]
+        )
         rewriter = QueryRewriter(llm)
         res = rewriter.rewrite("where is my dog?")
         self.assertEqual(res.decomposed_queries, ["where is dog"])
         self.assertEqual(res.synonyms, ["puppy"])
 
     def test_abstention_triggers_on_low_scores(self):
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[])
-        ], text_response="Should not reach here")
-        
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ],
+            text_response="Should not reach here",
+        )
+
         # pgvector -> [('fact-1', 9.0)] -> semantic score = 1 / (1 + 9) = 0.1; BM25 skipped
         # (no rewriter keywords); registry resolves fact-1 -> graph_id 1; missing-text fallback.
         conn = FakeConnection(
@@ -212,18 +264,25 @@ class TestRetrievalEngine(unittest.TestCase):
             registry_rows=[("fact:fact-1", 1)],
             missing_text_rows=[("fact-1", "irrelevant")],
         )
-        
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra(return_paths=False))
-        
-        ans = engine.retrieve_and_answer("ctx-1", "what is the meaning of life?", datetime.now(timezone.utc))
+
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydra(return_paths=False)
+        )
+
+        ans = engine.retrieve_and_answer(
+            "ctx-1", "what is the meaning of life?", datetime.now(timezone.utc)
+        )
         self.assertEqual(ans, "I don't have that information in my memory.")
 
     def test_composite_scoring_and_synthesis(self):
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[])
-        ], text_response="The dog is in the park")
-        
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ],
+            text_response="The dog is in the park",
+        )
+
         # pgvector -> [('fact-1', 0.1)] -> semantic score = 1 / 1.1 ~= 0.9; BM25 skipped;
         # registry resolves fact-1 -> graph_id 1; missing-text fallback.
         conn = FakeConnection(
@@ -231,10 +290,12 @@ class TestRetrievalEngine(unittest.TestCase):
             registry_rows=[("fact:fact-1", 1)],
             missing_text_rows=[("fact-1", "dog in park")],
         )
-        
+
         engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra())
-        
-        ans = engine.retrieve_and_answer("ctx-1", "where is dog?", datetime.now(timezone.utc))
+
+        ans = engine.retrieve_and_answer(
+            "ctx-1", "where is dog?", datetime.now(timezone.utc)
+        )
         self.assertEqual(ans, "The dog is in the park")
 
     def test_entity_boost_applies_only_to_entities_the_query_mentions(self):
@@ -249,9 +310,13 @@ class TestRetrievalEngine(unittest.TestCase):
         seeds (0.716) but no entity link, so it ranked #39 while 15 unrelated
         bike-training facts took +0.50 each and filled the entire top-15."""
         llm = FakeLLMClient([])
-        conn = FakeConnection(registry_rows=[("fact:fact-1", 1), ("fact:fact-2", 2), ("fact:fact-3", 3)])
+        conn = FakeConnection(
+            registry_rows=[("fact:fact-1", 1), ("fact:fact-2", 2), ("fact:fact-3", 3)]
+        )
         # fact-1/fact-2 link to "commute"; fact-3 has no entity at all.
-        hydra = FakeHydraWithEntities({1: "entity:commute", 2: "entity:commute", 3: None})
+        hydra = FakeHydraWithEntities(
+            {1: "entity:commute", 2: "entity:commute", 3: None}
+        )
         engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, hydra)
 
         def fresh_seeds():
@@ -263,7 +328,9 @@ class TestRetrievalEngine(unittest.TestCase):
 
         seed_facts = fresh_seeds()
         expander = GraphExpander(conn, hydra)
-        graph_data = expander.expand("ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc))
+        graph_data = expander.expand(
+            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+        )
         self.assertEqual(graph_data["fact-1"]["entity_fact_count"], 2)
         self.assertEqual(graph_data["fact-3"]["entity_fact_count"], 0)
         self.assertEqual(graph_data["fact-1"]["entity_key"], "entity:commute")
@@ -298,14 +365,19 @@ class TestRetrievalEngine(unittest.TestCase):
                     return []
                 if "OPTIONAL MATCH" in cypher:
                     reads_correct_property = "f.scope_type AS memory_scope" in cypher
-                    return [{
-                        "text": "temporary chitchat detail", "speaker": None,
-                        "valid_from": 0, "valid_to": 9999999999,
-                        # Said well outside the configured chat TTL window.
-                        "observed_at": 0, "superseded_at": 9999999999,
-                        "memory_scope": "chat" if reads_correct_property else None,
-                        "entity_key": None,
-                    }]
+                    return [
+                        {
+                            "text": "temporary chitchat detail",
+                            "speaker": None,
+                            "valid_from": 0,
+                            "valid_to": 9999999999,
+                            # Said well outside the configured chat TTL window.
+                            "observed_at": 0,
+                            "superseded_at": 9999999999,
+                            "memory_scope": "chat" if reads_correct_property else None,
+                            "entity_key": None,
+                        }
+                    ]
                 if "algo.MSpaths" in cypher:
                     return []
                 return []
@@ -315,7 +387,9 @@ class TestRetrievalEngine(unittest.TestCase):
         expander = GraphExpander(conn, hydra)
         seed_facts = {"fact-1": ScoredFact("fact-1", "temporary chitchat detail")}
 
-        graph_data = expander.expand("ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc))
+        graph_data = expander.expand(
+            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+        )
 
         self.assertEqual(graph_data, {})
         self.assertNotIn("fact-1", seed_facts)
@@ -338,21 +412,31 @@ class TestRetrievalEngine(unittest.TestCase):
                     match = re.search(r"MATCH \(f \{id: (\d+)\}\)", cypher)
                     fid = int(match.group(1)) if match else None
                     entity_key = {1: "entity-1", 2: "entity-2"}.get(fid)
-                    return [{
-                        "text": None, "speaker": None,
-                        "valid_from": 0, "valid_to": 9999999999,
-                        "observed_at": 1000, "superseded_at": 9999999999,
-                        "memory_scope": None, "entity_key": entity_key,
-                    }]
+                    return [
+                        {
+                            "text": None,
+                            "speaker": None,
+                            "valid_from": 0,
+                            "valid_to": 9999999999,
+                            "observed_at": 1000,
+                            "superseded_at": 9999999999,
+                            "memory_scope": None,
+                            "entity_key": entity_key,
+                        }
+                    ]
                 if "algo.MSpaths" in cypher:
                     # entity-1 -[archived ghost fact]- entity-mid -[]- entity-2
-                    return [{"path": [
-                        {"logical_key": "entity-1"},
-                        {"archived": True},
-                        {"logical_key": "entity-mid"},
-                        {},
-                        {"logical_key": "entity-2"},
-                    ]}]
+                    return [
+                        {
+                            "path": [
+                                {"logical_key": "entity-1"},
+                                {"archived": True},
+                                {"logical_key": "entity-mid"},
+                                {},
+                                {"logical_key": "entity-2"},
+                            ]
+                        }
+                    ]
                 return []
 
         conn = FakeConnection(registry_rows=[("fact:fact-1", 1), ("fact:fact-2", 2)])
@@ -363,7 +447,9 @@ class TestRetrievalEngine(unittest.TestCase):
             "fact-2": ScoredFact("fact-2", "linked B"),
         }
 
-        graph_data = expander.expand("ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc))
+        graph_data = expander.expand(
+            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+        )
 
         self.assertEqual(graph_data["fact-1"]["path_count"], 0)
         self.assertEqual(graph_data["fact-2"]["path_count"], 0)
@@ -381,23 +467,30 @@ class TestRetrievalEngine(unittest.TestCase):
                 if "SUPERSEDES" in cypher:
                     return []
                 if "OPTIONAL MATCH" in cypher:
-                    return [{
-                        "text": "the bridge quest was active",
-                        "speaker": None,
-                        # Valid only turns ~15-25 (as epoch seconds standing
-                        # in for turn numbers) -- long since ended relative
-                        # to "now", but overlaps a [20, 30] query window.
-                        "valid_from": 15, "valid_to": 25,
-                        "observed_at": 15, "superseded_at": 9999999999,
-                        "memory_scope": None, "entity_key": None,
-                    }]
+                    return [
+                        {
+                            "text": "the bridge quest was active",
+                            "speaker": None,
+                            # Valid only turns ~15-25 (as epoch seconds standing
+                            # in for turn numbers) -- long since ended relative
+                            # to "now", but overlaps a [20, 30] query window.
+                            "valid_from": 15,
+                            "valid_to": 25,
+                            "observed_at": 15,
+                            "superseded_at": 9999999999,
+                            "memory_scope": None,
+                            "entity_key": None,
+                        }
+                    ]
                 if "algo.MSpaths" in cypher:
                     return []
                 return []
 
         conn = FakeConnection(registry_rows=[("fact:fact-1", 1)])
         expander = GraphExpander(conn, FakeHydraWithValidityWindow())
-        question_date = datetime.now(timezone.utc)  # "now" is nowhere near this fact's window
+        question_date = datetime.now(
+            timezone.utc
+        )  # "now" is nowhere near this fact's window
 
         # No temporal anchor resolved -> point-in-time semantics, unchanged:
         # a fact that ended at epoch=25 is long expired relative to "now".
@@ -416,12 +509,16 @@ class TestRetrievalEngine(unittest.TestCase):
         self.assertIn("fact-1", graph_data)
 
         # A range that does NOT overlap [15, 25] at all still excludes it.
-        non_overlapping = {"fact-1": ScoredFact("fact-1", "the bridge quest was active")}
+        non_overlapping = {
+            "fact-1": ScoredFact("fact-1", "the bridge quest was active")
+        }
         far_window = DateRange(
             valid_from=datetime.fromtimestamp(100, tz=timezone.utc),
             valid_to=datetime.fromtimestamp(200, tz=timezone.utc),
         )
-        graph_data = expander.expand("ctx-1", non_overlapping, far_window, question_date)
+        graph_data = expander.expand(
+            "ctx-1", non_overlapping, far_window, question_date
+        )
         self.assertEqual(graph_data, {})
 
     def test_non_chat_fact_past_the_same_window_is_not_pruned(self):
@@ -432,7 +529,9 @@ class TestRetrievalEngine(unittest.TestCase):
         expander = GraphExpander(conn, hydra)
         seed_facts = {"fact-1": ScoredFact("fact-1", "durable fact")}
 
-        graph_data = expander.expand("ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc))
+        graph_data = expander.expand(
+            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+        )
 
         self.assertIn("fact-1", graph_data)
         self.assertIn("fact-1", seed_facts)
@@ -442,10 +541,13 @@ class TestRetrievalEngine(unittest.TestCase):
         strong BM25 rank, no graph structure) used to trigger false abstention
         because the check only ever looked at semantic_score. A real exact-term
         hit -- the case BM25 exists for -- should not be discarded."""
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=["exact term"], synonyms=[]),
-        ], text_response="Found via keyword match")
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=["exact term"], synonyms=[]),
+            ],
+            text_response="Found via keyword match",
+        )
 
         # No semantic hit at all; BM25 rank=1.0 -> keyword_score = 1/(1+1) = 0.5,
         # comfortably above the 0.3 default threshold. return_paths=False keeps
@@ -455,9 +557,13 @@ class TestRetrievalEngine(unittest.TestCase):
             registry_rows=[("fact:fact-1", 1)],
             missing_text_rows=[("fact-1", "exact term match")],
         )
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra(return_paths=False))
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydra(return_paths=False)
+        )
 
-        ans = engine.retrieve_and_answer("ctx-1", "exact term", datetime.now(timezone.utc))
+        ans = engine.retrieve_and_answer(
+            "ctx-1", "exact term", datetime.now(timezone.utc)
+        )
         self.assertEqual(ans, "Found via keyword match")
 
     def test_keyword_search_falls_back_to_raw_question_when_rewriter_empty(self):
@@ -465,19 +571,28 @@ class TestRetrievalEngine(unittest.TestCase):
         call path that's failed live this session on credentials/timeouts)
         used to skip BM25 for the whole request. It should degrade to the raw
         question instead of going silent."""
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),  # rewriter produced nothing
-        ], text_response="Found via raw-question fallback")
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(
+                    decomposed_queries=[], synonyms=[]
+                ),  # rewriter produced nothing
+            ],
+            text_response="Found via raw-question fallback",
+        )
 
         conn = FakeConnection(
             bm25_rows=[("fact-1", "matches raw question", 1.0)],
             registry_rows=[("fact:fact-1", 1)],
             missing_text_rows=[("fact-1", "matches raw question")],
         )
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra(return_paths=False))
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydra(return_paths=False)
+        )
 
-        ans = engine.retrieve_and_answer("ctx-1", "raw question text", datetime.now(timezone.utc))
+        ans = engine.retrieve_and_answer(
+            "ctx-1", "raw question text", datetime.now(timezone.utc)
+        )
         self.assertEqual(ans, "Found via raw-question fallback")
 
     def test_sibling_facts_from_same_turn_are_added_to_context(self):
@@ -489,10 +604,13 @@ class TestRetrievalEngine(unittest.TestCase):
         the reader had a price with nothing to multiply it by. A sibling fact
         from the same source turn as an already-relevant fact must be pulled
         into context even though it never separately competed on ranking."""
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ], text_response="20 plants at $7.50 each is $150")
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ],
+            text_response="20 plants at $7.50 each is $150",
+        )
         conn = FakeConnection(
             semantic_rows=[("fact-1", 0.1)],  # only the price fact is seeded/ranked
             registry_rows=[("fact:fact-1", 1)],
@@ -500,14 +618,27 @@ class TestRetrievalEngine(unittest.TestCase):
             # (fact_id, text, anchor_query_distance, sibling_query_distance, boundary_distance).
             # anchor_relevance=0.6, sibling_relevance=0.65: score = 0.65 - 0.1*0.05 = 0.645,
             # threshold = 0.80*0.6 = 0.48 -- clears it, matching a genuinely on-topic same-turn sibling.
-            sibling_rows=[("fact-2", "User sold 20 potted herb plants at the Summer Solstice Market", None, 0.4, 0.35, 0.05)],
+            sibling_rows=[
+                (
+                    "fact-2",
+                    "User sold 20 potted herb plants at the Summer Solstice Market",
+                    None,
+                    0.4,
+                    0.35,
+                    0.05,
+                )
+            ],
         )
         engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra())
 
-        ans = engine.retrieve_and_answer("ctx-1", "how much did the herb plants earn?", datetime.now(timezone.utc))
+        ans = engine.retrieve_and_answer(
+            "ctx-1", "how much did the herb plants earn?", datetime.now(timezone.utc)
+        )
 
         self.assertEqual(ans, "20 plants at $7.50 each is $150")
-        self.assertIn("Each potted herb plant was sold for $7.5", llm.last_reader_system_prompt)
+        self.assertIn(
+            "Each potted herb plant was sold for $7.5", llm.last_reader_system_prompt
+        )
         self.assertIn("User sold 20 potted herb plants", llm.last_reader_system_prompt)
 
     def test_sibling_facts_carry_their_date_into_the_prompt(self):
@@ -516,31 +647,47 @@ class TestRetrievalEngine(unittest.TestCase):
         date-arithmetic question with the correctly-dated fact sitting unused
         in the store. observed_at must now be joined and formatted the same
         way top facts are."""
-        import time
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ], text_response="answer")
-        march_19 = datetime(2023, 3, 19, tzinfo=timezone.utc)  # psycopg returns datetime for timestamptz
+
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ],
+            text_response="answer",
+        )
+        march_19 = datetime(
+            2023, 3, 19, tzinfo=timezone.utc
+        )  # psycopg returns datetime for timestamptz
         conn = FakeConnection(
             semantic_rows=[("fact-1", 0.1)],
             registry_rows=[("fact:fact-1", 1)],
             missing_text_rows=[("fact-1", "Each potted herb plant was sold for $7.5")],
-            sibling_rows=[("fact-2", "User sold 20 potted herb plants", march_19, 0.4, 0.35, 0.05)],
+            sibling_rows=[
+                ("fact-2", "User sold 20 potted herb plants", march_19, 0.4, 0.35, 0.05)
+            ],
         )
         engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra())
-        engine.retrieve_and_answer("ctx-1", "how much did the herb plants earn?", datetime.now(timezone.utc))
-        self.assertIn("[2023-03-19]: User sold 20 potted herb plants", llm.last_reader_system_prompt)
+        engine.retrieve_and_answer(
+            "ctx-1", "how much did the herb plants earn?", datetime.now(timezone.utc)
+        )
+        self.assertIn(
+            "[2023-03-19]: User sold 20 potted herb plants",
+            llm.last_reader_system_prompt,
+        )
 
     def test_sibling_expansion_disabled_when_limit_is_zero(self):
         """RETRIEVAL_SIBLING_FACT_LIMIT=0 must fully disable the extra query,
         not just cap it at zero rows -- confirms the feature is a no-op, not a
         silent failure, when turned off."""
         import dataclasses
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ], text_response="answer")
+
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ],
+            text_response="answer",
+        )
         conn = FakeConnection(
             semantic_rows=[("fact-1", 0.1)],
             registry_rows=[("fact:fact-1", 1)],
@@ -548,12 +695,25 @@ class TestRetrievalEngine(unittest.TestCase):
             # (fact_id, text, anchor_query_distance, sibling_query_distance, boundary_distance).
             # anchor_relevance=0.6, sibling_relevance=0.65: score = 0.65 - 0.1*0.05 = 0.645,
             # threshold = 0.80*0.6 = 0.48 -- clears it, matching a genuinely on-topic same-turn sibling.
-            sibling_rows=[("fact-2", "User sold 20 potted herb plants at the Summer Solstice Market", None, 0.4, 0.35, 0.05)],
+            sibling_rows=[
+                (
+                    "fact-2",
+                    "User sold 20 potted herb plants at the Summer Solstice Market",
+                    None,
+                    0.4,
+                    0.35,
+                    0.05,
+                )
+            ],
         )
         config = dataclasses.replace(Config(), retrieval_sibling_fact_limit=0)
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra(), config=config)
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydra(), config=config
+        )
 
-        engine.retrieve_and_answer("ctx-1", "how much did the herb plants earn?", datetime.now(timezone.utc))
+        engine.retrieve_and_answer(
+            "ctx-1", "how much did the herb plants earn?", datetime.now(timezone.utc)
+        )
 
     def test_scar_rejects_off_topic_same_turn_fact(self):
         """The whole point of moving to SCAR (arxiv.org/abs/2606.16661) instead
@@ -564,12 +724,28 @@ class TestRetrievalEngine(unittest.TestCase):
         same-turn fact is kept. If this collapsed back to "pull every same-turn
         fact," both would come back."""
         # anchor_relevance = 1 - 0.4 = 0.6 -> threshold = 0.80 * 0.6 = 0.48
-        on_topic = ("fact-relevant", "User sold 20 potted herb plants", None, 0.4, 0.35, 0.05)  # score 0.645
-        off_topic = ("fact-unrelated", "The weather was nice that day", None, 0.4, 0.85, 0.05)  # score 0.145
+        on_topic = (
+            "fact-relevant",
+            "User sold 20 potted herb plants",
+            None,
+            0.4,
+            0.35,
+            0.05,
+        )  # score 0.645
+        off_topic = (
+            "fact-unrelated",
+            "The weather was nice that day",
+            None,
+            0.4,
+            0.85,
+            0.05,
+        )  # score 0.145
         conn = FakeConnection(sibling_rows=[on_topic, off_topic])
         expander = SiblingExpander(conn, FakeEmbedder())
 
-        siblings = expander.find_siblings("ctx-1", ["fact-anchor"], "how much did I earn at the market?")
+        siblings = expander.find_siblings(
+            "ctx-1", ["fact-anchor"], "how much did I earn at the market?"
+        )
 
         self.assertIn("fact-relevant", siblings)
         self.assertNotIn("fact-unrelated", siblings)
@@ -586,18 +762,38 @@ class TestRetrievalEngine(unittest.TestCase):
         that "wins" one channel alone, which a raw sum cannot express when the
         single-channel winner's raw score is large enough."""
         llm = FakeLLMClient([])
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), FakeConnection(), FakeHydra())
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), FakeConnection(), FakeHydra()
+        )
 
         # fact-1: dominant single channel (semantic rank 1, huge raw score).
         # fact-2: weaker in any one channel, but present in three.
-        fact1 = ScoredFact("fact-1", "single-channel winner", semantic_score=0.99, semantic_rank=1)
-        fact2 = ScoredFact("fact-2", "multi-channel winner", semantic_score=0.10, semantic_rank=5,
-                            keyword_score=0.10, keyword_rank=3)
+        fact1 = ScoredFact(
+            "fact-1", "single-channel winner", semantic_score=0.99, semantic_rank=1
+        )
+        fact2 = ScoredFact(
+            "fact-2",
+            "multi-channel winner",
+            semantic_score=0.10,
+            semantic_rank=5,
+            keyword_score=0.10,
+            keyword_rank=3,
+        )
         facts = {"fact-1": fact1, "fact-2": fact2}
         # fact-2 also has graph support (structural + entity); fact-1 has none.
         graph_data = {
-            "fact-1": {"hop_count": 1, "path_count": 0, "entity_fact_count": 0, "entity_key": None},
-            "fact-2": {"hop_count": 1, "path_count": 3, "entity_fact_count": 1, "entity_key": "entity:widget"},
+            "fact-1": {
+                "hop_count": 1,
+                "path_count": 0,
+                "entity_fact_count": 0,
+                "entity_key": None,
+            },
+            "fact-2": {
+                "hop_count": 1,
+                "path_count": 3,
+                "entity_fact_count": 1,
+                "entity_key": "entity:widget",
+            },
         }
 
         fuser = CandidateFuser(Reranker(llm, engine._config), engine._config)
@@ -605,7 +801,9 @@ class TestRetrievalEngine(unittest.TestCase):
 
         k = engine._config.retrieval_rrf_k
         expected_fact1 = 1.0 / (k + 1)  # semantic rank 1 only
-        expected_fact2 = 1.0 / (k + 5) + 1.0 / (k + 3) + 1.0 / (k + 1) + 1.0 / (k + 1)  # 4 channels
+        expected_fact2 = (
+            1.0 / (k + 5) + 1.0 / (k + 3) + 1.0 / (k + 1) + 1.0 / (k + 1)
+        )  # 4 channels
         self.assertAlmostEqual(fact1.composite_score, expected_fact1)
         self.assertAlmostEqual(fact2.composite_score, expected_fact2)
         # The real point: multi-channel support overtakes a single dominant
@@ -619,10 +817,21 @@ class TestRetrievalEngine(unittest.TestCase):
         would tie for the same nonzero score in every channel it never
         appeared in."""
         llm = FakeLLMClient([])
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), FakeConnection(), FakeHydra())
-        fact = ScoredFact("fact-1", "only semantic", semantic_score=0.5, semantic_rank=2)
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), FakeConnection(), FakeHydra()
+        )
+        fact = ScoredFact(
+            "fact-1", "only semantic", semantic_score=0.5, semantic_rank=2
+        )
         facts = {"fact-1": fact}
-        graph_data = {"fact-1": {"hop_count": 1, "path_count": 0, "entity_fact_count": 0, "entity_key": None}}
+        graph_data = {
+            "fact-1": {
+                "hop_count": 1,
+                "path_count": 0,
+                "entity_fact_count": 0,
+                "entity_key": None,
+            }
+        }
 
         fuser = CandidateFuser(Reranker(llm, engine._config), engine._config)
         fuser.fuse("q", facts, graph_data, top_k=5)
@@ -640,13 +849,20 @@ class FakeHydraWithFactFields:
         if "SUPERSEDES" in cypher:
             return []
         if "OPTIONAL MATCH" in cypher:
-            return [{
-                "text": "the dog is in the park", "speaker": None,
-                "valid_from": 0, "valid_to": 9999999999,
-                "observed_at": 1000, "superseded_at": 9999999999,
-                "memory_scope": None, "entity_key": "entity:dog",
-                "predicate_key": "located_at", "confidence": 0.91,
-            }]
+            return [
+                {
+                    "text": "the dog is in the park",
+                    "speaker": None,
+                    "valid_from": 0,
+                    "valid_to": 9999999999,
+                    "observed_at": 1000,
+                    "superseded_at": 9999999999,
+                    "memory_scope": None,
+                    "entity_key": "entity:dog",
+                    "predicate_key": "located_at",
+                    "confidence": 0.91,
+                }
+            ]
         if "algo.MSpaths" in cypher:
             return []
         return []
@@ -663,14 +879,22 @@ class FakeHydraWithTripleFields:
         if "SUPERSEDES" in cypher:
             return []
         if "OPTIONAL MATCH" in cypher:
-            return [{
-                "text": "The dog is currently waiting near the western gate.",
-                "speaker": None, "valid_from": 0, "valid_to": 9999999999,
-                "observed_at": 1000, "superseded_at": 9999999999,
-                "memory_scope": None, "entity_key": "entity:dog",
-                "predicate_key": "located_at", "confidence": 0.91,
-                "subject": "dog", "object_literal": "western gate",
-            }]
+            return [
+                {
+                    "text": "The dog is currently waiting near the western gate.",
+                    "speaker": None,
+                    "valid_from": 0,
+                    "valid_to": 9999999999,
+                    "observed_at": 1000,
+                    "superseded_at": 9999999999,
+                    "memory_scope": None,
+                    "entity_key": "entity:dog",
+                    "predicate_key": "located_at",
+                    "confidence": 0.91,
+                    "subject": "dog",
+                    "object_literal": "western gate",
+                }
+            ]
         if "algo.MSpaths" in cypher:
             return []
         return []
@@ -683,18 +907,24 @@ class RetrieveFactsTests(unittest.TestCase):
     `retrieve_and_answer` (see `_retrieve_ranked`) and stops before Phase 4."""
 
     def test_returns_structured_fact_with_subject_predicate_object_and_confidence(self):
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ])
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ]
+        )
         conn = FakeConnection(
             semantic_rows=[("fact-1", 0.1)],
             registry_rows=[("fact:fact-1", 1)],
             missing_text_rows=[("fact-1", "the dog is in the park")],
         )
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydraWithFactFields())
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydraWithFactFields()
+        )
 
-        result = engine.retrieve_facts("ctx-1", "where is dog?", datetime.now(timezone.utc))
+        result = engine.retrieve_facts(
+            "ctx-1", "where is dog?", datetime.now(timezone.utc)
+        )
 
         self.assertFalse(result.abstained)
         self.assertEqual(len(result.facts), 1)
@@ -712,18 +942,24 @@ class RetrieveFactsTests(unittest.TestCase):
         """§9 fix: when the Fact node carries real subject/object_literal,
         those win over the ABOUT-entity-derived subject and full-sentence
         object fallback."""
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ])
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ]
+        )
         conn = FakeConnection(
             semantic_rows=[("fact-1", 0.1)],
             registry_rows=[("fact:fact-1", 1)],
             missing_text_rows=[("fact-1", "the dog is in the park")],
         )
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydraWithTripleFields())
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydraWithTripleFields()
+        )
 
-        result = engine.retrieve_facts("ctx-1", "where is dog?", datetime.now(timezone.utc))
+        result = engine.retrieve_facts(
+            "ctx-1", "where is dog?", datetime.now(timezone.utc)
+        )
 
         fact = result.facts[0]
         self.assertEqual(fact.subject, "dog")
@@ -731,18 +967,24 @@ class RetrieveFactsTests(unittest.TestCase):
         self.assertEqual(fact.object, "western gate")
 
     def test_abstains_with_no_facts_instead_of_a_canned_message(self):
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ])
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ]
+        )
         conn = FakeConnection(
             semantic_rows=[("fact-1", 9.0)],
             registry_rows=[("fact:fact-1", 1)],
             missing_text_rows=[("fact-1", "irrelevant")],
         )
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra(return_paths=False))
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydra(return_paths=False)
+        )
 
-        result = engine.retrieve_facts("ctx-1", "what is the meaning of life?", datetime.now(timezone.utc))
+        result = engine.retrieve_facts(
+            "ctx-1", "what is the meaning of life?", datetime.now(timezone.utc)
+        )
 
         self.assertTrue(result.abstained)
         self.assertEqual(result.facts, [])
@@ -751,10 +993,12 @@ class RetrieveFactsTests(unittest.TestCase):
         """FakeHydra (unlike FakeHydraWithFactFields) never returns
         predicate_key/confidence -- exercises graph_fields.get(...) defaults,
         not a KeyError."""
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ])
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ]
+        )
         conn = FakeConnection(
             semantic_rows=[("fact-1", 0.1)],
             registry_rows=[("fact:fact-1", 1)],
@@ -762,7 +1006,9 @@ class RetrieveFactsTests(unittest.TestCase):
         )
         engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra())
 
-        result = engine.retrieve_facts("ctx-1", "where is dog?", datetime.now(timezone.utc))
+        result = engine.retrieve_facts(
+            "ctx-1", "where is dog?", datetime.now(timezone.utc)
+        )
 
         self.assertFalse(result.abstained)
         fact = result.facts[0]
@@ -771,18 +1017,24 @@ class RetrieveFactsTests(unittest.TestCase):
         self.assertGreaterEqual(fact.confidence, 0.0)
 
     def test_resolved_time_point_echoes_as_of_turn(self):
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ])
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ]
+        )
         conn = FakeConnection(
             semantic_rows=[("fact-1", 0.1)],
             registry_rows=[("fact:fact-1", 1)],
             missing_text_rows=[("fact-1", "dog in park")],
         )
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydraWithFactFields())
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydraWithFactFields()
+        )
 
-        result = engine.retrieve_facts("ctx-1", "where is dog?", datetime.now(timezone.utc), as_of_turn=7)
+        result = engine.retrieve_facts(
+            "ctx-1", "where is dog?", datetime.now(timezone.utc), as_of_turn=7
+        )
 
         self.assertEqual(result.resolved_time_point, "7")
 
@@ -801,17 +1053,21 @@ class WhenActiveFilteringTests(unittest.TestCase):
 
     @staticmethod
     def _engine_and_conn(fact_metadata_rows):
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ])
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ]
+        )
         conn = FakeConnection(
             semantic_rows=[("42", 0.1)],
             registry_rows=[("fact:42", 1)],
             missing_text_rows=[("42", "a ghost follows the player")],
             fact_metadata_rows=fact_metadata_rows,
         )
-        return HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydraWithFactFields()), conn
+        return HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydraWithFactFields()
+        ), conn
 
     def test_fact_stays_visible_regardless_of_game_state(self):
         """Was `test_fact_hidden_when_when_active_is_false` -- the exact
@@ -820,8 +1076,12 @@ class WhenActiveFilteringTests(unittest.TestCase):
         engine, _ = self._engine_and_conn([(42, None, when_active, None, False)])
 
         result = engine.retrieve_facts(
-            "ctx-1", "is anything following me?", datetime.now(timezone.utc),
-            game_state={"player": {"health": 100}},  # condition NOT met -- must not matter anymore
+            "ctx-1",
+            "is anything following me?",
+            datetime.now(timezone.utc),
+            game_state={
+                "player": {"health": 100}
+            },  # condition NOT met -- must not matter anymore
         )
 
         self.assertEqual(len(result.facts), 1)
@@ -831,7 +1091,10 @@ class WhenActiveFilteringTests(unittest.TestCase):
         engine, _ = self._engine_and_conn([(42, None, when_active, None, False)])
 
         result = engine.retrieve_facts(
-            "ctx-1", "is anything following me?", datetime.now(timezone.utc), game_state={},
+            "ctx-1",
+            "is anything following me?",
+            datetime.now(timezone.utc),
+            game_state={},
         )
 
         self.assertEqual(result.facts[0].when_active, when_active)
@@ -839,7 +1102,12 @@ class WhenActiveFilteringTests(unittest.TestCase):
     def test_fact_with_no_when_active_reports_none(self):
         engine, _ = self._engine_and_conn([])
 
-        result = engine.retrieve_facts("ctx-1", "is anything following me?", datetime.now(timezone.utc), game_state={})
+        result = engine.retrieve_facts(
+            "ctx-1",
+            "is anything following me?",
+            datetime.now(timezone.utc),
+            game_state={},
+        )
 
         self.assertEqual(len(result.facts), 1)
         self.assertIsNone(result.facts[0].when_active)
@@ -847,7 +1115,9 @@ class WhenActiveFilteringTests(unittest.TestCase):
     def test_hidden_flag_is_returned_untouched_never_filtered(self):
         engine, _ = self._engine_and_conn([(42, None, None, None, True)])
 
-        result = engine.retrieve_facts("ctx-1", "is anything following me?", datetime.now(timezone.utc))
+        result = engine.retrieve_facts(
+            "ctx-1", "is anything following me?", datetime.now(timezone.utc)
+        )
 
         self.assertEqual(len(result.facts), 1)
         self.assertTrue(result.facts[0].hidden)
@@ -857,26 +1127,45 @@ class WhenActiveFilteringTests(unittest.TestCase):
         metadata found", same posture ADR-5 already applies to memory
         writes: never let an auxiliary-system hiccup break the
         player-facing path."""
-        class ExplodingCursor:
-            def execute(self, *a, **k): raise RuntimeError("connection reset")
-            def __enter__(self): return self
-            def __exit__(self, *a): pass
-        class ExplodingConnection:
-            def cursor(self): return ExplodingCursor()
-            def connection(self): return nullcontext(self)
 
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None), QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ])
+        class ExplodingCursor:
+            def execute(self, *a, **k):
+                raise RuntimeError("connection reset")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+        class ExplodingConnection:
+            def cursor(self):
+                return ExplodingCursor()
+
+            def connection(self):
+                return nullcontext(self)
+
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ]
+        )
         # Seed via a normal connection for Phase 1, but swap self._pool after
         # construction so only the metadata/checkpoint lookups explode.
         conn = FakeConnection(
-            semantic_rows=[("42", 0.1)], registry_rows=[("fact:42", 1)], missing_text_rows=[("42", "x")],
+            semantic_rows=[("42", 0.1)],
+            registry_rows=[("fact:42", 1)],
+            missing_text_rows=[("42", "x")],
         )
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydraWithFactFields())
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydraWithFactFields()
+        )
         engine._pool = ExplodingConnection()
 
-        result = engine.retrieve_facts("ctx-1", "q", datetime.now(timezone.utc), game_state={})
+        result = engine.retrieve_facts(
+            "ctx-1", "q", datetime.now(timezone.utc), game_state={}
+        )
 
         self.assertEqual(len(result.facts), 1)
 
@@ -887,10 +1176,12 @@ class CheckpointFilteringTests(unittest.TestCase):
 
     @staticmethod
     def _engine(fact_metadata_rows, checkpoint_row):
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ])
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ]
+        )
         conn = FakeConnection(
             semantic_rows=[("42", 0.1)],
             registry_rows=[("fact:42", 1)],
@@ -898,28 +1189,38 @@ class CheckpointFilteringTests(unittest.TestCase):
             fact_metadata_rows=fact_metadata_rows,
             checkpoint_row=checkpoint_row,
         )
-        return HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydraWithFactFields())
+        return HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydraWithFactFields()
+        )
 
     def test_fact_hidden_before_its_checkpoint_is_reached(self):
         engine = self._engine(
-            fact_metadata_rows=[(42, "chapter_3", None, None, False)], checkpoint_row=(["chapter_1", "chapter_2", "chapter_3"],),
+            fact_metadata_rows=[(42, "chapter_3", None, None, False)],
+            checkpoint_row=(["chapter_1", "chapter_2", "chapter_3"],),
         )
 
         result = engine.retrieve_facts(
-            "ctx-1", "what happened to the bridge?", datetime.now(timezone.utc),
-            checkpoint="chapter_1", template_context_id="scenario-template::s1",
+            "ctx-1",
+            "what happened to the bridge?",
+            datetime.now(timezone.utc),
+            checkpoint="chapter_1",
+            template_context_id="scenario-template::s1",
         )
 
         self.assertEqual(result.facts, [])
 
     def test_fact_visible_once_its_checkpoint_is_reached(self):
         engine = self._engine(
-            fact_metadata_rows=[(42, "chapter_2", None, None, False)], checkpoint_row=(["chapter_1", "chapter_2", "chapter_3"],),
+            fact_metadata_rows=[(42, "chapter_2", None, None, False)],
+            checkpoint_row=(["chapter_1", "chapter_2", "chapter_3"],),
         )
 
         result = engine.retrieve_facts(
-            "ctx-1", "what happened to the bridge?", datetime.now(timezone.utc),
-            checkpoint="chapter_3", template_context_id="scenario-template::s1",
+            "ctx-1",
+            "what happened to the bridge?",
+            datetime.now(timezone.utc),
+            checkpoint="chapter_3",
+            template_context_id="scenario-template::s1",
         )
 
         self.assertEqual(len(result.facts), 1)
@@ -927,11 +1228,17 @@ class CheckpointFilteringTests(unittest.TestCase):
     def test_no_checkpoint_order_stored_fails_open(self):
         """Config gap (template never had `checkpoints` authored) -- never
         silently hides a fact a creator meant to be visible."""
-        engine = self._engine(fact_metadata_rows=[(42, "chapter_2", None, None, False)], checkpoint_row=None)
+        engine = self._engine(
+            fact_metadata_rows=[(42, "chapter_2", None, None, False)],
+            checkpoint_row=None,
+        )
 
         result = engine.retrieve_facts(
-            "ctx-1", "what happened to the bridge?", datetime.now(timezone.utc),
-            checkpoint="chapter_1", template_context_id="scenario-template::s1",
+            "ctx-1",
+            "what happened to the bridge?",
+            datetime.now(timezone.utc),
+            checkpoint="chapter_1",
+            template_context_id="scenario-template::s1",
         )
 
         self.assertEqual(len(result.facts), 1)
@@ -940,10 +1247,16 @@ class CheckpointFilteringTests(unittest.TestCase):
         """Milestone 1 callers that don't pass template_context_id (or
         pre-Milestone-5 callers) get exactly Milestone 1-4 behavior --
         checkpoint gating never activates without it."""
-        engine = self._engine(fact_metadata_rows=[(42, "chapter_2", None, None, False)], checkpoint_row=(["chapter_1", "chapter_2"],))
+        engine = self._engine(
+            fact_metadata_rows=[(42, "chapter_2", None, None, False)],
+            checkpoint_row=(["chapter_1", "chapter_2"],),
+        )
 
         result = engine.retrieve_facts(
-            "ctx-1", "what happened to the bridge?", datetime.now(timezone.utc), checkpoint="chapter_1",
+            "ctx-1",
+            "what happened to the bridge?",
+            datetime.now(timezone.utc),
+            checkpoint="chapter_1",
         )
 
         self.assertEqual(len(result.facts), 1)
@@ -961,12 +1274,19 @@ class FakeHydraWithTurnNumber:
         if "SUPERSEDES" in cypher:
             return []
         if "OPTIONAL MATCH" in cypher:
-            return [{
-                "text": "the bridge collapsed", "speaker": None,
-                "valid_from": 0, "valid_to": 9999999999,
-                "observed_at": 1000, "superseded_at": 9999999999,
-                "memory_scope": None, "entity_key": None, "turn_number": self.turn_number,
-            }]
+            return [
+                {
+                    "text": "the bridge collapsed",
+                    "speaker": None,
+                    "valid_from": 0,
+                    "valid_to": 9999999999,
+                    "observed_at": 1000,
+                    "superseded_at": 9999999999,
+                    "memory_scope": None,
+                    "entity_key": None,
+                    "turn_number": self.turn_number,
+                }
+            ]
         if "algo.MSpaths" in cypher:
             return []
         return []
@@ -979,36 +1299,58 @@ class AsOfTurnFilteringTests(unittest.TestCase):
 
     @staticmethod
     def _engine(turn_number):
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ])
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ]
+        )
         conn = FakeConnection(
-            semantic_rows=[("42", 0.1)], registry_rows=[("fact:42", 1)],
+            semantic_rows=[("42", 0.1)],
+            registry_rows=[("fact:42", 1)],
             missing_text_rows=[("42", "the bridge collapsed")],
         )
-        return HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydraWithTurnNumber(turn_number))
+        return HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydraWithTurnNumber(turn_number)
+        )
 
     def test_fact_from_a_later_turn_is_hidden(self):
         engine = self._engine(turn_number=12)
-        result = engine.retrieve_facts("ctx-1", "what happened to the bridge?", datetime.now(timezone.utc), as_of_turn=7)
+        result = engine.retrieve_facts(
+            "ctx-1",
+            "what happened to the bridge?",
+            datetime.now(timezone.utc),
+            as_of_turn=7,
+        )
         self.assertEqual(result.facts, [])
 
     def test_fact_from_an_earlier_or_equal_turn_is_visible(self):
         engine = self._engine(turn_number=7)
-        result = engine.retrieve_facts("ctx-1", "what happened to the bridge?", datetime.now(timezone.utc), as_of_turn=7)
+        result = engine.retrieve_facts(
+            "ctx-1",
+            "what happened to the bridge?",
+            datetime.now(timezone.utc),
+            as_of_turn=7,
+        )
         self.assertEqual(len(result.facts), 1)
 
     def test_fact_with_no_turn_number_fails_open(self):
         """Direct-authored/pre-§4 facts carry no turn_number at all --
         must stay visible, not vanish from every as_of_turn query."""
         engine = self._engine(turn_number=None)
-        result = engine.retrieve_facts("ctx-1", "what happened to the bridge?", datetime.now(timezone.utc), as_of_turn=1)
+        result = engine.retrieve_facts(
+            "ctx-1",
+            "what happened to the bridge?",
+            datetime.now(timezone.utc),
+            as_of_turn=1,
+        )
         self.assertEqual(len(result.facts), 1)
 
     def test_no_as_of_turn_given_skips_the_filter_entirely(self):
         engine = self._engine(turn_number=999)
-        result = engine.retrieve_facts("ctx-1", "what happened to the bridge?", datetime.now(timezone.utc))
+        result = engine.retrieve_facts(
+            "ctx-1", "what happened to the bridge?", datetime.now(timezone.utc)
+        )
         self.assertEqual(len(result.facts), 1)
 
 
@@ -1019,28 +1361,39 @@ class ParticipantVisibilityFilteringTests(unittest.TestCase):
 
     @staticmethod
     def _engine(fact_metadata_rows):
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ])
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ]
+        )
         conn = FakeConnection(
-            semantic_rows=[("42", 0.1)], registry_rows=[("fact:42", 1)],
+            semantic_rows=[("42", 0.1)],
+            registry_rows=[("fact:42", 1)],
             missing_text_rows=[("42", "a secret only Alice knows")],
             fact_metadata_rows=fact_metadata_rows,
         )
-        return HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydraWithFactFields())
+        return HybridRetrievalEngine(
+            llm, FakeEmbedder(), conn, FakeHydraWithFactFields()
+        )
 
     def test_fact_hidden_from_a_different_participant(self):
         engine = self._engine([(42, None, None, "participant-alice", False)])
         result = engine.retrieve_facts(
-            "ctx-1", "what's the secret?", datetime.now(timezone.utc), participant_id="participant-bob",
+            "ctx-1",
+            "what's the secret?",
+            datetime.now(timezone.utc),
+            participant_id="participant-bob",
         )
         self.assertEqual(result.facts, [])
 
     def test_fact_visible_to_the_restricted_participant(self):
         engine = self._engine([(42, None, None, "participant-alice", False)])
         result = engine.retrieve_facts(
-            "ctx-1", "what's the secret?", datetime.now(timezone.utc), participant_id="participant-alice",
+            "ctx-1",
+            "what's the secret?",
+            datetime.now(timezone.utc),
+            participant_id="participant-alice",
         )
         self.assertEqual(len(result.facts), 1)
 
@@ -1049,13 +1402,18 @@ class ParticipantVisibilityFilteringTests(unittest.TestCase):
         exclude a restricted fact -- same fail-open posture as checkpoint/
         when_active config gaps."""
         engine = self._engine([(42, None, None, "participant-alice", False)])
-        result = engine.retrieve_facts("ctx-1", "what's the secret?", datetime.now(timezone.utc))
+        result = engine.retrieve_facts(
+            "ctx-1", "what's the secret?", datetime.now(timezone.utc)
+        )
         self.assertEqual(len(result.facts), 1)
 
     def test_unrestricted_fact_visible_to_everyone(self):
         engine = self._engine([(42, None, None, None, False)])
         result = engine.retrieve_facts(
-            "ctx-1", "what's the secret?", datetime.now(timezone.utc), participant_id="participant-bob",
+            "ctx-1",
+            "what's the secret?",
+            datetime.now(timezone.utc),
+            participant_id="participant-bob",
         )
         self.assertEqual(len(result.facts), 1)
 
@@ -1105,7 +1463,12 @@ class SemanticSearchModelFilterTests(unittest.TestCase):
         conn = self._RecordingConnection()
         seeder = CandidateSeeder(conn, self._VersionedEmbedder())
 
-        seeder.seed("ctx-1", "question", QueryRewriterOutput(decomposed_queries=[], synonyms=[]), top_k=5)
+        seeder.seed(
+            "ctx-1",
+            "question",
+            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            top_k=5,
+        )
 
         semantic_query, semantic_params = conn.cursor_obj.executed[0]
         self.assertIn("model_name = %s AND model_version = %s", semantic_query)
@@ -1122,7 +1485,12 @@ class SemanticSearchModelFilterTests(unittest.TestCase):
         conn = self._RecordingConnection()
         seeder = CandidateSeeder(conn, FakeEmbedder())
 
-        seeder.seed("ctx-1", "question", QueryRewriterOutput(decomposed_queries=[], synonyms=[]), top_k=5)
+        seeder.seed(
+            "ctx-1",
+            "question",
+            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            top_k=5,
+        )
 
         _, semantic_params = conn.cursor_obj.executed[0]
         self.assertIn("unknown", semantic_params)
@@ -1136,6 +1504,7 @@ class CountQueryDetectionTests(unittest.TestCase):
 
     def test_count_query_phrasings_are_detected(self):
         from context_memory.retrieval.detectors import looks_like_count_query
+
         positives = [
             "How many magazine subscriptions do I currently have?",
             "How many graduation ceremonies have I attended in the past three months?",
@@ -1150,6 +1519,7 @@ class CountQueryDetectionTests(unittest.TestCase):
 
     def test_single_fact_lookups_are_not_flagged(self):
         from context_memory.retrieval.detectors import looks_like_count_query
+
         negatives = [
             "What is my dog's name?",
             "Where do I live?",
@@ -1160,38 +1530,70 @@ class CountQueryDetectionTests(unittest.TestCase):
             self.assertFalse(looks_like_count_query(q), q)
 
     def test_retrieve_and_answer_widens_top_k_for_a_detected_count_query(self):
-        from context_memory.core.logging import drain_metrics, enable_metrics_collection, disable_metrics_collection
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ], text_response="answer")
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), FakeConnection(), FakeHydra())
+        from context_memory.core.logging import (
+            disable_metrics_collection,
+            drain_metrics,
+            enable_metrics_collection,
+        )
+
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ],
+            text_response="answer",
+        )
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), FakeConnection(), FakeHydra()
+        )
         enable_metrics_collection()
         try:
-            engine.retrieve_and_answer("ctx-1", "How many pets do I have?", datetime.now(timezone.utc))
+            engine.retrieve_and_answer(
+                "ctx-1", "How many pets do I have?", datetime.now(timezone.utc)
+            )
             records = drain_metrics()
         finally:
             disable_metrics_collection()
-        top = next(r for r in records if r.get("operation") == "retrieval.retrieve_and_answer")
+        top = next(
+            r for r in records if r.get("operation") == "retrieval.retrieve_and_answer"
+        )
         self.assertTrue(top["is_count_query"])
         self.assertEqual(top["top_k"], engine._config.retrieval_count_query_top_k)
-        self.assertGreater(engine._config.retrieval_count_query_top_k, engine._config.retrieval_top_k)
+        self.assertGreater(
+            engine._config.retrieval_count_query_top_k, engine._config.retrieval_top_k
+        )
 
     def test_explicit_top_k_override_is_never_second_guessed(self):
-        from context_memory.core.logging import drain_metrics, enable_metrics_collection, disable_metrics_collection
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ], text_response="answer")
-        engine = HybridRetrievalEngine(llm, FakeEmbedder(), FakeConnection(), FakeHydra())
+        from context_memory.core.logging import (
+            disable_metrics_collection,
+            drain_metrics,
+            enable_metrics_collection,
+        )
+
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ],
+            text_response="answer",
+        )
+        engine = HybridRetrievalEngine(
+            llm, FakeEmbedder(), FakeConnection(), FakeHydra()
+        )
         enable_metrics_collection()
         try:
-            engine.retrieve_and_answer("ctx-1", "How many pets do I have?", datetime.now(timezone.utc), top_k=5)
+            engine.retrieve_and_answer(
+                "ctx-1", "How many pets do I have?", datetime.now(timezone.utc), top_k=5
+            )
             records = drain_metrics()
         finally:
             disable_metrics_collection()
-        top = next(r for r in records if r.get("operation") == "retrieval.retrieve_and_answer")
-        self.assertFalse(top["is_count_query"])  # heuristic is skipped when top_k is explicit
+        top = next(
+            r for r in records if r.get("operation") == "retrieval.retrieve_and_answer"
+        )
+        self.assertFalse(
+            top["is_count_query"]
+        )  # heuristic is skipped when top_k is explicit
         self.assertEqual(top["top_k"], 5)
 
 
@@ -1206,6 +1608,7 @@ class DurationQueryTests(unittest.TestCase):
 
     def test_duration_phrasings_are_detected(self):
         from context_memory.retrieval.detectors import looks_like_duration_query
+
         for q in [
             "How many days ago did I participate in the 5K charity run?",
             "How many weeks ago did I attend the friends and family sale?",
@@ -1220,7 +1623,10 @@ class DurationQueryTests(unittest.TestCase):
         """The two heuristics must stay disjoint -- a count question must not
         pick up date-arithmetic guidance or the reference-date header, which
         measurably regressed one ('magazine subscriptions' went 2 -> 1)."""
-        from context_memory.retrieval.detectors import looks_like_duration_query, looks_like_count_query
+        from context_memory.retrieval.detectors import (
+            looks_like_duration_query,
+        )
+
         for q in [
             "How many magazine subscriptions do I currently have?",
             "How many graduation ceremonies have I attended in the past three months?",
@@ -1235,15 +1641,20 @@ class DurationQueryTests(unittest.TestCase):
         conn = FakeConnection(
             semantic_rows=[("fact-1", 0.1)],
             registry_rows=[("fact:fact-1", 1)],
-            missing_text_rows=[("fact-1", "The user completed a 5K charity run today.")],
+            missing_text_rows=[
+                ("fact-1", "The user completed a 5K charity run today.")
+            ],
         )
         return HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra())
 
     def test_duration_query_gets_guidance_and_reference_date(self):
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ], text_response="answer")
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ],
+            text_response="answer",
+        )
         engine = self._engine_with_a_fact(llm)
         when = datetime(2023, 3, 21, tzinfo=timezone.utc)
         engine.retrieve_and_answer("ctx-1", "How many days ago did I run the 5K?", when)
@@ -1252,13 +1663,18 @@ class DurationQueryTests(unittest.TestCase):
         self.assertIn("AGO / SINCE", prompt)
 
     def test_non_duration_query_gets_neither(self):
-        llm = FakeLLMClient([
-            DateRange(valid_from=None, valid_to=None),
-            QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
-        ], text_response="answer")
+        llm = FakeLLMClient(
+            [
+                DateRange(valid_from=None, valid_to=None),
+                QueryRewriterOutput(decomposed_queries=[], synonyms=[]),
+            ],
+            text_response="answer",
+        )
         engine = self._engine_with_a_fact(llm)
         when = datetime(2023, 3, 21, tzinfo=timezone.utc)
-        engine.retrieve_and_answer("ctx-1", "How many magazine subscriptions do I have?", when)
+        engine.retrieve_and_answer(
+            "ctx-1", "How many magazine subscriptions do I have?", when
+        )
         prompt = llm.last_reader_system_prompt
         self.assertNotIn("today's date is", prompt)
         self.assertNotIn("AGO / SINCE", prompt)
@@ -1284,12 +1700,18 @@ class GraphIdShapedFactIdTests(unittest.TestCase):
                 if "SUPERSEDES" in cypher:
                     return []
                 if "MATCH (f {id: 142})" in cypher:
-                    return [{
-                        "text": "Sukuna status alive", "speaker": None,
-                        "valid_from": 0, "valid_to": 9999999999,
-                        "observed_at": 1000, "superseded_at": 9999999999,
-                        "memory_scope": None, "entity_key": None,
-                    }]
+                    return [
+                        {
+                            "text": "Sukuna status alive",
+                            "speaker": None,
+                            "valid_from": 0,
+                            "valid_to": 9999999999,
+                            "observed_at": 1000,
+                            "superseded_at": 9999999999,
+                            "memory_scope": None,
+                            "entity_key": None,
+                        }
+                    ]
                 if "algo.MSpaths" in cypher:
                     return []
                 raise AssertionError(f"unexpected cypher: {cypher}")
@@ -1300,7 +1722,9 @@ class GraphIdShapedFactIdTests(unittest.TestCase):
         expander = GraphExpander(conn, ProbeHydra())
         seed_facts = {"142": ScoredFact("142", "")}
 
-        graph_data = expander.expand("ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc))
+        graph_data = expander.expand(
+            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+        )
 
         self.assertIn("142", graph_data)
         self.assertIn("142", seed_facts)
@@ -1312,7 +1736,9 @@ class GraphIdShapedFactIdTests(unittest.TestCase):
         expander = GraphExpander(conn, FakeHydra())
         seed_facts = {"cand-abc123": ScoredFact("cand-abc123", "")}
 
-        graph_data = expander.expand("ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc))
+        graph_data = expander.expand(
+            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+        )
 
         self.assertIn("cand-abc123", graph_data)
 
@@ -1320,24 +1746,36 @@ class GraphIdShapedFactIdTests(unittest.TestCase):
         """The realistic production shape: a playthrough context with BOTH
         cloned/direct-authored facts (digit-shaped) and live per-turn
         extracted facts (candidate_id-shaped) seeded in the same call."""
+
         class ProbeHydra:
             def read(self, cypher, params, bookmark):
                 if "SUPERSEDES" in cypher:
                     return []
                 if "algo.MSpaths" in cypher:
                     return []
-                return [{
-                    "text": "x", "speaker": None,
-                    "valid_from": 0, "valid_to": 9999999999,
-                    "observed_at": 1000, "superseded_at": 9999999999,
-                    "memory_scope": None, "entity_key": None,
-                }]
+                return [
+                    {
+                        "text": "x",
+                        "speaker": None,
+                        "valid_from": 0,
+                        "valid_to": 9999999999,
+                        "observed_at": 1000,
+                        "superseded_at": 9999999999,
+                        "memory_scope": None,
+                        "entity_key": None,
+                    }
+                ]
 
         conn = FakeConnection(registry_rows=[("fact:cand-abc123", 7)])
         expander = GraphExpander(conn, ProbeHydra())
-        seed_facts = {"142": ScoredFact("142", ""), "cand-abc123": ScoredFact("cand-abc123", "")}
+        seed_facts = {
+            "142": ScoredFact("142", ""),
+            "cand-abc123": ScoredFact("cand-abc123", ""),
+        }
 
-        graph_data = expander.expand("ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc))
+        graph_data = expander.expand(
+            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+        )
 
         self.assertIn("142", graph_data)
         self.assertIn("cand-abc123", graph_data)

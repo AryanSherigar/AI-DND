@@ -11,7 +11,6 @@ mirroring end_condition_evaluator.py exactly.
 import uuid
 
 import structlog
-
 from app.turn.expression_evaluator import evaluate
 
 logger = structlog.get_logger()

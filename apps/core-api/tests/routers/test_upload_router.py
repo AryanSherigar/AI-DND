@@ -7,7 +7,8 @@ import pytest
 from httpx import AsyncClient
 
 from app.config import settings
-from app.integrations import storage_client
+from app.exceptions.upload_exceptions import ImageGenerationError
+from app.integrations import image_gen_client, storage_client
 
 
 @pytest.fixture
@@ -136,3 +137,53 @@ async def test_upload_cover_image_requires_auth(async_client: AsyncClient):
 
     resp = await async_client.post("/v1/uploads/scenario-cover-image", files=files)
     assert resp.status_code == 401
+
+
+@pytest.fixture
+def mock_generate_image(monkeypatch):
+    async def _fake_generate_image(prompt: str, timeout_seconds: int) -> bytes:
+        return b"\x89PNG\r\n\x1a\n" + b"0" * 100
+
+    monkeypatch.setattr(image_gen_client, "generate_image", _fake_generate_image)
+
+
+@pytest.mark.asyncio
+async def test_generate_cover_image_success(
+    async_client: AsyncClient, mock_generate_image, mock_upload_image
+):
+    headers = {"x-dev-user-id": str(uuid.uuid4())}
+    body = {"title": "The Sunken Keep", "genre_tags": ["fantasy", "horror"]}
+
+    resp = await async_client.post(
+        "/v1/uploads/generate-cover-image", headers=headers, json=body
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["url"].startswith(
+        "https://storage.googleapis.com/fake-bucket/scenario-covers/"
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_cover_image_requires_auth(async_client: AsyncClient):
+    body = {"title": "The Sunken Keep", "genre_tags": []}
+
+    resp = await async_client.post("/v1/uploads/generate-cover-image", json=body)
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_generate_cover_image_generation_failure_returns_502(
+    async_client: AsyncClient, monkeypatch
+):
+    async def _failing_generate_image(prompt: str, timeout_seconds: int) -> bytes:
+        raise ImageGenerationError()
+
+    monkeypatch.setattr(image_gen_client, "generate_image", _failing_generate_image)
+    headers = {"x-dev-user-id": str(uuid.uuid4())}
+    body = {"title": "The Sunken Keep", "genre_tags": []}
+
+    resp = await async_client.post(
+        "/v1/uploads/generate-cover-image", headers=headers, json=body
+    )
+    assert resp.status_code == 502
