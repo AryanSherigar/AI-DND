@@ -7,6 +7,7 @@ import { BackgroundMist } from "../components/PlayScreen/BackgroundMist";
 import { SetupStageCard } from "../components/SetupScreen/SetupStageCard";
 import { DramaticSetupLoader } from "../components/SetupScreen/DramaticSetupLoader";
 import { Toast } from "@/shared/components/feedback/Toast";
+import { extractErrorMessage } from "@/shared/lib/extractErrorMessage";
 
 export const SetupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +21,9 @@ export const SetupPage: React.FC = () => {
   const createPlaythroughMutation = useCreatePlaythrough();
 
   const [isLoadingOverlay, setIsLoadingOverlay] = useState(false);
+  const [createdPlaythroughId, setCreatedPlaythroughId] = useState<
+    string | null
+  >(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const playthroughIdRef = useRef<string | null>(null);
@@ -40,39 +44,40 @@ export const SetupPage: React.FC = () => {
 
     setErrorMessage(null);
     playthroughIdRef.current = null;
+    setCreatedPlaythroughId(null);
     loaderFinishedRef.current = false;
     setIsLoadingOverlay(true);
 
     try {
-      const targetScenarioId =
-        scenario.scenario_id || (scenario as any).id || id || "";
+      const targetScenarioId = scenario.scenario_id || id || "";
       const result = await createPlaythroughMutation.mutateAsync({
         scenario_id: targetScenarioId,
         setup_values: formValues,
       });
 
       playthroughIdRef.current = result.playthrough_id;
+      setCreatedPlaythroughId(result.playthrough_id);
 
-      // If animation already completed while waiting for API
       if (loaderFinishedRef.current) {
         navigate(`/play/${result.playthrough_id}`);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setIsLoadingOverlay(false);
-      const detail =
-        err?.response?.data?.detail ||
-        err?.message ||
-        "Failed to initialize campaign. Please check your setup choices and try again.";
+      setCreatedPlaythroughId(null);
       setErrorMessage(
-        typeof detail === "string" ? detail : JSON.stringify(detail),
+        extractErrorMessage(
+          err,
+          "Failed to initialize campaign. Please check your setup choices and try again.",
+        ),
       );
     }
   };
 
   const handleLoaderComplete = () => {
     loaderFinishedRef.current = true;
-    if (playthroughIdRef.current) {
-      navigate(`/play/${playthroughIdRef.current}`);
+    const targetId = createdPlaythroughId || playthroughIdRef.current;
+    if (targetId) {
+      navigate(`/play/${targetId}`);
     }
   };
 
@@ -124,6 +129,7 @@ export const SetupPage: React.FC = () => {
       {isLoadingOverlay && (
         <DramaticSetupLoader
           scenarioTitle={scenario.title}
+          isReady={Boolean(createdPlaythroughId)}
           onComplete={handleLoaderComplete}
         />
       )}

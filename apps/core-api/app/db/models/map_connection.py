@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import CheckConstraint, ForeignKey, Text, UniqueConstraint, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,6 +27,7 @@ class MapConnection(Base, CreatedAtMixin):
         UniqueConstraint(
             "scenario_id", "entity_id_a", "entity_id_b", name="uq_map_connections_pair"
         ),
+        Index("idx_map_connections_scenario_id", "scenario_id"),
     )
 
     connection_id: Mapped[uuid.UUID] = mapped_column(

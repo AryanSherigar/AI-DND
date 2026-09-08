@@ -8,6 +8,7 @@ exists, is owned by the caller, and is a master-mode scenario
 """
 
 import uuid
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import ValidationError as PydanticValidationError
@@ -39,6 +40,28 @@ REACHABILITY_MAX_ATTEMPTS = 3
 REACHABILITY_MIN_WAIT_SECONDS = 1
 REACHABILITY_MAX_WAIT_SECONDS = 4
 REACHABILITY_REQUEST_TIMEOUT_SECONDS = 5.0
+
+ALLOWED_REPLIT_HOST_SUFFIXES = (".replit.app", ".replit.dev", ".repl.co")
+
+
+def _validate_safe_replit_url(url: str) -> None:
+    """Reject any replit_embed_url that isn't HTTPS to an authorized Replit
+    domain — closes an SSRF path where the save-time reachability check's
+    outbound GET could otherwise be pointed at internal services or cloud
+    metadata endpoints. Host is restricted to suffixes Replit itself
+    controls the DNS for, so no live IP resolution is needed (which would
+    also block the event loop and require live network access)."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise MinigameValidationError("replit_embed_url must use https")
+    host = parsed.hostname
+    if not host or not any(
+        host.endswith(suffix) for suffix in ALLOWED_REPLIT_HOST_SUFFIXES
+    ):
+        raise MinigameValidationError(
+            "replit_embed_url must point to an authorized replit domain"
+        )
+
 
 _MERGEABLE_FIELDS = (
     "label",
@@ -182,6 +205,7 @@ class MinigameService:
         sleeping free-tier Repl's cold start (2-3 attempts, exponential
         backoff). A save-time confidence check only — distinct from
         Studio's client-side SDK handshake."""
+        _validate_safe_replit_url(url)
         try:
             async for attempt in AsyncRetrying(
                 stop=stop_after_attempt(REACHABILITY_MAX_ATTEMPTS),

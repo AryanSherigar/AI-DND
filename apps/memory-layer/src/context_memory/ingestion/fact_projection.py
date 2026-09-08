@@ -28,7 +28,7 @@ silently let one context's write overwrite another's.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
 
 from context_memory.core.models import Chunk, Embedding, SourceDescriptor
@@ -46,7 +46,7 @@ from context_memory.ingestion.ports import (
 # looked up (and re-inserted, as a no-op) every time a fact is authored or
 # cloned under the same context_id. A wall-clock value here would make the
 # SECOND call ever made for a context raise ImmutableRecordConflictError.
-_PLACEHOLDER_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+_PLACEHOLDER_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 _PLACEHOLDER_RAW_TEXT = (
     "placeholder evidence chunk for a fact projected outside extraction"
 )
@@ -73,7 +73,9 @@ class FactProjectionWriter:
     def project(self, context_id: str, fact_graph_id: int, text: str) -> None:
         """Direct-authoring entry point (`direct_authoring.write_fact`):
         embeds `text` fresh and writes both rows under `str(fact_graph_id)`."""
-        source_chunk_id = self._ensure_authoring_chunk(context_id, "direct_authoring")
+        source_chunk_id = self._ensure_authoring_chunk(
+            context_id, "direct_authoring", fact_graph_id
+        )
         vector = self._embedder.embed(text)
         self._write(context_id, fact_graph_id, text, vector, source_chunk_id)
 
@@ -93,7 +95,7 @@ class FactProjectionWriter:
         no matching source row exists -- a template authored/cloned before
         this writer existed, or under a since-upgraded embedding model."""
         source_chunk_id = self._ensure_authoring_chunk(
-            target_context_id, "template_clone"
+            target_context_id, "template_clone", new_fact_graph_id
         )
         model_name = getattr(self._embedder, "model_name", "unknown")
         model_version = getattr(self._embedder, "model_version", "1")
@@ -134,11 +136,21 @@ class FactProjectionWriter:
             context_id=context_id, fact_id=subject_id, raw_text=text
         )
 
-    def _ensure_authoring_chunk(self, context_id: str, source_type: str) -> str:
-        """One idempotent placeholder `evidence_chunks` row per context_id --
+    def _ensure_authoring_chunk(
+        self, context_id: str, source_type: str, fact_graph_id: int
+    ) -> str:
+        """One idempotent placeholder `evidence_chunks` row PER FACT --
         satisfies `memory_embeddings.source_chunk_id`'s `NOT NULL` FK for
-        facts that never went through extraction and so have no real chunk."""
-        record_id = f"{context_id}:fact-projection-placeholder"
+        facts that never went through extraction and so have no real chunk.
+
+        NEW-HIGH-02 fix: keyed on `fact_graph_id`, not just `context_id` --
+        every authored/cloned fact previously shared one placeholder chunk
+        per context, which made `SiblingExpander`'s same-chunk join treat
+        every authored fact in a scenario as a sibling of every other one
+        (a cross-product blowup). One fact per chunk correctly means an
+        authored fact has no siblings via this join, matching reality: it
+        wasn't extracted from a shared passage."""
+        record_id = f"{context_id}:fact-projection-placeholder:{fact_graph_id}"
         chunk = Chunk(
             chunk_id=chunk_id_for(context_id, record_id),
             context_id=context_id,

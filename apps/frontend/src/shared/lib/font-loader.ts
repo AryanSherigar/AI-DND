@@ -24,11 +24,12 @@ function injectFontStylesheet(definition: NarrationFontDefinition): void {
     return;
   }
 
-  const href = definition.cdnUrl
-    ? definition.cdnUrl
-    : definition.googleFontFamily
-      ? buildGoogleFontUrl(definition.googleFontFamily)
-      : null;
+  let href: string | null = null;
+  if (definition.cdnUrl) {
+    href = definition.cdnUrl;
+  } else if (definition.googleFontFamily) {
+    href = buildGoogleFontUrl(definition.googleFontFamily);
+  }
 
   if (!href) return;
 

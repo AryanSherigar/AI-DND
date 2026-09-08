@@ -193,6 +193,14 @@ class SavePointResponse(BaseModel):
     created_at: datetime
 
 
+class RollbackRequest(BaseModel):
+    """CRIT-02 fix: the caller must state which context it believes owns
+    `save_id` so the engine can reject cross-tenant rollbacks rather than
+    trusting a bare, guessable save_id."""
+
+    context_id: str
+
+
 class RollbackResponse(BaseModel):
     save_id: str
     archived_fact_ids: list[str]

@@ -31,6 +31,16 @@ class ScenarioRepo:
         result = await self.session.execute(stmt)
         return result.scalars().first()
 
+    async def get_by_id_for_update(self, scenario_id: uuid.UUID) -> Scenario | None:
+        """Retrieve a scenario by primary key with an exclusive row lock (FOR UPDATE)."""
+        stmt = (
+            select(Scenario)
+            .where(Scenario.scenario_id == scenario_id)
+            .with_for_update()
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
     async def update(self, scenario: Scenario) -> Scenario:
         """Flush changes to an existing scenario entity."""
         await self.session.flush()

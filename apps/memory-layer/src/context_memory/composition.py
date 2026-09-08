@@ -44,6 +44,7 @@ from context_memory.persistence.migrations import apply_migrations
 from context_memory.persistence.postgres import (
     PostgresChunkStore,
     PostgresEmbeddingStore,
+    PostgresExternalFactIdStore,
     PostgresExtractionStore,
     PostgresGraphManifestStore,
     PostgresJobStore,
@@ -75,6 +76,7 @@ def build_ingestion_and_retrieval(
     extractor: Extractor | None = None,
     extraction_store: Any | None = None,
     journal: StepJournal | None = None,
+    external_fact_id_store: Any | None = None,
 ) -> tuple[IngestionOrchestrator, HybridRetrievalEngine, Extractor]:
     """`reader_llm_client` is explicit, not defaulted, because the two callers
     currently pass different clients there and unifying that choice is a
@@ -186,6 +188,7 @@ def build_ingestion_and_retrieval(
             config.get_query_rewriter_client(), journal, "query_rewriter"
         ),
         rerank_client=_journaled(config.get_rerank_client(), journal, "rerank"),
+        external_fact_id_store=external_fact_id_store,
     )
 
     return orchestrator, retrieval_engine, extractor
@@ -239,6 +242,11 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
     )
     embedder = SentenceTransformerEmbedder(model_name=config.embedding_model_name)
     journal = StepJournal(pool) if config.step_journal_enabled else None
+    # NEW-CRIT-01 fix: shared with MemoryEngine below (`external_fact_id_store`)
+    # rather than building two -- it's a stateless wrapper over `pool`, same
+    # "second instance costs nothing, but no reason to" reasoning the other
+    # stores here already use.
+    external_fact_id_store = PostgresExternalFactIdStore(pool)
 
     orchestrator, retrieval_engine, _extractor = build_ingestion_and_retrieval(
         pool=pool,
@@ -247,6 +255,7 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
         config=config,
         reader_llm_client=config.get_reader_client(),
         journal=journal,
+        external_fact_id_store=external_fact_id_store,
     )
 
     # Phase 6: rollback gets its own `GraphWriter` -- `PostgresGraphManifestStore`
@@ -297,4 +306,5 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
         authoring_graph_writer=authoring_graph_writer,
         hydra_transport=hydra_transport,
         fact_projection_writer=fact_projection_writer,
+        external_fact_id_store=external_fact_id_store,
     )

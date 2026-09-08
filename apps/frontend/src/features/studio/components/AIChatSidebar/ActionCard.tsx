@@ -90,7 +90,9 @@ export const ActionCard: React.FC<ActionCardProps> = ({
         </span>
       </div>
 
-      {summary && <p className="text-xs font-mono text-content-muted">{summary}</p>}
+      {summary && (
+        <p className="text-xs font-mono text-content-muted">{summary}</p>
+      )}
 
       {validationErrors && validationErrors.length > 0 && (
         <div className="rounded-md border border-accent/40 bg-accent/10 p-2 text-[11px] text-accent space-y-0.5">

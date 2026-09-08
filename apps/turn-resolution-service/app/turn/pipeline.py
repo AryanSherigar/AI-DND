@@ -39,11 +39,20 @@ exactly as if action_mode were not "see" (a missing image never degrades a
 turn).
 """
 
+import asyncio
+import ipaddress
+import re
+import socket
 import uuid
 from collections.abc import AsyncIterator
+from urllib.parse import urlsplit
 
 import httpx
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse, ServerSentEvent
+from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt
+
 from app.config import settings
 from app.db.models.participant import Participant
 from app.exceptions.turn_exceptions import (
@@ -80,9 +89,6 @@ from app.turn.steps.end_condition_evaluator import MatchedOutcome
 from app.turn.steps.minigame_trigger_evaluator import MatchedMinigameTrigger
 from app.turn.steps.state_writer import SceneImageResult
 from app.turn.turn_order import expected_participant
-from sqlalchemy.ext.asyncio import AsyncSession
-from sse_starlette.sse import EventSourceResponse, ServerSentEvent
-from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt
 
 logger = structlog.get_logger()
 
@@ -99,6 +105,10 @@ _DEGRADED_CONCURRENCY_MESSAGE = "Another turn was processed while yours was gene
 _MINIGAME_TYPE_REPLIT_EMBED = "replit_embed"
 _PREWARM_TIMEOUT_SECONDS = 2.0
 _PREWARM_MAX_ATTEMPTS = 2
+_PREWARM_ALLOWED_HOSTNAME_RE = re.compile(
+    r"^[a-zA-Z0-9-]+\.(replit\.app|repl\.co|replit\.dev)$"
+)
+EVENT_MINIGAME_PREWARM_URL_REJECTED = "minigame_prewarm_url_rejected"
 
 
 async def run_turn(
@@ -365,7 +375,16 @@ async def _prewarm_replit_url(url: str) -> None:
     """Best-effort HTTP ping to wake a sleeping free-tier Replit before the
     player reaches the minigame overlay. Capped total budget of a couple
     seconds so it never meaningfully delays the SSE stream — exceptions are
-    swallowed and logged, never re-raised into the turn (§3.6 "Never")."""
+    swallowed and logged, never re-raised into the turn (§3.6 "Never").
+
+    Scenario authors control replit_embed_url, so it is untrusted input:
+    validated against an https + replit-domain allowlist and its resolved
+    IP checked against private/loopback/link-local ranges before any
+    request is made, to prevent SSRF against internal services or cloud
+    metadata endpoints."""
+    if not await _is_safe_prewarm_url(url):
+        logger.warning(EVENT_MINIGAME_PREWARM_URL_REJECTED, url=url)
+        return
     try:
         async with httpx.AsyncClient(timeout=_PREWARM_TIMEOUT_SECONDS) as client:
             async for attempt in AsyncRetrying(
@@ -377,6 +396,32 @@ async def _prewarm_replit_url(url: str) -> None:
                     await client.get(url)
     except Exception:
         logger.warning(EVENT_MINIGAME_PREWARM_FAILED, url=url, exc_info=True)
+
+
+async def _is_safe_prewarm_url(url: str) -> bool:
+    """Enforce https + replit-domain allowlist + non-private resolved IP."""
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        return False
+    if not _PREWARM_ALLOWED_HOSTNAME_RE.match(parsed.hostname):
+        return False
+    return await _resolves_to_public_ip(parsed.hostname)
+
+
+async def _resolves_to_public_ip(hostname: str) -> bool:
+    try:
+        loop = asyncio.get_running_loop()
+        addr_infos = await loop.run_in_executor(
+            None, socket.getaddrinfo, hostname, None
+        )
+    except socket.gaierror:
+        return False
+    return all(_is_public_ip(info[4][0]) for info in addr_infos)
+
+
+def _is_public_ip(raw_ip: str) -> bool:
+    ip = ipaddress.ip_address(raw_ip)
+    return not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved)
 
 
 def _build_turn_summary_event(

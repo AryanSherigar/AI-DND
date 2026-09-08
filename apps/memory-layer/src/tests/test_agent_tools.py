@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import unittest
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from context_memory.core.agent_tools import (
     build_memory_agent_tools,
@@ -25,7 +25,7 @@ class FakeSavePointStore:
         self._points: dict[str, SavePoint] = {}
 
     def seed(self, save_id: str, context_id: str, label: str | None = None) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self._points[save_id] = SavePoint(save_id, context_id, None, label, now, now)
 
     def get(self, save_id: str):
@@ -39,7 +39,7 @@ class FakeEngine:
     def __init__(self) -> None:
         self._save_point_store = FakeSavePointStore()
         self.search_calls: list[tuple[str, str]] = []
-        self.rollback_calls: list[str] = []
+        self.rollback_calls: list[tuple[str, str]] = []
 
     def search_memories(self, context_id, query, question_date):
         self.search_calls.append((context_id, query))
@@ -50,8 +50,8 @@ class FakeEngine:
         self._save_point_store.seed(save_id, context_id, label)
         return self._save_point_store.get(save_id)
 
-    def rollback_to(self, save_id):
-        self.rollback_calls.append(save_id)
+    def rollback_to(self, save_id, context_id):
+        self.rollback_calls.append((save_id, context_id))
         return RollbackResult(
             save_id=save_id, archived_fact_ids=("fact-1",), restored_fact_ids=()
         )
@@ -100,7 +100,7 @@ class BuildMemoryAgentToolsTests(unittest.TestCase):
 
         result = tool.handler({"save_id": "save-1"})
 
-        self.assertEqual(engine.rollback_calls, ["save-1"])
+        self.assertEqual(engine.rollback_calls, [("save-1", "context-1")])
         self.assertEqual(result["archived_fact_ids"], ["fact-1"])
 
 

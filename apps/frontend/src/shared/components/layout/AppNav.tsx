@@ -92,9 +92,7 @@ export const AppNav: React.FC = () => {
   const isRoute = (path: string): boolean => location.pathname === path;
   const isDiscover = location.pathname.startsWith("/discover");
   const showBrowseSections =
-    isDiscover ||
-    isRoute("/") ||
-    location.pathname.startsWith("/scenario");
+    isDiscover || isRoute("/") || location.pathname.startsWith("/scenario");
 
   return (
     <>

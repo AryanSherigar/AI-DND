@@ -88,7 +88,9 @@ export const MapConnectionEditor: React.FC<MapConnectionEditorProps> = ({
               {entityName(connection.entity_id_a)} ↔{" "}
               {entityName(connection.entity_id_b)}
               {connection.label && (
-                <span className="ml-2 text-content-faint">({connection.label})</span>
+                <span className="ml-2 text-content-faint">
+                  ({connection.label})
+                </span>
               )}
             </span>
             <button

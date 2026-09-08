@@ -31,8 +31,15 @@ export interface LiveHazard {
 
 export interface HazardLayer {
   container: Container;
-  spawn: (spawns: HazardSpawn[], patternType: HazardPatternType) => LiveHazard[];
-  updatePositions: (hazards: LiveHazard[], deltaMs: number, deltaSeconds: number) => void;
+  spawn: (
+    spawns: HazardSpawn[],
+    patternType: HazardPatternType,
+  ) => LiveHazard[];
+  updatePositions: (
+    hazards: LiveHazard[],
+    deltaMs: number,
+    deltaSeconds: number,
+  ) => void;
   despawn: (hazard: LiveHazard) => void;
   despawnAll: (hazards: LiveHazard[]) => void;
 }
@@ -51,10 +58,26 @@ export function parseObstacleColor(value: string | undefined): number | null {
 // Orbs and shards are drawn centered on the hazard's own local origin;
 // beams are handled separately by renderBeamOrShape since they need the
 // arena dimensions to span the full width/height.
-function drawOrbOrShard(graphics: Graphics, spawn: HazardSpawn, color: number, style: DodgeObstacleStyle): void {
+function drawOrbOrShard(
+  graphics: Graphics,
+  spawn: HazardSpawn,
+  color: number,
+  style: DodgeObstacleStyle,
+): void {
   graphics.clear();
   if (style === "crystal") {
-    graphics.poly([0, -spawn.radius * 1.3, spawn.radius, 0, 0, spawn.radius * 1.3, -spawn.radius, 0]).fill(color);
+    graphics
+      .poly([
+        0,
+        -spawn.radius * 1.3,
+        spawn.radius,
+        0,
+        0,
+        spawn.radius * 1.3,
+        -spawn.radius,
+        0,
+      ])
+      .fill(color);
     return;
   }
   if (style === "neon") {
@@ -103,20 +126,36 @@ export function buildHazardLayer(
   const style = appearance.style ?? "ash";
   const customColor = parseObstacleColor(appearance.color);
 
-  const spawn = (spawns: HazardSpawn[], patternType: HazardPatternType): LiveHazard[] => {
+  const spawn = (
+    spawns: HazardSpawn[],
+    patternType: HazardPatternType,
+  ): LiveHazard[] => {
     const color = customColor ?? HAZARD_COLOR_BY_PATTERN[patternType];
     return spawns.map((hazardSpawn) => {
       const graphics = new Graphics();
-      renderBeamOrShape(graphics, hazardSpawn, color, arenaWidth, arenaHeight, style);
+      renderBeamOrShape(
+        graphics,
+        hazardSpawn,
+        color,
+        arenaWidth,
+        arenaHeight,
+        style,
+      );
       graphics.position.set(hazardSpawn.x, hazardSpawn.y);
-      graphics.alpha = hazardSpawn.telegraphMs > 0 ? TELEGRAPH_ALPHA : SOLID_ALPHA;
+      graphics.alpha =
+        hazardSpawn.telegraphMs > 0 ? TELEGRAPH_ALPHA : SOLID_ALPHA;
       container.addChild(graphics);
 
       const trail: Graphics[] = [];
       if (hazardSpawn.homing) {
         for (let i = 0; i < HOMING_TRAIL_LENGTH; i += 1) {
-          const ghost = new Graphics().circle(0, 0, hazardSpawn.radius).fill(color);
-          ghost.alpha = Math.max(0, SOLID_ALPHA - HOMING_TRAIL_ALPHA_STEP * (i + 1) * 2);
+          const ghost = new Graphics()
+            .circle(0, 0, hazardSpawn.radius)
+            .fill(color);
+          ghost.alpha = Math.max(
+            0,
+            SOLID_ALPHA - HOMING_TRAIL_ALPHA_STEP * (i + 1) * 2,
+          );
           ghost.position.set(hazardSpawn.x, hazardSpawn.y);
           container.addChildAt(ghost, 0);
           trail.push(ghost);
@@ -135,10 +174,17 @@ export function buildHazardLayer(
     });
   };
 
-  const updatePositions = (hazards: LiveHazard[], deltaMs: number, deltaSeconds: number): void => {
+  const updatePositions = (
+    hazards: LiveHazard[],
+    deltaMs: number,
+    deltaSeconds: number,
+  ): void => {
     for (const hazard of hazards) {
       hazard.elapsedMs += deltaMs;
-      if (hazard.isTelegraphing && hazard.elapsedMs >= hazard.spawn.telegraphMs) {
+      if (
+        hazard.isTelegraphing &&
+        hazard.elapsedMs >= hazard.spawn.telegraphMs
+      ) {
         hazard.isTelegraphing = false;
         hazard.graphics.alpha = SOLID_ALPHA;
       }
@@ -200,8 +246,12 @@ function renderBeamOrShape(
   const isHorizontal = spawn.x === arenaWidth / 2;
   graphics.clear();
   if (isHorizontal) {
-    graphics.rect(-arenaWidth / 2, -spawn.radius, arenaWidth, spawn.radius * 2).fill({ color, alpha: style === "neon" ? 0.85 : 1 });
+    graphics
+      .rect(-arenaWidth / 2, -spawn.radius, arenaWidth, spawn.radius * 2)
+      .fill({ color, alpha: style === "neon" ? 0.85 : 1 });
     return;
   }
-  graphics.rect(-spawn.radius, -arenaHeight / 2, spawn.radius * 2, arenaHeight).fill({ color, alpha: style === "neon" ? 0.85 : 1 });
+  graphics
+    .rect(-spawn.radius, -arenaHeight / 2, spawn.radius * 2, arenaHeight)
+    .fill({ color, alpha: style === "neon" ? 0.85 : 1 });
 }

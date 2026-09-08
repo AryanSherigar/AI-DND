@@ -8,6 +8,8 @@ pipeline.py's _prewarm_replit_url uses for its own best-effort side effect).
 import uuid
 
 import structlog
+from google.genai import errors as genai_errors
+
 from app.exceptions.turn_exceptions import SceneImageGenerationError
 from app.integrations import image_gen_client, storage_client
 
@@ -79,7 +81,7 @@ async def generate_scene_image(
         image_url = await storage_client.upload_image(
             image_bytes, "image/png", object_key
         )
-    except SceneImageGenerationError:
+    except (SceneImageGenerationError, genai_errors.ClientError):
         logger.warning(EVENT_SCENE_IMAGE_GENERATION_FAILED, exc_info=True)
         return None
     return image_url, prompt

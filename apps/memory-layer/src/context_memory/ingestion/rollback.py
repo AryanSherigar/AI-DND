@@ -55,6 +55,11 @@ def walk_restore_targets(
     return restore_set
 
 
+class SavePointOwnershipError(Exception):
+    """Raised when a caller-supplied context_id does not own the save_id
+    it's trying to roll back -- see CRIT-02 in the memory-layer audit."""
+
+
 @dataclass(frozen=True)
 class SavePoint:
     save_id: str

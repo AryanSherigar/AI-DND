@@ -1,10 +1,14 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { duplicateScenario } from "../api/duplicate.api";
 import { extractErrorMessage } from "@/shared/lib/extractErrorMessage";
 
 export const useDuplicateScenario = (scenarioId: string) => {
+  const queryClient = useQueryClient();
   const duplicateMutation = useMutation({
     mutationFn: () => duplicateScenario(scenarioId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["my-scenarios"] });
+    },
   });
 
   return {

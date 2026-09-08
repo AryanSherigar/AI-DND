@@ -8,6 +8,16 @@ import { useGenerateCoverImage } from "../../hooks/useGenerateCoverImage";
 import { useUploadCoverImage } from "../../hooks/useUploadCoverImage";
 import { CoverImageUploaderProps } from "./CoverImageUploader.types";
 
+const getDropzoneClasses = (disabled: boolean, isDragging: boolean): string => {
+  if (disabled) {
+    return "opacity-50 cursor-not-allowed border-border-subtle bg-surface-inset";
+  }
+  if (isDragging) {
+    return "border-accent/50 bg-surface-overlay";
+  }
+  return "border-border-subtle bg-surface-inset hover:border-border-strong";
+};
+
 export const CoverImageUploader: React.FC<CoverImageUploaderProps> = ({
   value,
   onChange,
@@ -160,13 +170,10 @@ export const CoverImageUploader: React.FC<CoverImageUploaderProps> = ({
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") handleBoxClick();
           }}
-          className={`w-full h-36 flex flex-col items-center justify-center gap-2 border rounded-lg cursor-pointer transition-colors font-sans text-sm ${
-            disabled
-              ? "opacity-50 cursor-not-allowed border-border-subtle bg-surface-inset"
-              : isDragging
-                ? "border-accent/50 bg-surface-overlay"
-                : "border-border-subtle bg-surface-inset hover:border-border-strong"
-          }`}
+          className={`w-full h-36 flex flex-col items-center justify-center gap-2 border rounded-lg cursor-pointer transition-colors font-sans text-sm ${getDropzoneClasses(
+            disabled,
+            isDragging,
+          )}`}
         >
           {isBusy ? (
             <div className="flex items-center gap-2 text-content-muted">

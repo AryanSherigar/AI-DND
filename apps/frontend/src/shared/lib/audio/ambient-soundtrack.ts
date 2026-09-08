@@ -11,6 +11,7 @@ interface AudioChannel {
   element: HTMLAudioElement;
   sourceNode: MediaElementAudioSourceNode | null;
   gainNode: GainNode | null;
+  fadeTimeoutId?: ReturnType<typeof setTimeout> | null;
 }
 
 export type MoodListener = (mood: ScenarioMood) => void;
@@ -73,7 +74,9 @@ export class AmbientSoundtrackController {
 
   /** Lets isolated audio features honor the player-wide audio preference
    * without importing the play store. */
-  public onAudioPreferenceChange(listener: AudioPreferenceListener): () => void {
+  public onAudioPreferenceChange(
+    listener: AudioPreferenceListener,
+  ): () => void {
     this.audioPreferenceListeners.add(listener);
     return () => this.audioPreferenceListeners.delete(listener);
   }
@@ -141,10 +144,18 @@ export class AmbientSoundtrackController {
   }
 
   public stop(): void {
-    if (this.channelA?.element) {
+    if (this.channelA) {
+      if (this.channelA.fadeTimeoutId) {
+        clearTimeout(this.channelA.fadeTimeoutId);
+        this.channelA.fadeTimeoutId = null;
+      }
       this.channelA.element.pause();
     }
-    if (this.channelB?.element) {
+    if (this.channelB) {
+      if (this.channelB.fadeTimeoutId) {
+        clearTimeout(this.channelB.fadeTimeoutId);
+        this.channelB.fadeTimeoutId = null;
+      }
       this.channelB.element.pause();
     }
     this.currentMood = null;
@@ -215,6 +226,11 @@ export class AmbientSoundtrackController {
   }
 
   private fadeChannelOut(channel: AudioChannel, now: number): void {
+    if (channel.fadeTimeoutId) {
+      clearTimeout(channel.fadeTimeoutId);
+      channel.fadeTimeoutId = null;
+    }
+
     if (!channel.gainNode || !this.audioContext) {
       channel.element.pause();
       return;
@@ -227,8 +243,9 @@ export class AmbientSoundtrackController {
       now + CROSSFADE_DURATION_SECONDS,
     );
 
-    setTimeout(() => {
+    channel.fadeTimeoutId = setTimeout(() => {
       channel.element.pause();
+      channel.fadeTimeoutId = null;
     }, CROSSFADE_DURATION_SECONDS * 1000);
   }
 
@@ -237,6 +254,11 @@ export class AmbientSoundtrackController {
     trackUrl: string,
     now: number,
   ): void {
+    if (channel.fadeTimeoutId) {
+      clearTimeout(channel.fadeTimeoutId);
+      channel.fadeTimeoutId = null;
+    }
+
     channel.element.src = trackUrl;
     const playPromise = channel.element.play();
     if (playPromise !== undefined) {

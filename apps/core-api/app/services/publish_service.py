@@ -58,7 +58,7 @@ class PublishService:
         self, scenario_id: uuid.UUID, user_id: uuid.UUID
     ) -> Scenario:
         """Validate ownership and flip the scenario to 'publishing'."""
-        scenario = await self.scenario_repo.get_by_id(scenario_id)
+        scenario = await self.scenario_repo.get_by_id_for_update(scenario_id)
         if not scenario or scenario.status == "archived":
             raise ScenarioNotFoundError()
 

@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String, Text, text
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +20,8 @@ class ScenarioMinigame(Base, TimestampMixin):
     """
 
     __tablename__ = "scenario_minigames"
+
+    __table_args__ = (Index("idx_scenario_minigames_scenario_id", "scenario_id"),)
 
     minigame_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

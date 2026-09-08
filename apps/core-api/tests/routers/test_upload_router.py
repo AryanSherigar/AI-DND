@@ -50,7 +50,9 @@ async def test_upload_map_image_success(async_client: AsyncClient, mock_upload_i
 
 
 @pytest.mark.asyncio
-async def test_upload_scenario_audio_success(async_client: AsyncClient, mock_upload_image):
+async def test_upload_scenario_audio_success(
+    async_client: AsyncClient, mock_upload_image
+):
     headers = {"x-dev-user-id": str(uuid.uuid4())}
     files = {"file": ("ashfall.ogg", b"OggS" + b"0" * 100, "audio/ogg")}
 

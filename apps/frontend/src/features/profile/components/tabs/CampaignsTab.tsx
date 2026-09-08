@@ -6,6 +6,12 @@ import { CampaignCard } from "../cards/CampaignCard";
 
 type CampaignFilter = "all" | "active" | "completed";
 
+const EMPTY_CAMPAIGN_MESSAGES: Record<CampaignFilter, string> = {
+  active: "You have no active campaigns at this time.",
+  completed: "No completed adventures recorded in your chronicle yet.",
+  all: "You have not embarked on any campaigns yet.",
+};
+
 export const CampaignsTab: React.FC = () => {
   const [filter, setFilter] = useState<CampaignFilter>("all");
 
@@ -88,11 +94,7 @@ export const CampaignsTab: React.FC = () => {
       {items.length === 0 ? (
         <div className="rounded-xl border border-dashed border-zinc-800 p-12 text-center">
           <p className="font-serif italic text-zinc-400 mb-4">
-            {filter === "active"
-              ? "You have no active campaigns at this time."
-              : filter === "completed"
-                ? "No completed adventures recorded in your chronicle yet."
-                : "You have not embarked on any campaigns yet."}
+            {EMPTY_CAMPAIGN_MESSAGES[filter]}
           </p>
           <Link
             to="/discover"

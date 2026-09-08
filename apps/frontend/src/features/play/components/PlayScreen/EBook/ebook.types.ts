@@ -61,7 +61,6 @@ export interface EBookBottomBarProps {
   onTakeAction: () => void;
   onContinue: () => void;
   onRetry: () => void;
-  onEditAction: () => void;
   onOpenCodex: () => void;
   // Master mode only — omitted renders no character-sheet trigger.
   onOpenCharacterSheet?: () => void;

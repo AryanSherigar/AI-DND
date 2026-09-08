@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 interface DramaticSetupLoaderProps {
   scenarioTitle?: string;
   onComplete?: () => void;
+  isReady?: boolean;
 }
 
 const LOADING_PHRASES = [
@@ -16,14 +17,15 @@ const LOADING_PHRASES = [
 export const DramaticSetupLoader: React.FC<DramaticSetupLoaderProps> = ({
   scenarioTitle,
   onComplete,
+  isReady = true,
 }) => {
   const [phraseIndex, setPhraseIndex] = useState(0);
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    // Progress increment interval
     const progressInterval = setInterval(() => {
       setProgress((prev) => {
+        if (!isReady && prev >= 90) return 90;
         if (prev >= 100) {
           clearInterval(progressInterval);
           return 100;
@@ -32,7 +34,6 @@ export const DramaticSetupLoader: React.FC<DramaticSetupLoaderProps> = ({
       });
     }, 45);
 
-    // Text phrase rotation interval
     const phraseInterval = setInterval(() => {
       setPhraseIndex((prev) => (prev + 1) % LOADING_PHRASES.length);
     }, 600);
@@ -41,17 +42,31 @@ export const DramaticSetupLoader: React.FC<DramaticSetupLoaderProps> = ({
       clearInterval(progressInterval);
       clearInterval(phraseInterval);
     };
-  }, []);
+  }, [isReady]);
 
   useEffect(() => {
-    if (progress >= 100 && onComplete) {
+    if (!isReady) return;
+    const fastForward = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 100) {
+          clearInterval(fastForward);
+          return 100;
+        }
+        return Math.min(100, prev + 5);
+      });
+    }, 20);
+    return () => clearInterval(fastForward);
+  }, [isReady]);
+
+  useEffect(() => {
+    if (progress >= 100 && isReady && onComplete) {
       const timeout = setTimeout(() => {
         onComplete();
       }, 300);
       return () => clearTimeout(timeout);
     }
     return undefined;
-  }, [progress, onComplete]);
+  }, [progress, isReady, onComplete]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-zinc-950/95 backdrop-blur-xl px-6 text-center select-none overflow-hidden">

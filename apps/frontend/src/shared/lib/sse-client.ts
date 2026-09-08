@@ -219,30 +219,43 @@ async function readEventStream(
       isStreaming = false;
       break;
     }
-    // sse_starlette (the server) writes CRLF line endings, so frames are
-    // separated by "\r\n\r\n", not "\n\n" — normalize before splitting.
-    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+    buffer += decoder.decode(value, { stream: true });
     buffer = consumeSSEFrames(buffer, handlers);
+  }
+  if (buffer.length > 0) {
+    consumeSSEFrames(buffer + "\n\n", handlers);
   }
 }
 
 /** Parses complete "event: x\ndata: y\n\n" blocks out of buffer, returning the remainder. */
 function consumeSSEFrames(buffer: string, handlers: SSEHandlers): string {
-  const frames = buffer.split("\n\n");
+  let content = buffer;
+  let trailingReturn = "";
+  if (content.endsWith("\r")) {
+    content = content.slice(0, -1);
+    trailingReturn = "\r";
+  }
+
+  const normalized = content.replace(/\r\n/g, "\n");
+  const frames = normalized.split("\n\n");
   const remainder = frames.pop() ?? "";
   for (const frame of frames) {
     const { event, data } = parseSSEFrame(frame);
     if (event) handlers.onEvent(event, data);
   }
-  return remainder;
+  return remainder + trailingReturn;
 }
 
 function parseSSEFrame(frame: string): { event: string | null; data: string } {
   let event: string | null = null;
   const dataLines: string[] = [];
   for (const line of frame.split("\n")) {
-    if (line.startsWith("event:")) event = line.slice(6).trim();
-    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      const raw = line.slice(5);
+      dataLines.push(raw.startsWith(" ") ? raw.slice(1) : raw);
+    }
   }
   return { event, data: dataLines.join("\n") };
 }

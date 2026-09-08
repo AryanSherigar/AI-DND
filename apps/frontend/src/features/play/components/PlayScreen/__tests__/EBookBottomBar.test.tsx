@@ -7,7 +7,6 @@ describe("EBookBottomBar", () => {
     const handleTakeAction = vi.fn();
     const handleContinue = vi.fn();
     const handleRetry = vi.fn();
-    const handleEdit = vi.fn();
     const handleOpenCodex = vi.fn();
 
     render(
@@ -18,7 +17,6 @@ describe("EBookBottomBar", () => {
         onTakeAction={handleTakeAction}
         onContinue={handleContinue}
         onRetry={handleRetry}
-        onEditAction={handleEdit}
         onOpenCodex={handleOpenCodex}
       />,
     );
@@ -36,10 +34,6 @@ describe("EBookBottomBar", () => {
     const retryButton = screen.getByRole("button", { name: /Retry/i });
     fireEvent.click(retryButton);
     expect(handleRetry).toHaveBeenCalledTimes(1);
-
-    const editButton = screen.getByRole("button", { name: /Edit/i });
-    fireEvent.click(editButton);
-    expect(handleEdit).toHaveBeenCalledTimes(1);
   });
 
   it("renders spectator message when isSpectator is true", () => {
@@ -51,7 +45,6 @@ describe("EBookBottomBar", () => {
         onTakeAction={vi.fn()}
         onContinue={vi.fn()}
         onRetry={vi.fn()}
-        onEditAction={vi.fn()}
         onOpenCodex={vi.fn()}
       />,
     );
@@ -72,7 +65,6 @@ describe("EBookBottomBar", () => {
         onTakeAction={vi.fn()}
         onContinue={vi.fn()}
         onRetry={vi.fn()}
-        onEditAction={vi.fn()}
         onOpenCodex={vi.fn()}
       />,
     );
@@ -93,7 +85,6 @@ describe("EBookBottomBar", () => {
         onTakeAction={vi.fn()}
         onContinue={vi.fn()}
         onRetry={vi.fn()}
-        onEditAction={vi.fn()}
         onOpenCodex={vi.fn()}
         onOpenCharacterSheet={handleOpenCharacterSheet}
       />,

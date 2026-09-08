@@ -1,6 +1,12 @@
 import { useState, ChangeEvent } from "react";
 import { usePlayStore } from "../../../stores/play.store";
 
+const getSpeakerIcon = (isMuted: boolean, volume: number): string => {
+  if (isMuted) return "🔇";
+  if (volume < 0.4) return "🔉";
+  return "🔊";
+};
+
 export function EBookAudioControl() {
   const [isOpen, setIsOpen] = useState(false);
   const theme = usePlayStore((s) => s.ebook_theme);
@@ -25,7 +31,7 @@ export function EBookAudioControl() {
     setIsOpen((prev) => !prev);
   };
 
-  const speakerIcon = isMuted ? "🔇" : volume < 0.4 ? "🔉" : "🔊";
+  const speakerIcon = getSpeakerIcon(isMuted, volume);
   const moodLabel = activeMood
     ? activeMood.charAt(0).toUpperCase() + activeMood.slice(1)
     : "Ambient";

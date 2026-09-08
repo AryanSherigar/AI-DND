@@ -19,7 +19,11 @@ const sections = [
   { id: "meta", label: "The basics", icon: <IconInfoCircle size={18} /> },
   { id: "lore", label: "World lore", icon: <IconBook2 size={18} /> },
   { id: "setup", label: "Player setup", icon: <IconUsers size={18} /> },
-  { id: "narrator", label: "The narrator", icon: <IconMasksTheater size={18} /> },
+  {
+    id: "narrator",
+    label: "The narrator",
+    icon: <IconMasksTheater size={18} />,
+  },
   { id: "review", label: "Review & publish", icon: <IconRocket size={18} /> },
 ];
 

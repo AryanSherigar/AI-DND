@@ -35,7 +35,8 @@ function applyMusicSettings(): void {
 }
 
 function applyAllAudioSettings(): void {
-  if (masterGain) masterGain.gain.value = isEffectivelyMuted() ? 0 : effectiveVolume();
+  if (masterGain)
+    masterGain.gain.value = isEffectivelyMuted() ? 0 : effectiveVolume();
   applyMusicSettings();
 }
 
@@ -222,5 +223,6 @@ export function setDodgeVolume(nextVolume: number): void {
 
 /** Retry custom music after the explicit Start/Resume user gesture. */
 export function resumeDodgeMusic(): void {
-  if (activeMusic && !isEffectivelyMuted()) void activeMusic.play().catch(() => undefined);
+  if (activeMusic && !isEffectivelyMuted())
+    void activeMusic.play().catch(() => undefined);
 }

@@ -14,6 +14,18 @@ from app.models.logs import ClientLogBatch, ClientLogEntry
 
 logger = structlog.get_logger()
 
+_RESERVED_BOUND_FIELD_KEYS = frozenset(
+    {
+        "request_id",
+        "user_id",
+        "session_id",
+        "event_category",
+        "source",
+        "client_timestamp",
+        "event",
+    }
+)
+
 
 class LogIngestionService:
     """Service re-emitting client-submitted log batches as structured log lines."""
@@ -31,5 +43,10 @@ class LogIngestionService:
             source="frontend",
             client_timestamp=entry.client_timestamp.isoformat(),
         )
-        log_fn = getattr(bound, entry.level)
-        log_fn(entry.event, **entry.fields)
+        log_fn = getattr(bound, entry.level, bound.info)
+        safe_fields = {
+            key: value
+            for key, value in entry.fields.items()
+            if key not in _RESERVED_BOUND_FIELD_KEYS
+        }
+        log_fn(entry.event, **safe_fields)

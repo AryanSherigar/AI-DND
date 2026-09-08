@@ -63,6 +63,13 @@ export function PlayPage() {
             isSpectatorMode,
           );
 
+    const committedTurnCount =
+      usePlayStore.getState().playthrough?.turns.length ?? 0;
+    const isFirstLoad = usePlayStore.getState().playthrough === null;
+    if (!isFirstLoad && playthroughData.turns.length < committedTurnCount) {
+      return;
+    }
+
     setPlaythrough(playthroughData);
   }, [serverPlaythrough, turnsData, isSpectatorMode, setPlaythrough]);
 

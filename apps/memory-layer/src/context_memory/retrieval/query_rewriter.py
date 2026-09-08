@@ -5,7 +5,10 @@ Bare `§N` references below are sections of docs/fixes_and_evaluation_findings.m
 
 from __future__ import annotations
 
+import fcntl
 import json
+import os
+import uuid
 from collections.abc import MutableMapping
 from pathlib import Path
 
@@ -27,6 +30,7 @@ class JsonFileRewriteCache(MutableMapping):
 
     def __init__(self, path: str) -> None:
         self._path = Path(path)
+        self._lock_path = self._path.with_suffix(self._path.suffix + ".lock")
         self._data: dict[str, QueryRewriterOutput] = {}
         if self._path.exists():
             try:
@@ -35,14 +39,36 @@ class JsonFileRewriteCache(MutableMapping):
             except Exception as error:
                 logger.warning("rewrite cache unreadable, starting empty: %s", error)
 
+    def _read_disk_data(self) -> dict[str, QueryRewriterOutput]:
+        if not self._path.exists():
+            return {}
+        try:
+            raw = json.loads(self._path.read_text())
+            return {k: QueryRewriterOutput(**v) for k, v in raw.items()}
+        except Exception as error:
+            logger.warning("rewrite cache unreadable during flush: %s", error)
+            return {}
+
+    def _write_merged(self, merged: dict[str, QueryRewriterOutput]) -> None:
+        # HIGH-06 fix: a unique-per-writer tmp name -- shared static ".tmp"
+        # let concurrent workers clobber each other's in-flight write.
+        unique_suffix = f"{self._path.suffix}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+        tmp = self._path.with_suffix(unique_suffix)
+        tmp.write_text(json.dumps({k: v.model_dump() for k, v in merged.items()}))
+        tmp.replace(self._path)
+
     def _flush(self) -> None:
+        # HIGH-06 fix: flock serializes concurrent workers so a whole-file
+        # overwrite here can't silently lose another worker's already-
+        # persisted keys (re-read-and-merge under the lock, not blind
+        # overwrite from this process's possibly-stale in-memory `_data`).
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self._path.with_suffix(self._path.suffix + ".tmp")
-            tmp.write_text(
-                json.dumps({k: v.model_dump() for k, v in self._data.items()})
-            )
-            tmp.replace(self._path)
+            with open(self._lock_path, "a") as lock_file:
+                fcntl.flock(lock_file, fcntl.LOCK_EX)
+                merged = {**self._read_disk_data(), **self._data}
+                self._write_merged(merged)
+                self._data = merged
         except Exception as error:
             logger.warning("rewrite cache write failed: %s", error)
 

@@ -4,14 +4,14 @@ import os
 import time
 from contextlib import asynccontextmanager
 
+from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+
 from api.routes import require_api_key, router
 from api.stream import streamer
 from context_memory.composition import build_memory_engine
 from context_memory.core.logging import get_logger, setup_logging
 from context_memory.ingestion.graph_writer import GraphWriter
-from fastapi import Depends, FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 
 setup_logging()
 logger = get_logger("api.server")
@@ -34,9 +34,10 @@ GraphWriter.write = patched_write
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # NOTE: builds the MemoryEngine once, before any request is served, so
-    # concurrent requests never race each other into building duplicate
-    # connection pools / embedding models via routes.py's lazy fallback.
+    # HIGH-01 fix: this is the ONLY place a MemoryEngine gets built --
+    # routes.py's `get_engine` dependency reads `app.state.engine` rather
+    # than lazily building its own, so no duplicate connection pools /
+    # embedding models are ever created.
     app.state.engine = await asyncio.to_thread(build_memory_engine)
     yield
 
@@ -93,24 +94,6 @@ async def read_health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/v1/memory/stream")
-async def stream_graph(request: Request):
-    if streamer.loop is None:
-        streamer.loop = asyncio.get_running_loop()
-
-    q = streamer.add_queue()
-
-    async def event_generator():
-        try:
-            while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    data = await asyncio.wait_for(q.get(), timeout=1.0)
-                    yield f"data: {json.dumps(data)}\n\n"
-                except TimeoutError:
-                    yield ": keepalive\n\n"
-        finally:
-            streamer.remove_queue(q)
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+# CRIT-01 fix: `/v1/memory/stream` moved to api/routes.py's `router` (see
+# stream_graph there) so it inherits `require_api_key` and is scoped to a
+# single tenant's context_id, instead of living here unauthenticated.

@@ -50,7 +50,9 @@ export const NarratorPersonaEditor: React.FC<NarratorPersonaEditorProps> = ({
 
   if (isLoading) {
     return (
-      <p className="text-sm text-content-faint">Loading narrator checkpoints...</p>
+      <p className="text-sm text-content-faint">
+        Loading narrator checkpoints...
+      </p>
     );
   }
 

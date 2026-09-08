@@ -27,18 +27,16 @@ const Wordmark: React.FC = () => (
   </Link>
 );
 
-const DesktopLink: React.FC<{ to: string; label: string; isActive: boolean }> = ({
-  to,
-  label,
-  isActive,
-}) => (
+const DesktopLink: React.FC<{
+  to: string;
+  label: string;
+  isActive: boolean;
+}> = ({ to, label, isActive }) => (
   <Link
     to={to}
     className={cn(
       "rounded-md px-3 py-1.5 font-sans text-sm transition-colors",
-      isActive
-        ? "text-accent"
-        : "text-content-muted hover:text-content",
+      isActive ? "text-accent" : "text-content-muted hover:text-content",
     )}
   >
     {label}
@@ -62,10 +60,7 @@ export const Header: React.FC<HeaderProps> = ({ variant = "default" }) => {
 
   return (
     <Navbar
-      className={cn(
-        "fixed top-0",
-        variant === "landing" ? "pt-4" : "pt-3",
-      )}
+      className={cn("fixed top-0", variant === "landing" ? "pt-4" : "pt-3")}
     >
       <NavBody className="rounded-xl border border-border-subtle bg-surface/70 backdrop-blur-md">
         <Wordmark />

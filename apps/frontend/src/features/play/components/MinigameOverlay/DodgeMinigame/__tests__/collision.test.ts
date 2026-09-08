@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { circleIntersectsBeam, circlesCollide, hazardCollidesWithPlayer } from "../collision";
+import {
+  circleIntersectsBeam,
+  circlesCollide,
+  hazardCollidesWithPlayer,
+} from "../collision";
 
 describe("circlesCollide", () => {
   it("reports a collision when center distance is less than the sum of radii", () => {
@@ -37,18 +41,26 @@ describe("circleIntersectsBeam", () => {
 
 describe("hazardCollidesWithPlayer", () => {
   it("never damages the player while a beam is telegraphing", () => {
-    expect(hazardCollidesWithPlayer(
-      30, 205, 12,
-      { isTelegraphing: true, shape: "beam", x: 320, y: 200, radius: 7 },
-      640,
-    )).toBe(false);
+    expect(
+      hazardCollidesWithPlayer(
+        30,
+        205,
+        12,
+        { isTelegraphing: true, shape: "beam", x: 320, y: 200, radius: 7 },
+        640,
+      ),
+    ).toBe(false);
   });
 
   it("uses beam collision only after its telegraph completes", () => {
-    expect(hazardCollidesWithPlayer(
-      30, 205, 12,
-      { isTelegraphing: false, shape: "beam", x: 320, y: 200, radius: 7 },
-      640,
-    )).toBe(true);
+    expect(
+      hazardCollidesWithPlayer(
+        30,
+        205,
+        12,
+        { isTelegraphing: false, shape: "beam", x: 320, y: 200, radius: 7 },
+        640,
+      ),
+    ).toBe(true);
   });
 });

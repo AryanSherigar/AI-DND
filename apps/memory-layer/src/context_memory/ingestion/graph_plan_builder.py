@@ -44,11 +44,12 @@ Bare `§N` references below are sections of docs/fixes_and_evaluation_findings.m
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from context_memory.core.graph import GraphNode, GraphRelationship, GraphWritePlan
 from context_memory.core.models import Chunk, ExtractedMemoryCandidate
 from context_memory.core.resolution import EntityProfile, FactState, TemporalRelation
+from context_memory.ingestion.alias_records import alias_records
 from context_memory.ingestion.extraction import ExtractionResult
 from context_memory.ingestion.ports import (
     BatchTemporalUpdateClassifierPort,
@@ -114,7 +115,7 @@ class GraphPlanBuilder:
         speaker_node = self._speaker_entity_node(chunk)
         nodes[speaker_node.graph_id] = speaker_node
 
-        created_at_dt = datetime.now(timezone.utc)
+        created_at_dt = datetime.now(UTC)
 
         # Pre-resolve every entity mention in this chunk in one batched call
         # when the caller supports it -- parallelizes the LLM disambiguation
@@ -513,36 +514,6 @@ class GraphPlanBuilder:
     def _alias_records(
         self, profile: EntityProfile
     ) -> list[tuple[GraphNode, GraphRelationship]]:
-        records: list[tuple[GraphNode, GraphRelationship]] = []
-        for alias in profile.aliases:
-            alias_logical_key = f"alias:{alias}:{profile.graph_id}"
-            alias_graph_id = self._allocator.allocate_graph_id(
-                "alias", profile.context_id, alias_logical_key
-            )
-            alias_node = GraphNode(
-                alias_graph_id,
-                "Alias",
-                alias_logical_key,
-                _scalar_properties(
-                    profile.context_id,
-                    logical_key=alias_logical_key,
-                    canonical_alias=alias,
-                    entity_graph_id=profile.graph_id,
-                ),
-            )
-            edge_logical_key = f"has_alias:{profile.graph_id}:{alias}"
-            edge_graph_id = self._allocator.allocate_graph_id(
-                "has_alias", profile.context_id, edge_logical_key
-            )
-            has_alias = GraphRelationship(
-                edge_graph_id,
-                "HAS_ALIAS",
-                edge_logical_key,
-                profile.graph_id,
-                alias_graph_id,
-                "Entity",
-                "Alias",
-                _scalar_properties(profile.context_id),
-            )
-            records.append((alias_node, has_alias))
-        return records
+        return alias_records(
+            profile.context_id, profile.graph_id, profile.aliases, self._allocator
+        )

@@ -188,7 +188,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({ scenarioId, mapId }) => {
             key={pin.pin_id}
             className="rounded-md flex items-center justify-between border border-border-subtle px-3 py-1.5 text-xs"
           >
-            <span className="text-content-muted">{entityName(pin.entity_id)}</span>
+            <span className="text-content-muted">
+              {entityName(pin.entity_id)}
+            </span>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => handleToggleStart(pin)}

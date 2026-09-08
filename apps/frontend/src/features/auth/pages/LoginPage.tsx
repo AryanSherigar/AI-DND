@@ -9,7 +9,12 @@ import { LayoutTextFlip } from "@/shared/components/ui/aceternity/layout-text-fl
 import { Loader } from "@/shared/components/feedback/Loader";
 
 const LOGIN_BG = "#f7f5f1";
-const FLIP_WORDS = ["a new world", "a living story", "your legend", "the unknown"];
+const FLIP_WORDS = [
+  "a new world",
+  "a living story",
+  "your legend",
+  "the unknown",
+];
 const FLIP_LIGHT =
   "bg-white text-neutral-900 ring-black/10 shadow-black/10 dark:bg-white dark:text-neutral-900 dark:ring-black/10 dark:shadow-black/10";
 

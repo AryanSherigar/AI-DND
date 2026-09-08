@@ -50,7 +50,10 @@ export const TopSearchBar: React.FC<TopSearchBarProps> = ({
   return (
     <div className="sticky top-0 z-10 flex w-full flex-col bg-surface-raised px-6 pt-16 md:px-10">
       <div className="flex items-center gap-3 pb-3">
-        <form onSubmit={handleSearchSubmit} className="relative max-w-xl flex-1">
+        <form
+          onSubmit={handleSearchSubmit}
+          className="relative max-w-xl flex-1"
+        >
           <IconSearch
             size={16}
             className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-content-faint"

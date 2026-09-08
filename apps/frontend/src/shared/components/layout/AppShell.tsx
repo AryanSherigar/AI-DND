@@ -65,6 +65,12 @@ interface KebabHandleProps {
   disabled: boolean;
 }
 
+const getHandleIconColor = (disabled?: boolean, active?: boolean): string => {
+  if (disabled) return "text-transparent";
+  if (active) return "text-content";
+  return "text-content-faint group-hover:text-content";
+};
+
 const KebabHandle: React.FC<KebabHandleProps> = ({
   onPointerDown,
   active,
@@ -78,13 +84,7 @@ const KebabHandle: React.FC<KebabHandleProps> = ({
   >
     <IconDotsVertical
       size={16}
-      className={`transition-colors ${
-        disabled
-          ? "text-transparent"
-          : active
-            ? "text-content"
-            : "text-content-faint group-hover:text-content"
-      }`}
+      className={`transition-colors ${getHandleIconColor(disabled, active)}`}
     />
   </div>
 );
@@ -319,7 +319,6 @@ export const AppShell: React.FC<AppShellProps> = ({
             </motion.aside>
           </>
         )}
-
       </div>
 
       {/* Mobile drawer */}

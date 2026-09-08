@@ -8,7 +8,6 @@ export function EBookBottomBar({
   onTakeAction,
   onContinue,
   onRetry,
-  onEditAction,
   onOpenCodex,
   onOpenCharacterSheet,
   canAct = true,
@@ -101,14 +100,6 @@ export function EBookBottomBar({
                 title="Retry Narrator Turn"
               >
                 ↺ Retry
-              </button>
-              <button
-                type="button"
-                onClick={onEditAction}
-                className="p-2 rounded-xl hover:bg-zinc-800/50 text-xs font-mono transition-colors opacity-75 hover:opacity-100 cursor-pointer"
-                title="Edit Last Action"
-              >
-                ✎ Edit
               </button>
             </>
           )}

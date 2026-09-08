@@ -32,7 +32,7 @@ async def exchange_token(
     )
 
     access_token = auth_service.generate_access_token(user)
-    refresh_token = auth_service.generate_refresh_token(user)
+    refresh_token = await auth_service.generate_refresh_token(user)
 
     response.set_cookie(
         key="refresh_token",
@@ -73,6 +73,7 @@ async def refresh_token(
 
         user_id = payload.get("sub")
         token_version = payload.get("token_version")
+        jti = payload.get("jti")
 
         user_repo = UserRepo(session)
         import uuid
@@ -85,8 +86,12 @@ async def refresh_token(
             )
             raise InvalidTokenError("Token revoked or user not found")
 
+        if not jti or user.current_refresh_jti != jti:
+            logger.warning(EVENT_AUTH_TOKEN_REFRESH_DENIED, reason="stale_refresh_jti")
+            raise InvalidTokenError("Refresh token already used or rotated")
+
         access_token = auth_service.generate_access_token(user)
-        new_refresh_token = auth_service.generate_refresh_token(user)
+        new_refresh_token = await auth_service.generate_refresh_token(user)
 
         response.set_cookie(
             key="refresh_token",

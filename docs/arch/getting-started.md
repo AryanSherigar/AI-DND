@@ -125,8 +125,15 @@ If you prefer running all services inside Docker containers without local Python
 ### Development Mode (with Volume Mounts & Live Reload)
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
+
+`core-api` and `turn-resolution-service` bind-mount host source into `/app`,
+but installed Python packages live inside the image. Always include
+`--build` (or run `docker compose ... build core-api turn-resolution-service`
+first) after pulling changes that touch either service's `requirements.txt`
+-- otherwise uvicorn's `--reload` picks up new imports with no matching
+package installed and the container crash-loops with `ModuleNotFoundError`.
 
 ### Production Integration Mode
 

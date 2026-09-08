@@ -12,6 +12,19 @@ export interface CreationsTabProps {
   isOwner: boolean;
 }
 
+const getCreationsEmptyMessage = (
+  isOwner: boolean,
+  subTab: "published" | "drafts",
+): string => {
+  if (!isOwner) {
+    return "This adventurer has not published any public scenarios yet.";
+  }
+  if (subTab === "published") {
+    return "You have not published any scenarios to the realm yet.";
+  }
+  return "No draft scenarios currently in authoring.";
+};
+
 export const CreationsTab: React.FC<CreationsTabProps> = ({
   userId,
   isOwner,
@@ -98,11 +111,7 @@ export const CreationsTab: React.FC<CreationsTabProps> = ({
       {items.length === 0 ? (
         <div className="rounded-xl border border-dashed border-zinc-800 p-12 text-center">
           <p className="font-serif italic text-zinc-400 mb-4">
-            {isOwner
-              ? subTab === "published"
-                ? "You have not published any scenarios to the realm yet."
-                : "No draft scenarios currently in authoring."
-              : "This adventurer has not published any public scenarios yet."}
+            {getCreationsEmptyMessage(isOwner, subTab)}
           </p>
           {isOwner && subTab === "published" && (
             <Link

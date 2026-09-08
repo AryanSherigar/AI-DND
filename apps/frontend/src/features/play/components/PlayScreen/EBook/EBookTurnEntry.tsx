@@ -40,9 +40,12 @@ function renderHighlightedText(
   entities: EntityHighlightItem[],
   onSelect: (entity: EntityHighlightItem, rect: DOMRect) => void,
 ): ReactNode[] {
-  if (!entities.length) return [text];
+  const validEntities = entities.filter((e) => e.name.trim().length > 0);
+  if (!validEntities.length) return [text];
 
-  const sorted = [...entities].sort((a, b) => b.name.length - a.name.length);
+  const sorted = [...validEntities].sort(
+    (a, b) => b.name.length - a.name.length,
+  );
   const regex = new RegExp(
     `\\b(${sorted.map((e) => escapeRegExp(e.name)).join("|")})\\b`,
     "gi",

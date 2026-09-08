@@ -5,7 +5,11 @@ import { IframeLoadingState } from "../IframeLoadingState";
 describe("IframeLoadingState", () => {
   it("shows a spinner and no retry button while waiting", () => {
     render(
-      <IframeLoadingState isTimedOut={false} canRetry={false} onRetry={vi.fn()} />,
+      <IframeLoadingState
+        isTimedOut={false}
+        canRetry={false}
+        onRetry={vi.fn()}
+      />,
     );
 
     expect(
@@ -17,7 +21,11 @@ describe("IframeLoadingState", () => {
   it("shows the retry button once timed out and retry is allowed", () => {
     const onRetry = vi.fn();
     render(
-      <IframeLoadingState isTimedOut={true} canRetry={true} onRetry={onRetry} />,
+      <IframeLoadingState
+        isTimedOut={true}
+        canRetry={true}
+        onRetry={onRetry}
+      />,
     );
 
     const button = screen.getByRole("button", { name: /retry/i });
@@ -27,7 +35,11 @@ describe("IframeLoadingState", () => {
 
   it("hides the retry button once timed out but retry has been exhausted", () => {
     render(
-      <IframeLoadingState isTimedOut={true} canRetry={false} onRetry={vi.fn()} />,
+      <IframeLoadingState
+        isTimedOut={true}
+        canRetry={false}
+        onRetry={vi.fn()}
+      />,
     );
 
     expect(screen.queryByRole("button")).not.toBeInTheDocument();

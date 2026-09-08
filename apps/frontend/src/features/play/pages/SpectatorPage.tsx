@@ -15,7 +15,7 @@ export function SpectatorPage() {
     id,
     shareToken ? { share_token: shareToken } : {},
   );
-  const { streamingText, isLive } = useSpectator(
+  const { streamingText, streamingImageUrl, isLive } = useSpectator(
     id ?? null,
     shareToken,
     playthrough?.scenario_snapshot?.music_tracks as
@@ -55,6 +55,7 @@ export function SpectatorPage() {
       scenarioTitle={playthrough?.scenario_title ?? "Live Playthrough"}
       turns={data.items}
       streamingText={streamingText}
+      streamingImageUrl={streamingImageUrl}
       isLive={isLive}
       narrationFont={
         playthrough?.scenario_snapshot?.narration_font as string | undefined

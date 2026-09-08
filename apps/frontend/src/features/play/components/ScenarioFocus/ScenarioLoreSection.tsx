@@ -6,16 +6,20 @@ interface ScenarioLoreSectionProps {
   scenario: ScenarioDetailResponse;
 }
 
+const extractLoreText = (
+  worldData: Record<string, unknown>,
+  defaultLogline?: string | null,
+): string => {
+  if (typeof worldData.lore === "string") return worldData.lore;
+  if (typeof worldData.description === "string") return worldData.description;
+  return defaultLogline || "";
+};
+
 export const ScenarioLoreSection: React.FC<ScenarioLoreSectionProps> = ({
   scenario,
 }) => {
-  const worldData = scenario.world_data || {};
-  const loreText =
-    typeof worldData.lore === "string"
-      ? worldData.lore
-      : typeof worldData.description === "string"
-        ? worldData.description
-        : scenario.logline || "";
+  const worldData = (scenario.world_data || {}) as Record<string, unknown>;
+  const loreText = extractLoreText(worldData, scenario.logline);
 
   return (
     <section>

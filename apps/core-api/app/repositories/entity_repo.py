@@ -20,6 +20,12 @@ class EntityRepo:
         await self.session.flush()
         return entity
 
+    async def create_all(self, entities: list[Entity]) -> list[Entity]:
+        """Bulk-persist entities in a single flush (e.g. scenario duplication)."""
+        self.session.add_all(entities)
+        await self.session.flush()
+        return entities
+
     async def get_by_id(self, entity_id: uuid.UUID) -> Entity | None:
         """Retrieve an entity by its primary key ID."""
         stmt = select(Entity).where(Entity.entity_id == entity_id)

@@ -32,7 +32,6 @@ export function MasterPlayScreen() {
   const closeChronicleModal = usePlayStore((s) => s.closeChronicleModal);
   const continueTurn = usePlayStore((s) => s.continueTurn);
   const retryLastTurn = usePlayStore((s) => s.retryLastTurn);
-  const editLastAction = usePlayStore((s) => s.editLastAction);
   const submitTurn = usePlayStore((s) => s.submitTurn);
   const clearDegradedMessage = usePlayStore((s) => s.clearDegradedMessage);
 
@@ -76,7 +75,6 @@ export function MasterPlayScreen() {
         onTakeAction={openActionDrawer}
         onContinue={continueTurn}
         onRetry={retryLastTurn}
-        onEditAction={editLastAction}
         onOpenCodex={toggleLeftSidebar}
         onOpenCharacterSheet={toggleRightSidebar}
       />

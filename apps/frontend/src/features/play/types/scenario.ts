@@ -1,4 +1,4 @@
-import { SetupInputField } from "@/features/studio/stores/studio.store";
+import { SetupInputField } from "@/shared/types/scenario.types";
 
 export type ScenarioGenre =
   | "High Fantasy"

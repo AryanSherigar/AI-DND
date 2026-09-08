@@ -10,6 +10,23 @@ import { ReplitEmbedMinigameProps } from "./ReplitEmbedMinigame.types";
 // this requires.
 const REPLIT_IFRAME_SANDBOX = "allow-scripts allow-forms";
 
+const ALLOWED_REPLIT_HOST_SUFFIXES = [
+  ".replit.app",
+  ".replit.dev",
+  ".repl.co",
+] as const;
+
+function isAllowedReplitUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return ALLOWED_REPLIT_HOST_SUFFIXES.some((suffix) =>
+      hostname.endsWith(suffix),
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Live-embeds a creator's Replit-hosted minigame in a sandboxed iframe and
  * resolves via the shared postMessage handshake (useReplitHandshake). Allows
@@ -67,6 +84,17 @@ export function ReplitEmbedMinigame({
   };
 
   const canRetry = status === "timed_out" && !hasRetried;
+  const isUrlAllowed = isAllowedReplitUrl(replitEmbedUrl);
+
+  if (!isUrlAllowed) {
+    return (
+      <div className="relative w-full h-full max-w-4xl max-h-[80vh] aspect-video flex flex-col items-center justify-center gap-4 bg-zinc-950/90 text-zinc-100">
+        <p className="font-mono text-xs text-red-400 tracking-widest uppercase">
+          This challenge URL is not from a trusted host.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-full max-w-4xl max-h-[80vh] aspect-video">

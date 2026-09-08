@@ -3,6 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { usePlayStore } from "../../../stores/play.store";
 import { ChronicleRecapModalProps } from "./ebook.types";
 
+const getStarColorClass = (
+  star: number,
+  rating: number,
+  isSepia: boolean,
+): string => {
+  if (star > rating) return "opacity-20";
+  return isSepia ? "text-[#2c2217]" : "text-zinc-100";
+};
+
 export function ChronicleRecapModal({
   isOpen,
   onClose,
@@ -95,15 +104,7 @@ export function ChronicleRecapModal({
                     onClick={() => setRating(star)}
                     className="text-2xl hover:scale-125 transition-transform cursor-pointer"
                   >
-                    <span
-                      className={
-                        star <= rating
-                          ? isSepia
-                            ? "text-[#2c2217]"
-                            : "text-zinc-100"
-                          : "opacity-20"
-                      }
-                    >
+                    <span className={getStarColorClass(star, rating, isSepia)}>
                       ★
                     </span>
                   </button>

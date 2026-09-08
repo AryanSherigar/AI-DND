@@ -1,451 +1,291 @@
-# Comprehensive Infrastructure & Docker Review: `AI-DND` Monorepo
+# Comprehensive Infrastructure & Docker Re-Audit Report: `AI-DND` Monorepo
 
-> **Scope**: Full Infrastructure & Containerization Stack ([`docker-compose.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml), [`docker-compose.dev.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.dev.yml), [`apps/core-api/Dockerfile`](file:///home/aryan-sherigar/projects/AI-DND/apps/core-api/Dockerfile), [`apps/turn-resolution-service/Dockerfile`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/Dockerfile), [`apps/frontend/Dockerfile`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/Dockerfile), [`apps/frontend/nginx.conf`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/nginx.conf), [`apps/memory-layer/Dockerfile`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/Dockerfile), [`apps/memory-layer/hydradb/Dockerfile`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/hydradb/Dockerfile), `.env.example`, and container networking)  
+> **Scope**: Full Containerization & Infrastructure Stack ([`docker-compose.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml), [`docker-compose.dev.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.dev.yml), [`apps/core-api/Dockerfile`](file:///home/aryan-sherigar/projects/AI-DND/apps/core-api/Dockerfile), [`apps/turn-resolution-service/Dockerfile`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/Dockerfile), [`apps/frontend/Dockerfile`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/Dockerfile), [`apps/frontend/Dockerfile.dev`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/Dockerfile.dev), [`apps/frontend/nginx.conf`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/nginx.conf), [`apps/memory-layer/Dockerfile`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/Dockerfile), [`apps/memory-layer/compose.yaml`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/compose.yaml), `.env.example`, runtime containers, and network architecture)  
 > **Benchmark Standards**: CIS Docker Benchmark v1.6.0, OWASP Container Security Top 10, 12-Factor App Methodology  
-> **Mode**: Read-Only Architecture & Security Audit (Zero Configuration / Code Changes)  
+> **Mode**: Read-Only Architecture & Security Re-Audit (No Code or Configuration Modifications Applied)  
 > **Date**: September 2026  
+> **Status**: Re-Audited & Verified Live
 
 ---
 
 ## Executive Summary
 
-An exhaustive review of the containerization and infrastructure definitions across the `AI-DND` monorepo was conducted. The audit covered all 7 services (`postgres`, `core-api`, `turn-resolution-service`, `postgres-memory`, `hydradb`, `memory-layer`, `frontend`) orchestrated by Docker Compose, all 5 Dockerfiles, web server configurations, local development overrides, and environment variable templates.
+A comprehensive re-audit of the containerization and infrastructure definitions across the `AI-DND` monorepo was conducted. The investigation verified the current status of all 21 findings identified in the previous audit, evaluated recent commits (notably commit `15457eb` which transitioned HydraDB to a prebuilt image, refactored dev frontend builds, and decoupled database migrations), and performed deep inspection of the live running container stack.
 
-### Key Metrics & Audit Outcomes
-- **Docker Compose Configuration Check**: `docker compose config` and `docker compose -f docker-compose.yml -f docker-compose.dev.yml config` parse with zero syntax errors.
-- **Root User Execution**: **4 out of 5 Dockerfiles** (`core-api`, `trs`, `frontend`, `memory-layer`) execute as UID 0 (`root`), violating CIS Docker Benchmark §4.1.
-- **Build Context & Layer Caching**: **Zero `.dockerignore` files** exist anywhere in the repository, resulting in `.git`, `.venv`, local `node_modules`, and temporary environment files leaking into image builds.
-- **Network Security & Exposure**: Zero network tier segregation; all containers (including raw PostgreSQL databases) share a single flat bridge network (`aidnd-net`), and the primary PostgreSQL database exposes port `5432` to the public host interface by default.
-- **Frontend Environment Variables**: Production frontend image builds freeze `http://localhost:8000` into static JS bundles at build time due to missing Vite build arguments.
-
-### Findings Breakdown by Severity
-
-| Severity | Count | Primary Impact Areas |
-|---|:---:|---|
-| **Critical (P0)** | 4 | Build-time localhost API bake-in on Frontend, Public Host Port Exposure of Database, Universal Root User Execution in Containers, HydraDB Volume Permission Denied Crash Loop |
-| **High (P1)** | 5 | Multi-Replica Migration Race Condition at Startup, Lazy DDL Migrations on First HTTP Request, Secret Leak via Plaintext Command Line Echo, Total Absence of `.dockerignore` Files, Flat Single Network Lacking Tier Segregation |
-| **Medium (P2)** | 8 | Missing CPU & Memory Resource Limits, Insecure Fallback Secret Defaults in Compose, Missing Application Healthchecks for Core API & TRS, PID 1 Signal Handling & Zombie Process Gap, Dev Environment Port Overlap, Insecure Nginx Default Configuration, Dev Node Modules Volume Desync, Monorepo Python Runtime Inconsistency (3.11 vs 3.12) |
-| **Low / Standards (P3)** | 4 | Missing Read-Only Root Filesystems, Missing Linux Capabilities Dropping (`cap_drop`), Floating Base Image Tags, Absence of Automated Dockerfile Linting (Hadolint) |
-| **Total Findings** | **21** | |
-
-```mermaid
-pie title Infrastructure Findings by Category
-    "Security & Root Execution" : 5
-    "Networking & Port Exposure" : 4
-    "Build Lifecycle & Caching" : 4
-    "Database & Migrations" : 3
-    "Configuration & Secrets" : 3
-    "Operations & Reliability" : 2
-```
+### Key Re-Audit Findings:
+1. **8 of the Original 21 Issues Are Remediated**: Significant progress was made on baseline security and stability. All production containers now execute as unprivileged users (UID 10001 / node / nginx), database migrations are decoupled into dedicated one-shot runners (`migration-runner`, `memory-layer-migration-runner`), `.dockerignore` files are deployed across all services, and network segregation between `frontend-net` and `backend-net` is enforced.
+2. **13 of the Original Issues Persist**: Key gaps remain in production secret hygiene (`docker-compose.yml` default secret fallbacks), container healthchecks for API services, Nginx web server hardening (missing security headers and static caching), process signal forwarding, resource limits, and Python runtime consistency.
+3. **5 Brand-New Bugs Discovered**:
+   - **[NEW-01] Active Container Crash-Loops in Development Stack**: Live inspection revealed `aidnd-core-api` crashing with `ModuleNotFoundError: No module named 'mutagen'` and `aidnd-trs` crashing with `ModuleNotFoundError: No module named 'google.cloud'`. Bind mounting host source into stale container images without rebuild triggers crashes uvicorn on auto-reload.
+   - **[NEW-02] Missing Production Environment Variables in `core-api`**: `GEMINI_API_KEY`, `CORE_API_PUBLIC_URL`, and `GCS_BUCKET_NAME` are omitted from `core-api` in `docker-compose.yml`. AI cover image generation (`POST /v1/uploads/generate-cover-image`) fails, GCS cannot be enabled, and upload URLs default to unreachable endpoints.
+   - **[NEW-03] Ephemeral Uploads Storage & Missing Nginx Route for `/uploads/`**: `core-api` lacks a persistent volume for `/app/uploads`. Local user uploads are wiped on container recreation, and `nginx.conf` has no proxy route for `/uploads/`, causing production asset requests to fail with 404 / SPA fallback.
+   - **[NEW-04] Internal Service Secret Key Disconnect (`MEMORY_SERVICE_API_KEY` vs `MEMORY_LAYER_API_KEY`)**: `core-api` and `turn-resolution-service` authenticate using `MEMORY_SERVICE_API_KEY`, but `memory-layer` expects `MEMORY_LAYER_API_KEY`. Setting the documented key in deployment environments causes HTTP 401 Unauthorized across all turn memory operations.
+   - **[NEW-05] Deep Readiness Probe Authentication Lockout on Memory Layer**: `apps/memory-layer/src/api/server.py` places the entire router under `require_api_key`. The deep readiness probe `GET /v1/health` rejects unauthenticated orchestrator probes with HTTP 401 Unauthorized (confirmed live in container logs).
 
 ---
 
-## Severity 0: Critical Vulnerabilities & System Risks
+## Audit Status Matrix: Original 21 Findings
 
-### [CRIT-01] Frontend Build-Time Environment Variable Freezing (`VITE_*` Localhost Bake-in)
-- **Severity**: Critical (P0)
-- **Category**: Build Lifecycle & Network Architecture
-- **Location**: [`apps/frontend/Dockerfile:10-13`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/Dockerfile#L10-L13) and [`docker-compose.yml:154-166`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L154-L166)
-- **Problem & Root Cause**:
-  Vite evaluates `import.meta.env.VITE_*` statically at **build time** during `npm run build`, embedding the values directly into the compiled JavaScript chunks in `dist/`.
-  In `apps/frontend/Dockerfile`:
-  ```dockerfile
-  FROM node:20-alpine AS builder
-  WORKDIR /app
-  COPY package.json package-lock.json ./
-  RUN npm ci
-  COPY . .
-  RUN npm run build
-  ```
-  The builder stage receives **zero `ARG` declarations and sets no environment variables**.
-  Consequently, [`api-client.ts:20`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/lib/api-client.ts#L20) and [`play.store.ts:27`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/stores/play.store.ts#L27) fall back to their hardcoded development defaults:
-  `http://localhost:8000` and `http://localhost:8001`.
-- **Failure Scenario / Impact**:
-  When the production image is deployed to a server, domain, or cloud cluster, any client connecting from a remote browser attempts to send API requests and open SSE connections to `http://localhost:8000` and `http://localhost:8001` on their own local machine. The application fails completely for all external users.
-- **Remediation**:
-  Define Dockerfile `ARG`s for all `VITE_*` variables in the builder stage, and pass them via `build.args` in `docker-compose.yml`.
-  ```dockerfile
-  # Remediation in apps/frontend/Dockerfile
-  FROM node:20-alpine AS builder
-  WORKDIR /app
-  ARG VITE_API_URL
-  ARG VITE_TRS_URL
-  ARG VITE_FIREBASE_API_KEY
-  ARG VITE_FIREBASE_AUTH_DOMAIN
-  ARG VITE_FIREBASE_PROJECT_ID
-  ENV VITE_API_URL=$VITE_API_URL \
-      VITE_TRS_URL=$VITE_TRS_URL \
-      VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY \
-      VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN \
-      VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID
-  ...
-  RUN npm run build
-  ```
+| ID | Title | Severity | Status | Current Code / Verification Evidence |
+|---|---|:---:|:---:|---|
+| **CRIT-01** | Frontend Build-Time Env Freezing (`VITE_*`) | P0 | **REMEDIATED** | [`apps/frontend/Dockerfile:12-29`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/Dockerfile#L12-L29) declares `ARG`s and exports `ENV` before `npm run build`. Injected via `docker-compose.yml`. |
+| **CRIT-02** | Public Host Port Exposure of Database & Internal Services | P0 | **REMEDIATED** | [`docker-compose.yml:12-13, 175-176`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L12) uses `expose:` only for `postgres` and `memory-layer`. Host ports are only bound in `docker-compose.dev.yml`. |
+| **CRIT-03** | Universal Root User Execution Across Containers | P0 | **REMEDIATED** | All Dockerfiles specify unprivileged users (`USER 10001:10001` in Python services, `nginx-unprivileged` in frontend prod, `USER node` in frontend dev). |
+| **CRIT-04** | HydraDB Named Volume Permission Denied Crash Loop | P0 | **REMEDIATED** | Switched to `ghcr.io/hydra-db/hydradb:sha-02a4002` with pre-configured directory ownership for `graph:graph` (UID 10001). Container is running healthy. |
+| **HIGH-01** | Multi-Replica Migration Race Condition at Startup | P1 | **REMEDIATED** | Decoupled to one-shot `migration-runner` in [`docker-compose.yml:24-38`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L24-L38). `core-api` waits for `service_completed_successfully`. |
+| **HIGH-02** | Lazy DDL Migrations on First Request in Memory Layer | P1 | **REMEDIATED** | Removed from `build_memory_engine()`. Executed ahead of time via `memory-layer-migration-runner` ([`docker-compose.yml:143-157`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L143-L157)). |
+| **HIGH-03** | Secret Exposure via Command Line Echo in Entrypoint | P1 | **STILL EXISTS** | [`docker-compose.yml:117`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L117) echoes `${HYDRADB_API_KEY}` in plaintext inside shell command string. Exposed in `/proc/<pid>/cmdline` and `docker inspect`. |
+| **HIGH-04** | Total Absence of `.dockerignore` Files Monorepo-Wide | P1 | **REMEDIATED** | Root `.dockerignore` and 4 app-specific `.dockerignore` files created, blocking `.git`, `.venv`, and `node_modules` leaks. |
+| **HIGH-05** | Flat Single Network Lacking Tier Segregation | P1 | **REMEDIATED** | Dual network segregation implemented: `frontend-net` (public web) and `backend-net` (private database & internal services). Frontend has zero route to `backend-net`. |
+| **MED-01** | Missing CPU & Memory Resource Limits | P2 | **STILL EXISTS** | [`docker-compose.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml) lacks `deploy.resources.limits` or `mem_limit`/`cpus` for all 7 services. |
+| **MED-02** | Insecure Fallback Secret Defaults in Compose | P2 | **STILL EXISTS** | Default secrets (`dev-secret-key-change-in-production`, `postgres`, etc.) remain in [`docker-compose.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml). No `${VAR:?}` production enforcement. |
+| **MED-03** | Missing Application Healthchecks for Core API & TRS | P2 | **STILL EXISTS** | Neither `core-api`, `trs`, nor `memory-layer` defines `healthcheck` in [`docker-compose.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml). Frontend depends on `service_started`. |
+| **MED-04** | PID 1 Signal Handling & Zombie Process Gap | P2 | **REMEDIATED** | Shell wrappers (`sh -c`) removed from Dockerfiles. `CMD ["uvicorn", ...]` runs directly in exec form as PID 1, intercepting `SIGTERM` and `SIGINT` cleanly. |
+| **MED-05** | Dev Environment Port Overlap (Publishing 80 & 5173) | P2 | **REMEDIATED** | [`docker-compose.dev.yml:51-52`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.dev.yml#L51-L52) uses `ports: !override` to bind strictly to port 5173. |
+| **MED-06** | Insecure Nginx Default Configuration | P2 | **STILL EXISTS** | [`apps/frontend/nginx.conf`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/nginx.conf) lacks standard security headers, static asset caching headers, and compression. |
+| **MED-07** | Dev Node Modules Anonymous Volume Shadowing | P2 | **PARTIALLY RESOLVED** | Redundant `npm install` on boot was eliminated via `Dockerfile.dev`. However, anonymous volume `/app/node_modules` still retains stale packages unless `docker compose down -v` is run. |
+| **MED-08** | Inconsistent Python Runtimes Across Monorepo | P2 | **STILL EXISTS** | `core-api` and `trs` use `python:3.11-slim` while `memory-layer` uses `python:3.12-slim`. |
+| **LOW-01** | Missing Read-Only Root Filesystem Enforcements | P3 | **STILL EXISTS** | No containers configure `read_only: true` with `tmpfs`. |
+| **LOW-02** | Missing Linux Capabilities Dropping (`cap_drop`) | P3 | **STILL EXISTS** | Containers retain full default capabilities (`cap_drop: [ALL]` not configured). |
+| **LOW-03** | Floating Base Image Tags | P3 | **STILL EXISTS** | Unpinned tags (`node:22-alpine`, `nginxinc/nginx-unprivileged:alpine`, `postgres:16-alpine`) pull non-deterministic upstream revisions. |
+| **LOW-04** | Absence of Automated Dockerfile Linting (Hadolint) | P3 | **STILL EXISTS** | No Dockerfile linting in CI/CD or pre-commit configuration. |
 
 ---
 
-### [CRIT-02] Public Host Port Exposure of PostgreSQL & Internal Database Services
-- **Severity**: Critical (P0)
-- **Category**: Security & Network Architecture
-- **Location**: [`docker-compose.yml:12-13, 144-145`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L12-L13)
+## Detailed Analysis of Newly Discovered Bugs
+
+### [NEW-01] Stale Container Build & Broken Dependencies Crash-Loop in Development Stack
+- **Severity**: High (P1)
+- **Category**: Local Development Lifecycle & Runtime Stability
+- **Location**: [`docker-compose.dev.yml:4-21`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.dev.yml#L4-L21)
+- **Live Evidence**:
+  Checking running container logs on the system revealed that both backend services failed to boot:
+  1. `aidnd-core-api`:
+     ```text
+     File "/app/app/services/music_service.py", line 11, in <module>
+       from mutagen import MutagenError
+     ModuleNotFoundError: No module named 'mutagen'
+     ```
+  2. `aidnd-trs`:
+     ```text
+     File "/app/app/integrations/storage_client.py", line 20, in <module>
+       from google.cloud import storage
+     ModuleNotFoundError: No module named 'google.cloud'
+     ```
 - **Problem & Root Cause**:
-  In [`docker-compose.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml), the base production service definition for `postgres` publishes port 5432 to the host:
+  In `docker-compose.dev.yml`, host directories are bind-mounted into container `/app`:
   ```yaml
-  postgres:
-    image: postgres:16-alpine
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+  core-api:
+    command: ["uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    volumes:
+      - ./apps/core-api:/app
+  turn-resolution-service:
+    command: ["uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8001"]
+    volumes:
+      - ./apps/turn-resolution-service:/app
   ```
-  And `memory-layer` publishes port 8002:
+  While Python source code updates live across the mount, Python third-party packages live in `/usr/local/lib/python3.11/site-packages` inside the container image. When new dependencies (`mutagen`, `google-cloud-storage`) were added to `requirements.txt` on the host, uvicorn auto-reloaded the new host code, but failed to find the packages because the container was not rebuilt with `--build`.
+- **Impact**:
+  The development environment is broken out-of-the-box when running `docker compose -f docker-compose.yml -f docker-compose.dev.yml up` without explicit build flags. Both `core-api` and `turn-resolution-service` enter an irrecoverable crash-reload loop.
+- **Remediation**:
+  1. Trigger an immediate image rebuild:
+     ```bash
+     docker compose -f docker-compose.yml -f docker-compose.dev.yml build core-api turn-resolution-service
+     ```
+  2. In documentation and developer runbooks, explicitly specify `--build` for local stack initialization:
+     ```bash
+     docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+     ```
+
+---
+
+### [NEW-02] Missing Critical Environment Variables in `core-api` Container (`GEMINI_API_KEY`, `CORE_API_PUBLIC_URL`, `GCS_BUCKET_NAME`)
+- **Severity**: High (P1)
+- **Category**: Service Configuration & Feature Completeness
+- **Location**: [`docker-compose.yml:45-58`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L45-L58) vs [`apps/core-api/app/config.py:29-32`](file:///home/aryan-sherigar/projects/AI-DND/apps/core-api/app/config.py#L29-L32)
+- **Problem & Root Cause**:
+  In `docker-compose.yml`, the environment block for `core-api` declares:
+  ```yaml
+  core-api:
+    environment:
+      DATABASE_URL: ${CORE_API_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/aidnd_db}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_ACCESS_EXPIRE_MINUTES: ${JWT_ACCESS_EXPIRE_MINUTES:-15}
+      JWT_REFRESH_EXPIRE_DAYS: ${JWT_REFRESH_EXPIRE_DAYS:-7}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-ai-dnd-47eb0}
+      FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:3000","http://localhost:80"]}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONPATH: /app
+      MEMORY_SERVICE_URL: http://memory-layer:8002
+      MEMORY_SERVICE_API_KEY: ${MEMORY_SERVICE_API_KEY:-dev-memory-layer-key-change-in-production}
+  ```
+  Notice what is completely omitted:
+  - `GEMINI_API_KEY`: Core API uses Imagen (Vertex AI) directly in [`apps/core-api/app/integrations/image_gen_client.py`](file:///home/aryan-sherigar/projects/AI-DND/apps/core-api/app/integrations/image_gen_client.py) for the Studio endpoint `POST /v1/uploads/generate-cover-image`. Without `GEMINI_API_KEY`, AI cover image generation throws an unhandled authentication failure.
+  - `CORE_API_PUBLIC_URL`: Used by [`apps/core-api/app/integrations/storage_client.py:42`](file:///home/aryan-sherigar/projects/AI-DND/apps/core-api/app/integrations/storage_client.py#L42) to generate asset URLs. In Docker, it defaults to `http://localhost:8000`, which is inaccessible when running behind Nginx.
+  - `GCS_BUCKET_NAME`: Core API cannot utilize Google Cloud Storage in production container deployments even if `GCS_BUCKET_NAME` is configured in the root `.env`.
+- **Impact**:
+  AI image generation in Studio is completely inoperable in Docker. Cloud storage cannot be utilized, and fallback local uploads construct broken URLs.
+- **Remediation**:
+  Add the missing variables to `core-api` in `docker-compose.yml`:
+  ```yaml
+  core-api:
+    environment:
+      ...
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      CORE_API_PUBLIC_URL: ${CORE_API_PUBLIC_URL:-http://localhost:80}
+      GCS_BUCKET_NAME: ${GCS_BUCKET_NAME:-}
+  ```
+
+---
+
+### [NEW-03] Ephemeral Uploads Storage & Missing Nginx Route for `/uploads/`
+- **Severity**: High (P1)
+- **Category**: Storage Persistence & Ingress Routing
+- **Location**: [`docker-compose.yml:39-69`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L39-L69) and [`apps/frontend/nginx.conf:5-33`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/nginx.conf#L5-L33)
+- **Problem & Root Cause**:
+  When GCS is not enabled, `core-api` stores uploaded images (avatars, scenario covers, banners, map images, audio files) in `/app/uploads` via `StaticFiles(directory="uploads")` in [`apps/core-api/app/main.py:81`](file:///home/aryan-sherigar/projects/AI-DND/apps/core-api/app/main.py#L81).
+  However:
+  1. `core-api` has **no volume mount** for `/app/uploads` in `docker-compose.yml`.
+  2. `apps/frontend/nginx.conf` has routes only for `/api/`, `/trs/`, and `/`:
+     ```nginx
+     location /api/ { proxy_pass http://core-api:8000/; ... }
+     location /trs/ { proxy_pass http://turn-resolution-service:8001/; ... }
+     location / {
+         root /usr/share/nginx/html;
+         try_files $uri $uri/ /index.html;
+     }
+     ```
+  Any browser request for `/uploads/...` matches `location /` on Nginx, searches `/usr/share/nginx/html/uploads/`, and returns 404 or the SPA `index.html`.
+- **Impact**:
+  All local user uploads are permanently destroyed whenever the `aidnd-core-api` container is stopped or recreated. In production behind Nginx, all uploaded media requests fail immediately.
+- **Remediation**:
+  1. Add a persistent volume `uploads_data:/app/uploads` to `core-api` in `docker-compose.yml`.
+  2. Add an explicit proxy route in `apps/frontend/nginx.conf`:
+     ```nginx
+     location /uploads/ {
+         proxy_pass http://core-api:8000/uploads/;
+         proxy_set_header Host $host;
+         proxy_set_header X-Real-IP $remote_addr;
+         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+         proxy_set_header X-Forwarded-Proto $scheme;
+     }
+     ```
+
+---
+
+### [NEW-04] Service-to-Service Secret Name Mismatch (`MEMORY_SERVICE_API_KEY` vs `MEMORY_LAYER_API_KEY`)
+- **Severity**: High (P1)
+- **Category**: Security Architecture & Service Coordination
+- **Location**: [`docker-compose.yml:58, 85, 169`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L58), [`.env.example:41, 51`](file:///home/aryan-sherigar/projects/AI-DND/.env.example#L41)
+- **Problem & Root Cause**:
+  In `docker-compose.yml`:
+  - `core-api` injects: `MEMORY_SERVICE_API_KEY: ${MEMORY_SERVICE_API_KEY:-dev-memory-layer-key-change-in-production}`
+  - `turn-resolution-service` injects: `MEMORY_SERVICE_API_KEY: ${MEMORY_SERVICE_API_KEY:-dev-memory-layer-key-change-in-production}`
+  - `memory-layer` injects: `CONTEXT_MEMORY_API_KEY: ${MEMORY_LAYER_API_KEY:-dev-memory-layer-key-change-in-production}`
+  While `.env.example` mentions both names in comments, they represent the **exact same shared secret**. If a DevOps engineer or deployment script specifies `MEMORY_SERVICE_API_KEY=prod-secret-token` in their production `.env` without also setting `MEMORY_LAYER_API_KEY`, `memory-layer` continues running with the fallback key `dev-memory-layer-key-change-in-production`.
+- **Impact**:
+  Every request sent from `core-api` or `turn-resolution-service` to `memory-layer` (`/v1/memory/query`, `/v1/memory/ingest`) is rejected with HTTP 401 Unauthorized, causing narrative turn resolution and world-building memory extraction to fail.
+- **Remediation**:
+  In `docker-compose.yml`, align the environment variable fallback in `memory-layer`:
   ```yaml
   memory-layer:
-    ports:
-      - "${MEMORY_LAYER_PORT:-8002}:8002"
-  ```
-  On Linux servers running Docker, Docker automatically configures `iptables` forwarding rules that **bypass local host firewalls (such as UFW)**.
-- **Failure Scenario / Impact**:
-  Unless a cloud provider hardware security group specifically blocks incoming traffic, PostgreSQL port 5432 is exposed to the entire public internet. Coupled with default credentials (`postgres:postgres`), an attacker can connect remotely, exfiltrate player records, and drop production databases.
-- **Remediation**:
-  Bind internal services to `127.0.0.1` or remove `ports` from the production `docker-compose.yml` entirely, exposing ports only within `docker-compose.dev.yml` for local inspection.
-  ```yaml
-  # Remediation in docker-compose.yml
-  postgres:
-    image: postgres:16-alpine
-    # Expose only to internal docker network in production:
-    expose:
-      - "5432"
-    # Or if host access is required, bind strictly to loopback:
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    environment:
+      CONTEXT_MEMORY_API_KEY: ${MEMORY_SERVICE_API_KEY:-${MEMORY_LAYER_API_KEY:-dev-memory-layer-key-change-in-production}}
   ```
 
 ---
 
-### [CRIT-03] Universal Root User Execution Across Production Containers
-- **Severity**: Critical (P0)
-- **Category**: Container Security (CIS Docker Benchmark §4.1)
-- **Location**:
-  - [`apps/core-api/Dockerfile`](file:///home/aryan-sherigar/projects/AI-DND/apps/core-api/Dockerfile)
-  - [`apps/turn-resolution-service/Dockerfile`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/Dockerfile)
-  - [`apps/frontend/Dockerfile:15-22`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/Dockerfile#L15-L22)
-  - [`apps/memory-layer/Dockerfile`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/Dockerfile)
+### [NEW-05] Deep Readiness Probe Authentication Lockout on Memory Layer (`/v1/health` vs `/health`)
+- **Severity**: Medium (P2)
+- **Category**: Operations & Container Health Monitoring
+- **Location**: [`apps/memory-layer/src/api/server.py:83-93`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/api/server.py#L83-L93) and [`apps/memory-layer/src/api/routes.py:474-485`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/api/routes.py#L474-L485)
+- **Live Evidence**:
+  Memory Layer container log:
+  ```text
+  2026-09-08 12:53:01,589 [INFO] [api.server:73] HTTP GET /v1/health -> status=401 duration=5111.94ms
+  ```
 - **Problem & Root Cause**:
-  4 out of 5 Dockerfiles fail to specify a non-root `USER` directive. All processes (`uvicorn`, `alembic`, `nginx`) execute as `root` (UID 0).
-- **Failure Scenario / Impact**:
-  If an attacker exploits an application-level vulnerability (such as SSRF in Replit verification, file upload flaws in GCS endpoints, or an unpatched Python dependency vulnerability), they execute commands as UID 0 within the container. This eliminates the first line of defense against kernel privilege escalation and container breakout attacks.
-- **Remediation**:
-  Create an unprivileged system group and user in each Dockerfile and switch to it before the entrypoint. For Nginx, use `nginxinc/nginx-unprivileged:alpine`.
-  ```dockerfile
-  # Remediation for Python Dockerfiles
-  RUN groupadd -g 10001 appgroup && \
-      useradd -u 10001 -g appgroup -s /sbin/nologin -M appuser && \
-      chown -R appuser:appgroup /app
-  USER 10001:10001
+  In `api/server.py`:
+  ```python
+  app.include_router(router, dependencies=[Depends(require_api_key)])
   ```
-
----
-
-### [CRIT-04] HydraDB Named Volume Permission Denied Crash Loop
-- **Severity**: Critical (P0)
-- **Category**: Permissions & Volume Architecture
-- **Location**: [`docker-compose.yml:94-126`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L94-L126) and [`apps/memory-layer/hydradb/Dockerfile:95`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/hydradb/Dockerfile#L95)
-- **Problem & Root Cause**:
-  `hydradb/Dockerfile` enforces unprivileged execution via `USER 10001:10001`.
-  In [`docker-compose.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml):
-  ```yaml
-  hydradb:
-    entrypoint: ["sh", "-c", "mkdir -p /tmp/graph /var/cache/slatedb && echo '${HYDRADB_API_KEY:-context-memory-local-smoke-token-32b}' > /tmp/graph/auth-token && exec graph-node"]
-    volumes:
-      - hydradb_store:/tmp/graph
-      - hydradb_cache:/var/cache/slatedb
+  Because the router is included with `dependencies=[Depends(require_api_key)]`, all routes declared inside `api/routes.py` require `Authorization: Bearer <key>`.
+  In `api/routes.py`:
+  ```python
+  @router.get("/v1/health")
+  async def health_check(request: Request) -> dict[str, str]:
+      postgres_status = await check_postgres()
+      hydradb_status = await check_hydradb()
+      ...
   ```
-  Named volumes initialized by Docker are owned by `root:root` (UID 0) by default. When the container boots, the unprivileged user `10001` attempts to run `mkdir -p` and `echo > /tmp/graph/auth-token`.
-- **Failure Scenario / Impact**:
-  The shell script exits immediately with `mkdir: can't create directory '/tmp/graph': Permission denied` or `sh: can't create /tmp/graph/auth-token: Permission denied`. The container enters a continuous crash loop (`Restarting (1)`), causing `memory-layer` (which depends on HydraDB being healthy) to never boot.
+  `server.py` defines a separate unauthenticated liveness probe `@app.get("/health")`, but the deep readiness probe `GET /v1/health` (which verifies Postgres and HydraDB dependencies) is locked behind authentication. Any external monitoring system, Kubernetes readiness probe, or Docker healthcheck pinging `/v1/health` receives a 401 Unauthorized.
+- **Impact**:
+  Orchestrators and monitoring systems cannot perform dependency-aware readiness healthchecks without hardcoding bearer credentials into their probe configurations.
 - **Remediation**:
-  Ensure volume directories are pre-created with correct ownership, or initialize directory permissions via an init container / entrypoint wrapper before dropping privileges.
+  Exempt `/v1/health` from the `require_api_key` dependency or move the readiness probe to `server.py` alongside `/health`.
 
 ---
 
-## Severity 1: High Priority Deficiencies
-
-### [HIGH-01] Multi-Replica Migration Race Condition at Startup
-- **Severity**: High (P1)
-- **Category**: Database Integrity & Container Lifecycle
-- **Location**: [`apps/core-api/Dockerfile:18`](file:///home/aryan-sherigar/projects/AI-DND/apps/core-api/Dockerfile#L18) and [`docker-compose.dev.yml:5`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.dev.yml#L5)
-- **Problem & Root Cause**:
-  The Dockerfile `CMD` executes `alembic upgrade head && uvicorn app.main:app ...`.
-  In production environments where multiple replicas of `core-api` are launched for high availability, all instances boot concurrently and attempt to acquire migration locks and apply DDL statements at the same time.
-- **Failure Scenario / Impact**:
-  Concurrent migration executions cause lock contention errors (`deadlock detected`, `relation already exists`), leaving Alembic's version tracking table in a corrupt or mismatched state and aborting web worker startup.
-- **Remediation**:
-  Decouple database migrations from the web server image command. Run migrations as a one-off init container or dedicated deployment job:
-  ```yaml
-  # In docker-compose.yml
-  migration-runner:
-    build: ./apps/core-api
-    command: ["alembic", "upgrade", "head"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - aidnd-backend-net
-    restart: "no"
-  ```
-
----
-
-### [HIGH-02] Lazy DDL Migrations on First HTTP Request in Memory Layer
-- **Severity**: High (P1)
-- **Category**: Database Lifecycle & Latency
-- **Location**: [`apps/memory-layer/Dockerfile:18-21`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/Dockerfile#L18-L21) and [`apps/memory-layer/src/context_memory/composition.py`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/src/context_memory/composition.py)
-- **Problem & Root Cause**:
-  The memory layer Dockerfile comments acknowledge:
-  *`# Postgres migrations (db/migrations) run lazily on first request, inside composition.py`*.
-  Running database schema migrations lazily inside the critical path of an incoming HTTP request is a severe operational risk.
-- **Failure Scenario / Impact**:
-  The first request after a deployment experiences massive latency spikes or 504 Gateway Timeouts while table structures and pgvector indexes are built. If multiple requests arrive simultaneously on startup, concurrent DDL execution can cause PostgreSQL transaction deadlocks.
-- **Remediation**:
-  Execute database migrations during startup in the service entrypoint or via a pre-start script before `uvicorn` begins accepting HTTP traffic.
-
----
+## Detailed Analysis of Continuing / Persisting Issues
 
 ### [HIGH-03] Secret Exposure via Plaintext Command Line Echo in Compose Entrypoint
-- **Severity**: High (P1)
-- **Category**: Secrets Management
-- **Location**: [`docker-compose.yml:101`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L101)
-- **Problem & Root Cause**:
+- **Status**: **STILL EXISTS**
+- **Location**: [`docker-compose.yml:117`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L117)
+- **Problem**:
   ```yaml
   entrypoint: ["sh", "-c", "mkdir -p /tmp/graph /var/cache/slatedb && echo '${HYDRADB_API_KEY:-context-memory-local-smoke-token-32b}' > /tmp/graph/auth-token && exec graph-node"]
   ```
-  Passing API keys and tokens inside shell command strings exposes the value in `/proc/<pid>/cmdline`, process monitoring tools (`ps`, `top`), and Docker inspection metadata (`docker inspect`).
-- **Remediation**:
-  Pass the auth token via a Docker secret, a secure environment variable read directly by the application binary, or mount the token file using a Docker volume secret.
-
----
-
-### [HIGH-04] Total Absence of `.dockerignore` Files Monorepo-Wide
-- **Severity**: High (P1)
-- **Category**: Build Context Hygiene & Image Bloat
-- **Location**: Monorepo root and all `apps/*` directories
-- **Problem & Root Cause**:
-  Zero `.dockerignore` files exist in the repository.
-  When building images (`docker build ./apps/core-api`, `docker build ./apps/frontend`), Docker copies the entire contents of the directory into the build context.
-- **Failure Scenario / Impact**:
-  Local `.venv`, virtual environments, `node_modules` (often containing hundreds of MBs of platform-specific C++ binaries), `.git`, `__pycache__`, and local `.env` secret files are transferred to the Docker daemon. This drastically slows build times, breaks layer caching, and risks baking host secrets and invalid host binaries into container images.
-- **Remediation**:
-  Create targeted `.dockerignore` files in root and each app directory:
-  ```
-  .git
-  .venv
-  __pycache__
-  *.pyc
-  .pytest_cache
-  node_modules
-  dist
-  .env
-  .env.*
-  !.env.example
-  ```
-
----
-
-### [HIGH-05] Flat Single Network Lacking Tier Segregation (`aidnd-net`) — [REMEDIATED]
-- **Severity**: High (P1)
-- **Category**: Network Architecture & Defense-in-Depth
-- **Status**: Remediated (Segregated into `frontend-net` and `backend-net`)
-- **Location**: [`docker-compose.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml)
-- **Problem & Root Cause**:
-  Every service across all tiers resides on a single bridge network (`aidnd-net`). The public-facing `frontend` container shares the same network segment as the private PostgreSQL database instances (`aidnd-postgres` and `aidnd-postgres-memory`).
-- **Failure Scenario / Impact**:
-  If the frontend Nginx or Vite container is compromised, the attacker has unrestricted network access to PostgreSQL port 5432, HydraDB internal ports (7687, 8443, 9090), and internal REST APIs with zero perimeter defense.
-- **Remediation**:
-  Dual-network segregation implemented:
-  1. `frontend-net`: connects `frontend`, `core-api`, and `turn-resolution-service`.
-  2. `backend-net`: connects `core-api`, `turn-resolution-service`, `memory-layer`, `hydradb`, `migration-runner`, `memory-layer-migration-runner`, and PostgreSQL databases. `frontend` has zero route to `backend-net`.
-
----
-
-## Severity 2: Medium Priority Architectural & Operational Issues
+  Interpolating secrets directly into shell command lines exposes the secret in `/proc/<pid>/cmdline`, process listing tools (`ps`, `top`), and Docker inspection metadata (`docker inspect aidnd-hydradb`).
+- **Remediation**: Pass the secret via Docker secret or mount the token file using a Docker volume secret.
 
 ### [MED-01] Missing CPU & Memory Resource Limits (DOS Risk)
-- **Severity**: Medium (P2)
-- **Category**: Resource Management & Denial of Service
-- **Location**: [`docker-compose.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml) (all 7 services)
-- **Problem & Root Cause**:
-  None of the containers specify `mem_limit`, `cpus`, or `deploy.resources.limits`.
-- **Failure Scenario / Impact**:
-  A memory leak in Pixi/Node or an intensive embedding generation in `memory-layer` can consume 100% of host RAM, triggering Linux OOM killer to terminate host system daemons.
-- **Remediation**:
-  Configure memory and CPU limits on each service in `docker-compose.yml`:
-  ```yaml
-  deploy:
-    resources:
-      limits:
-        cpus: '1.5'
-        memory: 1024M
-  ```
-
----
+- **Status**: **STILL EXISTS**
+- **Location**: [`docker-compose.yml`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml) (all services)
+- **Problem**: No service specifies `deploy.resources.limits` or `mem_limit`. A runaway task or memory leak can consume all host RAM and trigger the host Linux OOM killer.
+- **Remediation**: Add standard resource bounds (`limits.cpus: '1.5'`, `limits.memory: 1024M`).
 
 ### [MED-02] Insecure Fallback Secret Defaults in Compose Definitions
-- **Severity**: Medium (P2)
-- **Category**: Configuration & Secrets Hygiene
-- **Location**: [`docker-compose.yml:32, 43, 60, 67, 138`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L32)
-- **Problem & Root Cause**:
-  Variables use insecure fallback defaults:
-  `SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}`
-  `POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}`
-  `MEMORY_SERVICE_API_KEY: ${MEMORY_SERVICE_API_KEY:-dev-memory-layer-key-change-in-production}`
-- **Failure Scenario / Impact**:
-  If a production operator forgets to set `SECRET_KEY` in their production `.env`, the cluster boots silently with well-known cryptographic secrets.
-- **Remediation**:
-  In production Compose files, enforce mandatory environment variables using `${VAR:?error message}` syntax so Docker Compose refuses to start if secrets are missing.
-
----
+- **Status**: **STILL EXISTS**
+- **Location**: [`docker-compose.yml:10, 47, 58, 78, 85, 167, 169`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L47)
+- **Problem**: Insecure defaults (`dev-secret-key-change-in-production`, `postgres`, `dev-memory-layer-key-change-in-production`) allow production containers to start silently with well-known credentials if `.env` is omitted.
+- **Remediation**: Use `${SECRET_KEY:?SECRET_KEY must be set}` for production deployments.
 
 ### [MED-03] Missing Application Healthchecks for Core API & TRS
-- **Severity**: Medium (P2)
-- **Category**: Reliability & Service Orchestration
-- **Location**: [`docker-compose.yml:24-75`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L24-L75)
-- **Problem & Root Cause**:
-  Neither `core-api` nor `turn-resolution-service` defines a healthcheck in their Dockerfiles or `docker-compose.yml`.
-  `frontend`'s `depends_on` relies on `condition: service_started`.
-- **Failure Scenario / Impact**:
-  `frontend` begins routing traffic to `core-api` before database connections are verified and migrations have finished, returning 502/503 errors during cold boots.
-- **Remediation**:
-  Add healthchecks querying `/health`:
-  ```yaml
-  healthcheck:
-    test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
-    interval: 10s
-    timeout: 5s
-    retries: 3
-    start_period: 15s
-  ```
-
----
-
-### [MED-04] PID 1 Signal Handling & Zombie Process Gap (`sh -c` vs. Tini)
-- **Severity**: Medium (P2)
-- **Category**: Container Runtime & Lifecycle
-- **Location**: [`apps/core-api/Dockerfile:18`](file:///home/aryan-sherigar/projects/AI-DND/apps/core-api/Dockerfile#L18)
-- **Problem & Root Cause**:
-  `CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app ..."]` runs `/bin/sh` as PID 1. Shells do not pass OS signals (`SIGTERM`, `SIGINT`) to child processes by default.
-- **Failure Scenario / Impact**:
-  Executing `docker stop` or rolling updates in container orchestrators causes the container to ignore graceful shutdown signals, hanging for 10 seconds until abruptly killed via `SIGKILL`. Active user turns and SSE streams are abruptly terminated.
-- **Remediation**:
-  Use an entrypoint script with `exec` or utilize `tini` / `dumb-init` to forward signals:
-  ```dockerfile
-  ENTRYPOINT ["/usr/bin/tini", "--"]
-  CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-  ```
-
----
-
-### [MED-05] Dev Environment Port Overlap (Publishing Both 80 and 5173)
-- **Severity**: Medium (P2)
-- **Category**: Development Configuration
-- **Location**: [`docker-compose.yml:161`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L161) and [`docker-compose.dev.yml:28-29`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.dev.yml#L28-L29)
-- **Problem & Root Cause**:
-  When launching the development environment with `docker compose -f docker-compose.yml -f docker-compose.dev.yml up`, Compose merges the ports lists, publishing both `80:80` AND `5173:5173`.
-- **Failure Scenario / Impact**:
-  Developers running local web servers or Nginx on port 80 encounter port binding conflicts (`bind: address already in use`), preventing dev stack startup.
-- **Remediation**:
-  In `docker-compose.dev.yml`, use `ports: !reset ["${FRONTEND_PORT:-5173}:5173"]` to clear the base port mapping.
-
----
+- **Status**: **STILL EXISTS**
+- **Location**: [`docker-compose.yml:39, 70, 158`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L39)
+- **Problem**: `core-api`, `turn-resolution-service`, and `memory-layer` do not define healthchecks. `frontend` depends on them via `service_started`, creating cold-start race conditions.
+- **Remediation**: Add `healthcheck` querying `/health` using python urllib or curl.
 
 ### [MED-06] Insecure Nginx Default Configuration in Frontend Container
-- **Severity**: Medium (P2)
-- **Category**: Web Server Hardening
+- **Status**: **STILL EXISTS**
 - **Location**: [`apps/frontend/nginx.conf`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/nginx.conf)
-- **Problem & Root Cause**:
-  `nginx.conf` contains only bare `try_files` SPA routing. It lacks standard security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy`), lacks static caching headers (`Cache-Control`) for `/assets/`, and lacks gzip/brotli compression.
-- **Remediation**:
-  Add security headers and immutable caching rules to `nginx.conf`:
-  ```nginx
-  add_header X-Content-Type-Options "nosniff" always;
-  add_header X-Frame-Options "SAMEORIGIN" always;
-  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-  location ~* \.(?:css|js|woff2?|png|webp|jpg)$ {
-      expires 1y;
-      add_header Cache-Control "public, immutable";
-  }
-  ```
-
----
+- **Problem**: Lacks HTTP security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`), lacks immutable asset caching for `/assets/`, and lacks gzip compression.
+- **Remediation**: Add standard security headers and static asset caching directives to `nginx.conf`.
 
 ### [MED-07] Docker Compose Dev Node Modules Volume Desync
-- **Severity**: Medium (P2)
-- **Category**: Local Development Workflow
-- **Location**: [`docker-compose.dev.yml:25-27, 40`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.dev.yml#L25-L27)
-- **Problem & Root Cause**:
-  `docker-compose.dev.yml` mounts an anonymous volume `/app/node_modules` alongside `./apps/frontend:/app`, and runs `npm install && npm run dev ...` on every boot.
-- **Failure Scenario / Impact**:
-  Running `npm install` inside the container on every single `docker compose up` causes 30-60 second startup delays. If dependencies change on the host, the anonymous Docker volume retains obsolete packages unless manually purged with `docker compose down -v`.
-- **Remediation**:
-  Build `node_modules` into the dev image or run `npm install` conditionally based on package lock checksums.
-
----
+- **Status**: **PARTIALLY RESOLVED / KNOWN TRADE-OFF**
+- **Location**: [`docker-compose.dev.yml:48-50`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.dev.yml#L48-L50)
+- **Problem**: An anonymous volume `/app/node_modules` is mounted over the bind mount. Adding packages on the host does not update the container's node_modules without running `docker compose down -v`.
 
 ### [MED-08] Inconsistent Python Runtimes Across Monorepo (3.11 vs 3.12)
-- **Severity**: Medium (P2)
-- **Category**: Monorepo Architecture
-- **Location**: [`apps/core-api/Dockerfile:1`](file:///home/aryan-sherigar/projects/AI-DND/apps/core-api/Dockerfile#L1) (3.11) vs [`apps/memory-layer/Dockerfile:1`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/Dockerfile#L1) (3.12)
-- **Problem & Root Cause**:
-  `core-api` and `turn-resolution-service` use `python:3.11-slim`, while `memory-layer` uses `python:3.12-slim`.
-- **Impact**:
-  Increases base image pull times on build nodes, duplicates OS vulnerability patching overhead, and violates monorepo runtime consistency.
-- **Remediation**:
-  Standardize all Python services on `python:3.11-slim` (or migrate all to 3.12).
+- **Status**: **STILL EXISTS**
+- **Location**: [`apps/core-api/Dockerfile:1`](file:///home/aryan-sherigar/projects/AI-DND/apps/core-api/Dockerfile#L1) (3.11) vs [`apps/memory-layer/Dockerfile:1`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/Dockerfile#L1) (3.12).
+- **Remediation**: Standardize all services on `python:3.11-slim` or migrate all to `python:3.12-slim`.
 
----
+### [ADDL-01] Privileged Host Port 80 in Base `docker-compose.yml`
+- **Status**: **STILL EXISTS**
+- **Location**: [`docker-compose.yml:204`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L204)
+- **Problem**: Base file hardcodes `ports: - "80:8080"`. Requires root or unprivileged port tuning on Linux and conflicts if system port 80 is occupied.
+- **Remediation**: Parameterize port: `ports: - "${FRONTEND_PROD_PORT:-80}:8080"`.
 
-## Severity 3: Low Severity, Cleanliness & Best Practices
-
-### [LOW-01] Missing Read-Only Root Filesystem Enforcements (`read_only: true`)
-- **Severity**: Low / Hardening (P3)
-- **Category**: Container Security
-- **Location**: All services in `docker-compose.yml`
-- **Problem & Root Cause**:
-  Containers run with writable root filesystems.
-- **Remediation**:
-  Configure `read_only: true` with `tmpfs: ["/tmp"]` on stateless API containers.
-
----
-
-### [LOW-02] Missing Linux Capabilities Dropping (`cap_drop: [ALL]`)
-- **Severity**: Low / Hardening (P3)
-- **Category**: Container Security
-- **Location**: All services in `docker-compose.yml`
-- **Problem & Root Cause**:
-  Containers retain unnecessary kernel capabilities (`CAP_NET_RAW`, `CAP_CHOWN`, `CAP_FOWNER`).
-- **Remediation**:
-  Add `cap_drop: [ALL]` and grant only `CAP_NET_BIND_SERVICE` where required.
-
----
-
-### [LOW-03] Floating Base Image Tags (`nginx:alpine`, `node:20-alpine`)
-- **Severity**: Low / Reproducibility (P3)
-- **Category**: Build Determinism
-- **Location**: [`apps/frontend/Dockerfile:2, 15`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/Dockerfile#L2)
-- **Problem & Root Cause**:
-  Unpinned tags pull new Alpine versions unexpectedly, leading to non-reproducible builds.
-- **Remediation**:
-  Pin base images with minor/patch versions or SHA256 digests (e.g. `node:20.18-alpine3.20`).
-
----
-
-### [LOW-04] Absence of Automated Dockerfile Linting (Hadolint Gap)
-- **Severity**: Low / Tooling (P3)
-- **Category**: CI/CD Hygiene
-- **Location**: Monorepo root
-- **Problem & Root Cause**:
-  No Dockerfile linter is integrated into pre-commit hooks or local development checks.
-- **Remediation**:
-  Add `hadolint` to CI/CD workflows to catch unpinned packages, missing `--no-cache-dir`, and user permission bugs automatically.
+### [ADDL-02] Outbound Model Download on Every Boot (Hugging Face Ephemeral Cache)
+- **Status**: **STILL EXISTS**
+- **Location**: [`docker-compose.yml:158-185`](file:///home/aryan-sherigar/projects/AI-DND/docker-compose.yml#L158-L185) and [`apps/memory-layer/Dockerfile:17`](file:///home/aryan-sherigar/projects/AI-DND/apps/memory-layer/Dockerfile#L17)
+- **Problem**: `memory-layer` downloads `sentence-transformers/all-MiniLM-L6-v2` (~90MB) into `/app/.cache/huggingface`. Without a named volume, rebuilding or recreating the container forces a full re-download.
+- **Remediation**: Mount a named volume `hf_cache:/app/.cache/huggingface`.
 
 ---
 
@@ -455,37 +295,39 @@ pie title Infrastructure Findings by Category
 gantt
     title Infrastructure Remediation Roadmap
     dateFormat  YYYY-MM-DD
-    section Phase 1: Critical Security & Production Blocker Fixes
-    Add Build Args for Frontend Vite URLs (CRIT-01)        :active, p1_1, 2026-09-08, 1d
-    Remove Public Port 5432 Binding (CRIT-02)               :active, p1_2, 2026-09-08, 1d
-    Add Non-Root USER to Dockerfiles (CRIT-03)              :active, p1_3, 2026-09-09, 2d
-    Fix HydraDB Volume Permissions (CRIT-04)                :active, p1_4, 2026-09-09, 1d
-    section Phase 2: Lifecycle & Reliability
-    Extract Alembic to Dedicated Init Job (HIGH-01)         :p2_1, 2026-09-10, 2d
-    Pre-run Memory Layer Migrations (HIGH-02)               :p2_2, 2026-09-11, 1d
-    Create .dockerignore Files Monorepo-Wide (HIGH-04)      :p2_3, 2026-09-11, 1d
-    Implement Network Tier Segregation (HIGH-05)            :p2_4, 2026-09-12, 2d
-    section Phase 3: Hardening & Dev Experience
-    Add Healthchecks for Core API and TRS (MED-03)          :p3_1, 2026-09-13, 1d
-    Harden Nginx Headers & Caching (MED-06)                 :p3_2, 2026-09-14, 1d
-    Fix Dev Port Overlap & Startup Delay (MED-05, MED-07)   :p3_3, 2026-09-15, 1d
-    Standardize Python Base Images (MED-08)                 :p3_4, 2026-09-16, 1d
+    section Phase 1: Operational Blockers & Container Health
+    Rebuild Stale Dev Images (NEW-01)                       :active, p1_1, 2026-09-08, 1d
+    Add Missing core-api Env Vars (NEW-02)                  :active, p1_2, 2026-09-08, 1d
+    Add Uploads Volume & Nginx Route (NEW-03)               :active, p1_3, 2026-09-08, 1d
+    Align Memory API Key Variables (NEW-04)                 :active, p1_4, 2026-09-08, 1d
+    Unprotect Memory Readiness Probe (NEW-05)               :active, p1_5, 2026-09-08, 1d
+    section Phase 2: Web Hardening & Reliability
+    Harden Nginx Headers & Caching (MED-06)                 :p2_1, 2026-09-09, 1d
+    Add Container Healthchecks (MED-03)                     :p2_2, 2026-09-09, 1d
+    Add Hugging Face Cache Volume (ADDL-02)                 :p2_3, 2026-09-10, 1d
+    Parameterize Host Port 80 (ADDL-01)                     :p2_4, 2026-09-10, 1d
+    section Phase 3: Production Hardening & Standards
+    Eliminate Echo in HydraDB Entrypoint (HIGH-03)          :p3_1, 2026-09-11, 1d
+    Enforce Resource Limits (MED-01)                        :p3_2, 2026-09-11, 1d
+    Enforce Non-Fallback Secrets (MED-02)                   :p3_3, 2026-09-12, 1d
+    Standardize Python Base Runtimes (MED-08)               :p3_4, 2026-09-12, 1d
 ```
 
-### Phase 1: Critical Security & Production Fixes (P0)
-1. **Frontend Production Build Config**: Add `ARG VITE_*` to `apps/frontend/Dockerfile` and wire `build.args` in `docker-compose.yml` so production builds connect to real API domains rather than localhost.
-2. **Close Public Database Ports**: Remove `ports: ["5432:5432"]` from production `docker-compose.yml` or bind strictly to `127.0.0.1`.
-3. **Drop Root Privileges**: Create dedicated unprivileged users (`appuser:10001`) in `core-api`, `trs`, and `memory-layer` Dockerfiles.
-4. **HydraDB Volume Initialization**: Resolve HydraDB root volume permission errors by preparing volume mount ownership.
+### Phase 1: Immediate Operational & Stability Fixes
+1. **Trigger Development Stack Image Rebuild**: Run `docker compose -f docker-compose.yml -f docker-compose.dev.yml build core-api turn-resolution-service` to bake `mutagen` and `google-cloud-storage` into local development images.
+2. **Inject Missing Variables into `core-api`**: Add `GEMINI_API_KEY`, `CORE_API_PUBLIC_URL`, and `GCS_BUCKET_NAME` to `core-api` in `docker-compose.yml`.
+3. **Persist and Route File Uploads**: Mount `uploads_data:/app/uploads` in `core-api` and configure `location /uploads/` proxying in `apps/frontend/nginx.conf`.
+4. **Synchronize Memory Service API Keys**: Update `docker-compose.yml` so `memory-layer` accepts `MEMORY_SERVICE_API_KEY`.
+5. **Permit Unauthenticated Readiness Probing**: Exempt `GET /v1/health` from `require_api_key` in `apps/memory-layer/src/api/server.py`.
 
-### Phase 2: Lifecycle, Network & Context Isolation (P1)
-1. **Decouple Database Migrations**: Run Alembic migrations via a dedicated one-shot container before web workers launch.
-2. **Eliminate Lazy DDL Migrations**: Execute memory layer migrations before starting `uvicorn`.
-3. **Deploy `.dockerignore` Files**: Add `.dockerignore` to monorepo root and all service directories to block `.venv`, `node_modules`, and `.git` leaks.
-4. **Network Segregation**: Split `aidnd-net` into `frontend-net` (public ingress) and `backend-net` (private database & internal services).
+### Phase 2: Web Hardening & Orchestration Reliability
+1. **Nginx Security & Caching**: Add security headers and immutable caching rules for `/assets/` in `apps/frontend/nginx.conf`.
+2. **Application Healthchecks**: Configure healthchecks querying `/health` for `core-api`, `trs`, and `memory-layer`.
+3. **Persist Hugging Face Cache**: Mount a named volume `hf_cache:/app/.cache/huggingface` to prevent redownloading 90MB model weights on container restart.
+4. **Parameterize Port 80**: Change `80:8080` to `${FRONTEND_PROD_PORT:-80}:8080` in `docker-compose.yml`.
 
-### Phase 3: Hardening & Operational Cleanliness (P2 & P3)
-1. **Enforce Container Healthchecks**: Add `/health` checks for `core-api` and `turn-resolution-service`.
-2. **Harden Web Server**: Add security headers and immutable asset caching to `apps/frontend/nginx.conf`.
-3. **Streamline Dev Stack**: Fix port 80/5173 collisions and eliminate redundant `npm install` runs in `docker-compose.dev.yml`.
-4. **Standardize Monorepo Runtimes**: Align all Python services to the same base image version.
+### Phase 3: Security Hardening & Monorepo Standards
+1. **Secure Secret Injection**: Replace entrypoint shell echo in HydraDB with direct secret mount.
+2. **Resource Constraints**: Define `deploy.resources.limits` across all services in `docker-compose.yml`.
+3. **Enforce Mandatory Production Secrets**: Transition production Compose variables to `${VAR:?error}` syntax.
+4. **Standardize Python Runtimes**: Align `core-api`, `trs`, and `memory-layer` to a single Python minor version.

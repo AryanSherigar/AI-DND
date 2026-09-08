@@ -8,6 +8,26 @@ interface WideScenarioCardProps {
   scenario: DisplayScenario;
 }
 
+const getScenarioAuthor = (scenario: DisplayScenario): string => {
+  if ("author" in scenario && scenario.author) return scenario.author;
+  if ("creator_id" in scenario && scenario.creator_id) {
+    return `Creator #${scenario.creator_id.substring(0, 8)}`;
+  }
+  return "Anonymous Creator";
+};
+
+const getModeBadge = (scenario: DisplayScenario): string => {
+  if ("mode" in scenario && scenario.mode === "master") return "Master Mode";
+  return "Newbie Mode";
+};
+
+const getPlayerSupportBadge = (scenario: DisplayScenario): string => {
+  if (!("player_count_support" in scenario)) return "Solo";
+  if (scenario.player_count_support === "multiplayer") return "Multiplayer";
+  if (scenario.player_count_support === "both") return "Solo / Co-op";
+  return "Solo";
+};
+
 export const WideScenarioCard: React.FC<WideScenarioCardProps> = ({
   scenario,
 }) => {
@@ -22,12 +42,7 @@ export const WideScenarioCard: React.FC<WideScenarioCardProps> = ({
   };
   const title = scenario.title;
   const logline = scenario.logline || "No description provided.";
-  const author =
-    "author" in scenario
-      ? scenario.author
-      : scenario.creator_id
-        ? `Creator #${scenario.creator_id.substring(0, 8)}`
-        : "Anonymous Creator";
+  const author = getScenarioAuthor(scenario);
   const playerCount =
     "play_count" in scenario
       ? scenario.play_count
@@ -40,20 +55,8 @@ export const WideScenarioCard: React.FC<WideScenarioCardProps> = ({
     "genre_tags" in scenario
       ? scenario.genre_tags[0] || "Fantasy"
       : scenario.genre || "High Fantasy";
-  const modeBadge =
-    "mode" in scenario
-      ? scenario.mode === "master"
-        ? "Master Mode"
-        : "Newbie Mode"
-      : "Newbie Mode";
-  const playerSupportBadge =
-    "player_count_support" in scenario
-      ? scenario.player_count_support === "multiplayer"
-        ? "Multiplayer"
-        : scenario.player_count_support === "both"
-          ? "Solo / Co-op"
-          : "Solo"
-      : "Solo";
+  const modeBadge = getModeBadge(scenario);
+  const playerSupportBadge = getPlayerSupportBadge(scenario);
   const coverImageUrl =
     ("cover_image_url" in scenario
       ? scenario.cover_image_url

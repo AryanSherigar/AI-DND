@@ -4,8 +4,8 @@ StateMutation is imported from app.models.condition, never redefined — the
 single-definition rule in practice (docs/specs/master-mode-minigames.spec.md).
 """
 
-import uuid
 import re
+import uuid
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -109,12 +109,18 @@ class DodgeAudioSettings(BaseModel):
     @classmethod
     def _asset_is_storage_reference(cls, value: str | None) -> str | None:
         if value is not None and not _is_uploaded_audio_reference(value):
-            raise ValueError("asset must be an application upload reference, not an external URL")
+            raise ValueError(
+                "asset must be an application upload reference, not an external URL"
+            )
         return value
 
 
 class DodgeCopy(BaseModel):
-    instructions: str = Field(default="Survive the ashfall. Move with WASD and avoid hazards.", min_length=1, max_length=1000)
+    instructions: str = Field(
+        default="Survive the ashfall. Move with WASD and avoid hazards.",
+        min_length=1,
+        max_length=1000,
+    )
     start_text: str = Field(default="Start", min_length=1, max_length=80)
     win_text: str = Field(default="Survived!", min_length=1, max_length=160)
     lose_text: str = Field(default="Defeated...", min_length=1, max_length=160)
@@ -142,7 +148,9 @@ class DodgeConfig(BaseModel):
     pattern_order: list[Literal["rain", "ring", "beam", "homing"]] = Field(
         default_factory=lambda: ["rain", "ring", "beam", "homing"], min_length=1
     )
-    performance_thresholds: DodgePerformanceThresholds = Field(default_factory=DodgePerformanceThresholds)
+    performance_thresholds: DodgePerformanceThresholds = Field(
+        default_factory=DodgePerformanceThresholds
+    )
     player_style: Literal["soul", "heart", "spark"] = "soul"
     obstacle_style: Literal["ash", "neon", "crystal"] = "ash"
     obstacle_color: str = Field(default="#ff8a65", pattern=r"^#[0-9a-fA-F]{6}$")
@@ -164,13 +172,17 @@ class DodgeConfig(BaseModel):
     @classmethod
     def _asset_is_storage_reference(cls, value: str | None) -> str | None:
         if value is not None and not _is_uploaded_image_reference(value):
-            raise ValueError("asset must be an application upload reference, not an external URL")
+            raise ValueError(
+                "asset must be an application upload reference, not an external URL"
+            )
         return value
 
     @model_validator(mode="after")
     def _validate_pattern_order(self) -> "DodgeConfig":
         if set(self.enabled_patterns) != set(self.pattern_order):
-            raise ValueError("pattern_order must contain each enabled pattern exactly once")
+            raise ValueError(
+                "pattern_order must contain each enabled pattern exactly once"
+            )
         return self
 
 

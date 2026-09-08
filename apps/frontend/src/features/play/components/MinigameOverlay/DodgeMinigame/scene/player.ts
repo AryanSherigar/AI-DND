@@ -53,16 +53,44 @@ export function buildPlayer(style: DodgePlayerStyle = "soul"): PlayerScene {
     // Visual only: the fixed circular PLAYER_RADIUS collision remains in the loop.
     core
       .moveTo(0, PLAYER_RADIUS * 0.8)
-      .bezierCurveTo(-PLAYER_RADIUS * 2, -PLAYER_RADIUS * 0.35, -PLAYER_RADIUS * 0.65, -PLAYER_RADIUS * 1.4, 0, -PLAYER_RADIUS * 0.45)
-      .bezierCurveTo(PLAYER_RADIUS * 0.65, -PLAYER_RADIUS * 1.4, PLAYER_RADIUS * 2, -PLAYER_RADIUS * 0.35, 0, PLAYER_RADIUS * 0.8)
+      .bezierCurveTo(
+        -PLAYER_RADIUS * 2,
+        -PLAYER_RADIUS * 0.35,
+        -PLAYER_RADIUS * 0.65,
+        -PLAYER_RADIUS * 1.4,
+        0,
+        -PLAYER_RADIUS * 0.45,
+      )
+      .bezierCurveTo(
+        PLAYER_RADIUS * 0.65,
+        -PLAYER_RADIUS * 1.4,
+        PLAYER_RADIUS * 2,
+        -PLAYER_RADIUS * 0.35,
+        0,
+        PLAYER_RADIUS * 0.8,
+      )
       .fill(PLAYER_CORE_COLOR);
   } else if (style === "spark") {
-    core.poly([
-      0, -PLAYER_RADIUS, PLAYER_RADIUS * 0.38, -PLAYER_RADIUS * 0.3,
-      PLAYER_RADIUS, 0, PLAYER_RADIUS * 0.38, PLAYER_RADIUS * 0.3,
-      0, PLAYER_RADIUS, -PLAYER_RADIUS * 0.38, PLAYER_RADIUS * 0.3,
-      -PLAYER_RADIUS, 0, -PLAYER_RADIUS * 0.38, -PLAYER_RADIUS * 0.3,
-    ]).fill(PLAYER_CORE_COLOR);
+    core
+      .poly([
+        0,
+        -PLAYER_RADIUS,
+        PLAYER_RADIUS * 0.38,
+        -PLAYER_RADIUS * 0.3,
+        PLAYER_RADIUS,
+        0,
+        PLAYER_RADIUS * 0.38,
+        PLAYER_RADIUS * 0.3,
+        0,
+        PLAYER_RADIUS,
+        -PLAYER_RADIUS * 0.38,
+        PLAYER_RADIUS * 0.3,
+        -PLAYER_RADIUS,
+        0,
+        -PLAYER_RADIUS * 0.38,
+        -PLAYER_RADIUS * 0.3,
+      ])
+      .fill(PLAYER_CORE_COLOR);
   } else {
     core.circle(0, 0, PLAYER_RADIUS).fill(PLAYER_CORE_COLOR);
   }
@@ -95,16 +123,21 @@ export function buildPlayer(style: DodgePlayerStyle = "soul"): PlayerScene {
   };
 
   let invulnerabilityClockMs = 0;
-  const applyInvulnerabilityBlink = (deltaMs: number, isInvulnerable: boolean): void => {
+  const applyInvulnerabilityBlink = (
+    deltaMs: number,
+    isInvulnerable: boolean,
+  ): void => {
     if (!isInvulnerable) {
       invulnerabilityClockMs = 0;
       container.alpha = 1;
       return;
     }
     invulnerabilityClockMs += deltaMs;
-    const cyclePosition = (invulnerabilityClockMs / 1000) * INVULNERABILITY_BLINK_HZ;
+    const cyclePosition =
+      (invulnerabilityClockMs / 1000) * INVULNERABILITY_BLINK_HZ;
     const blink = (Math.sin(cyclePosition * Math.PI * 2) + 1) / 2; // 0..1
-    container.alpha = INVULNERABILITY_MIN_ALPHA + blink * (1 - INVULNERABILITY_MIN_ALPHA);
+    container.alpha =
+      INVULNERABILITY_MIN_ALPHA + blink * (1 - INVULNERABILITY_MIN_ALPHA);
   };
 
   const advance = (deltaMs: number, isInvulnerable: boolean): void => {

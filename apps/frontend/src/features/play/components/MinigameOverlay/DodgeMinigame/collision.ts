@@ -54,8 +54,20 @@ export function hazardCollidesWithPlayer(
   if (hazard.isTelegraphing) return false;
   return hazard.shape === "beam"
     ? circleIntersectsBeam(
-        playerX, playerY, playerRadius, hazard.x, hazard.y, hazard.radius,
+        playerX,
+        playerY,
+        playerRadius,
+        hazard.x,
+        hazard.y,
+        hazard.radius,
         hazard.x === arenaWidth / 2,
       )
-    : circlesCollide(playerX, playerY, playerRadius, hazard.x, hazard.y, hazard.radius);
+    : circlesCollide(
+        playerX,
+        playerY,
+        playerRadius,
+        hazard.x,
+        hazard.y,
+        hazard.radius,
+      );
 }

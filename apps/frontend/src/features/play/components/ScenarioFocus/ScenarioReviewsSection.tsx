@@ -143,9 +143,7 @@ export const ScenarioReviewsSection: React.FC<ScenarioReviewsSectionProps> = ({
       )}
 
       {reviews.length === 0 ? (
-        <p className="font-sans text-sm text-content-faint">
-          No reviews yet.
-        </p>
+        <p className="font-sans text-sm text-content-faint">No reviews yet.</p>
       ) : (
         <ul className="divide-y divide-border-subtle">
           {reviews.map((rev) => (

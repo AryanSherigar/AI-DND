@@ -4,6 +4,13 @@ import { MinigameOutcomeResult } from "./MinigameOverlay.types";
 import { ReplitEmbedMinigame } from "./ReplitEmbed/ReplitEmbedMinigame";
 import { DodgeMinigame } from "./DodgeMinigame/DodgeMinigame";
 
+const PENDING_STATUS_TITLES: Record<string, string> = {
+  reconciling: "Checking the server…",
+  submitting: "Saving your result…",
+  retryable: "We could not save your result.",
+  terminal: "Result saving timed out.",
+};
+
 /**
  * Full-screen takeover for a triggered minigame. Reads active_minigame from
  * play.store.ts directly (set either by a fresh "minigame" SSE event or,
@@ -56,13 +63,8 @@ export function MinigameOverlay() {
         >
           <div className="max-w-md space-y-4 rounded border border-white/30 bg-zinc-950 p-6">
             <p className="font-semibold">
-              {pendingResult.status === "reconciling"
-                ? "Checking the server…"
-                : pendingResult.status === "submitting"
-                ? "Saving your result…"
-                : pendingResult.status === "retryable"
-                  ? "We could not save your result."
-                  : "Result saving timed out."}
+              {PENDING_STATUS_TITLES[pendingResult.status] ??
+                "Result saving timed out."}
             </p>
             <p className="text-sm text-zinc-300">
               {pendingResult.status === "terminal"

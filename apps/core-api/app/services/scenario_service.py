@@ -394,20 +394,25 @@ class ScenarioService:
     ) -> None:
         """Deep-copy custom entity type templates for a scenario."""
         source_types = await self.entity_type_repo.list_by_scenario(source_scenario_id)
-        for entity_type in source_types:
-            copy = _build_entity_type_copy(entity_type, new_scenario_id)
-            await self.entity_type_repo.create(copy)
+        copies = [
+            _build_entity_type_copy(entity_type, new_scenario_id)
+            for entity_type in source_types
+        ]
+        await self.entity_type_repo.create_all(copies)
 
     async def _copy_entities(
         self, source_scenario_id: uuid.UUID, new_scenario_id: uuid.UUID
     ) -> dict[uuid.UUID, uuid.UUID]:
         """Deep-copy every entity for a scenario. Returns old->new entity ID map."""
         source_entities = await self.entity_repo.list_by_scenario(source_scenario_id)
-        id_map: dict[uuid.UUID, uuid.UUID] = {}
-        for entity in source_entities:
-            copy = _build_entity_copy(entity, new_scenario_id)
-            id_map[entity.entity_id] = copy.entity_id
-            await self.entity_repo.create(copy)
+        copies = [
+            _build_entity_copy(entity, new_scenario_id) for entity in source_entities
+        ]
+        id_map = {
+            entity.entity_id: copy.entity_id
+            for entity, copy in zip(source_entities, copies, strict=True)
+        }
+        await self.entity_repo.create_all(copies)
         return id_map
 
     async def _copy_facts(
@@ -419,12 +424,15 @@ class ScenarioService:
         """Deep-copy facts, remapping entity FKs immediately and superseded-
         fact FKs in a second pass once every fact's new ID is known."""
         source_facts = await self.fact_repo.list_by_scenario(source_scenario_id)
-        fact_id_map: dict[uuid.UUID, uuid.UUID] = {}
-        new_facts: list[Fact] = []
-        for fact in source_facts:
-            copy = _build_fact_copy(fact, new_scenario_id, entity_id_map)
-            fact_id_map[fact.fact_id] = copy.fact_id
-            new_facts.append(await self.fact_repo.create(copy))
+        new_facts = [
+            _build_fact_copy(fact, new_scenario_id, entity_id_map)
+            for fact in source_facts
+        ]
+        fact_id_map = {
+            fact.fact_id: copy.fact_id
+            for fact, copy in zip(source_facts, new_facts, strict=True)
+        }
+        await self.fact_repo.create_all(new_facts)
         await self._relink_superseded_facts(source_facts, new_facts, fact_id_map)
 
     async def _relink_superseded_facts(
@@ -449,10 +457,11 @@ class ScenarioService:
         source_conditions = await self.condition_repo.list_by_scenario(
             source_scenario_id
         )
-        for condition in source_conditions:
-            await self.condition_repo.create(
-                _build_condition_copy(condition, new_scenario_id)
-            )
+        copies = [
+            _build_condition_copy(condition, new_scenario_id)
+            for condition in source_conditions
+        ]
+        await self.condition_repo.create_all(copies)
 
     async def _copy_end_conditions(
         self, source_scenario_id: uuid.UUID, new_scenario_id: uuid.UUID
@@ -461,10 +470,11 @@ class ScenarioService:
         source_end_conditions = await self.end_condition_repo.list_by_scenario(
             source_scenario_id
         )
-        for end_condition in source_end_conditions:
-            await self.end_condition_repo.create(
-                _build_end_condition_copy(end_condition, new_scenario_id)
-            )
+        copies = [
+            _build_end_condition_copy(end_condition, new_scenario_id)
+            for end_condition in source_end_conditions
+        ]
+        await self.end_condition_repo.create_all(copies)
 
     async def _copy_invariants(
         self, source_scenario_id: uuid.UUID, new_scenario_id: uuid.UUID
@@ -473,10 +483,11 @@ class ScenarioService:
         source_invariants = await self.invariant_repo.list_by_scenario(
             source_scenario_id
         )
-        for invariant in source_invariants:
-            await self.invariant_repo.create(
-                _build_invariant_copy(invariant, new_scenario_id)
-            )
+        copies = [
+            _build_invariant_copy(invariant, new_scenario_id)
+            for invariant in source_invariants
+        ]
+        await self.invariant_repo.create_all(copies)
 
     async def _copy_maps_and_pins(
         self,

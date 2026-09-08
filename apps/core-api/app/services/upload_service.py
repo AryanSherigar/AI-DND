@@ -26,6 +26,24 @@ ALLOWED_SCENARIO_AUDIO_CONTENT_TYPES: dict[str, str] = {
     "audio/wav": ".wav",
 }
 
+_IMAGE_MAGIC_BYTES: dict[str, tuple[bytes, ...]] = {
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "image/png": (b"\x89PNG\r\n\x1a\n",),
+    "image/webp": (b"RIFF",),
+}
+
+
+def _has_valid_image_signature(content: bytes, content_type: str) -> bool:
+    """Check the file's leading bytes match its declared image content type,
+    so a client can't upload arbitrary content (e.g. an HTML/SVG payload)
+    behind a spoofed Content-Type header."""
+    signatures = _IMAGE_MAGIC_BYTES.get(content_type, ())
+    if not any(content.startswith(sig) for sig in signatures):
+        return False
+    if content_type == "image/webp":
+        return content[8:12] == b"WEBP"
+    return True
+
 
 class UploadService:
     """Service handling file upload validation and object key generation."""
@@ -41,6 +59,10 @@ class UploadService:
             )
         if len(content) > MAX_COVER_IMAGE_BYTES:
             raise UploadValidationError("Image exceeds the 5MB size limit.")
+        if not _has_valid_image_signature(content, content_type):
+            raise UploadValidationError(
+                "File contents do not match the declared image format."
+            )
 
         object_key = f"{prefix}/{uuid.uuid4()}{extension}"
         return await storage_client.upload_image(content, content_type, object_key)

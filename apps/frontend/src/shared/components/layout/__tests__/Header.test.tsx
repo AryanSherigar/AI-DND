@@ -34,9 +34,9 @@ describe("Header", () => {
   it("shows the wordmark, nav links, and a sign-in link when logged out", () => {
     renderAt("/");
 
-    expect(screen.getAllByRole("link", { name: "wevr" }).length).toBeGreaterThan(
-      0,
-    );
+    expect(
+      screen.getAllByRole("link", { name: "wevr" }).length,
+    ).toBeGreaterThan(0);
     expect(
       screen.getAllByRole("link", { name: /discover/i }).length,
     ).toBeGreaterThan(0);

@@ -19,7 +19,7 @@ free. `rollback_to_save_point`'s `save_id` argument is the one exception
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from context_memory.core.tool_executor import HookDecision, HookResult
@@ -43,7 +43,7 @@ def build_memory_agent_tools(engine: Any, context_id: str) -> ToolRegistry:
 
     def _search_memory(args: dict[str, Any]) -> dict[str, Any]:
         answer = engine.search_memories(
-            context_id, args["query"], datetime.now(timezone.utc)
+            context_id, args["query"], datetime.now(UTC)
         )
         return {"answer": answer}
 
@@ -102,7 +102,7 @@ def build_memory_agent_tools(engine: Any, context_id: str) -> ToolRegistry:
     )
 
     def _rollback_to_save_point(args: dict[str, Any]) -> dict[str, Any]:
-        result = engine.rollback_to(args["save_id"])
+        result = engine.rollback_to(args["save_id"], context_id)
         return {
             "save_id": result.save_id,
             "archived_fact_ids": list(result.archived_fact_ids),
@@ -136,16 +136,14 @@ def build_memory_agent_tools(engine: Any, context_id: str) -> ToolRegistry:
 
 
 def build_rollback_authorization_hook(engine: Any, context_id: str):
-    """§11 fix: the real authorization boundary a bare `rollback_to_save_point`
-    tool call doesn't have on its own. `MemoryEngine.rollback_to(save_id)`
-    resolves `save_id`'s own `context_id` internally and rolls back
-    WHATEVER playthrough that save point belongs to -- regardless of which
-    playthrough this agent turn is actually scoped to. Without this hook, a
-    prompt-injected end user could roll back a DIFFERENT playthrough's
-    memory just by getting the model to call this tool with a `save_id` it
-    was never meant to have. Every other tool here takes no
-    context_id-shaped argument at all (closed over `context_id` instead),
-    so this is the one place such a check is even meaningful."""
+    """§11/CRIT-02 fix: denies a cross-playthrough `rollback_to_save_point`
+    call before the tool even runs, so a prompt-injected end user gets a
+    clean tool-level denial instead of an exception surfacing mid-turn.
+    `MemoryEngine.rollback_to(save_id, context_id)` now enforces the same
+    ownership check server-side too (CRIT-02), so this hook is
+    defense-in-depth, not the sole boundary -- but it's still the one place
+    a check is meaningful here, since every other tool takes no
+    context_id-shaped argument at all (closed over `context_id` instead)."""
 
     def hook(tool: Tool, args: dict[str, Any]) -> HookResult:
         if tool.name != "rollback_to_save_point":

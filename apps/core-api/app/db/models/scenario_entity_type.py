@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint, text
+from sqlalchemy import ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,7 @@ class ScenarioEntityType(Base, TimestampMixin):
         UniqueConstraint(
             "scenario_id", "type_key", name="uq_scenario_entity_types_type_key"
         ),
+        Index("idx_scenario_entity_types_scenario_id", "scenario_id"),
     )
 
     scenario_entity_type_id: Mapped[uuid.UUID] = mapped_column(

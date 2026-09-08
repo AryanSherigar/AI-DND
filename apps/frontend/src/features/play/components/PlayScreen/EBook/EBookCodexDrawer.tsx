@@ -6,6 +6,11 @@ interface EBookCodexDrawerProps {
   onClose: () => void;
 }
 
+const getTabClass = (isActive: boolean, isSepia: boolean): string => {
+  if (!isActive) return "border-transparent opacity-60 hover:opacity-100";
+  return isSepia ? "border-[#2c2217] font-bold" : "border-zinc-200 font-bold";
+};
+
 export function EBookCodexDrawer({ isOpen, onClose }: EBookCodexDrawerProps) {
   const playthrough = usePlayStore((s) => s.playthrough);
   const theme = usePlayStore((s) => s.ebook_theme);
@@ -73,39 +78,30 @@ export function EBookCodexDrawer({ isOpen, onClose }: EBookCodexDrawerProps) {
           <button
             type="button"
             onClick={() => setActiveTab("lore")}
-            className={`flex-1 py-3 text-center transition-colors border-b-2 cursor-pointer ${
-              activeTab === "lore"
-                ? isSepia
-                  ? "border-[#2c2217] font-bold"
-                  : "border-zinc-200 font-bold"
-                : "border-transparent opacity-60 hover:opacity-100"
-            }`}
+            className={`flex-1 py-3 text-center transition-colors border-b-2 cursor-pointer ${getTabClass(
+              activeTab === "lore",
+              isSepia,
+            )}`}
           >
             Lore
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("facts")}
-            className={`flex-1 py-3 text-center transition-colors border-b-2 cursor-pointer ${
-              activeTab === "facts"
-                ? isSepia
-                  ? "border-[#2c2217] font-bold"
-                  : "border-zinc-200 font-bold"
-                : "border-transparent opacity-60 hover:opacity-100"
-            }`}
+            className={`flex-1 py-3 text-center transition-colors border-b-2 cursor-pointer ${getTabClass(
+              activeTab === "facts",
+              isSepia,
+            )}`}
           >
             Facts ({playthrough.key_facts.length})
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("cards")}
-            className={`flex-1 py-3 text-center transition-colors border-b-2 cursor-pointer ${
-              activeTab === "cards"
-                ? isSepia
-                  ? "border-[#2c2217] font-bold"
-                  : "border-zinc-200 font-bold"
-                : "border-transparent opacity-60 hover:opacity-100"
-            }`}
+            className={`flex-1 py-3 text-center transition-colors border-b-2 cursor-pointer ${getTabClass(
+              activeTab === "cards",
+              isSepia,
+            )}`}
           >
             Cards ({playthrough.story_cards.length})
           </button>

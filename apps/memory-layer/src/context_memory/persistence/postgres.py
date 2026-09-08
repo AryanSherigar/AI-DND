@@ -925,6 +925,41 @@ class PostgresExternalFactIdStore:
                         (context_id, external_fact_id, graph_id, logical_key),
                     )
 
+    def get_external_ids_for_graph_ids(
+        self, context_id: str, graph_ids: Sequence[int]
+    ) -> dict[int, str]:
+        """NEW-CRIT-01 fix: batched reverse lookup (graph_id ->
+        external_fact_id) for a whole retrieval result set in one query,
+        so `/v1/memory/query` can return callers' own authored fact ids
+        instead of always hashing the internal graph_id -- see
+        `api/routes.py::query_memory`."""
+        if not graph_ids:
+            return {}
+        with self._pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT graph_id, external_fact_id FROM external_fact_ids "
+                "WHERE context_id = %s AND graph_id = ANY(%s)",
+                (context_id, list(graph_ids)),
+            )
+            rows = cursor.fetchall()
+        return {int(row[0]): row[1] for row in rows}
+
+    def get_all_for_context(self, context_id: str) -> list[tuple[str, int, str]]:
+        """NEW-HIGH-01 fix: every `external_fact_ids` row for a template
+        context, so `cloning/template_clone.py` can remap and copy them
+        into a cloned playthrough context -- without this, superseding a
+        template-authored fact in a cloned playthrough crashes (see
+        `ingestion.direct_authoring.write_fact`'s `superseded_fact_id`
+        lookup)."""
+        with self._pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT external_fact_id, graph_id, logical_key "
+                "FROM external_fact_ids WHERE context_id = %s",
+                (context_id,),
+            )
+            rows = cursor.fetchall()
+        return [(row[0], int(row[1]), row[2]) for row in rows]
+
 
 class PostgresCheckpointStore:
     """Milestone 5: the ordered checkpoint list a scenario's pre-authored

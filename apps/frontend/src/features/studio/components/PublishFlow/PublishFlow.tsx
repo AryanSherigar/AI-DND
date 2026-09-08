@@ -3,6 +3,7 @@ import { usePublish } from "../../hooks/usePublish";
 import { updateScenarioContentTag } from "../../api/scenarios.api";
 import { ContentTagPicker } from "./ContentTagPicker";
 import { ContentTag } from "@/shared/constants/content-tags";
+import { extractErrorMessage } from "@/shared/lib/extractErrorMessage";
 
 export interface PublishFlowProps {
   scenarioId: string | null;
@@ -50,11 +51,9 @@ export const PublishFlow: React.FC<PublishFlowProps> = ({
     setIsTaggingContent(true);
     try {
       await updateScenarioContentTag(scenarioId, contentTag);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setValidationError(
-        err.response?.data?.detail ||
-          err.message ||
-          "Failed to save content tag.",
+        extractErrorMessage(err, "Failed to save content tag."),
       );
       return;
     } finally {

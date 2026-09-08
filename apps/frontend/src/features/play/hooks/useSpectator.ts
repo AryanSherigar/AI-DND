@@ -9,7 +9,7 @@ import { resolveMoodTrackUrl } from "@/shared/constants/audio";
 const TRS_BASE_URL = import.meta.env.VITE_TRS_URL || "http://localhost:8001";
 
 export interface SpectatorEvent {
-  eventName: "narration" | "done" | "degraded" | "mood";
+  eventName: "narration" | "done" | "degraded" | "mood" | "scene_image";
   data: string;
 }
 
@@ -20,11 +20,14 @@ export function useSpectator(
   musicTracks?: Partial<Record<ScenarioMood, string | null>>,
 ) {
   const [streamingText, setStreamingText] = useState("");
+  const [streamingImageUrl, setStreamingImageUrl] = useState<string | null>(
+    null,
+  );
   const [isLive, setIsLive] = useState(false);
   const queryClient = useQueryClient();
 
   const handleEvent = useCallback(
-    (eventName: string, data: string) => {
+    async (eventName: string, data: string) => {
       if (eventName === "mood") {
         const mood = data as ScenarioMood;
         ambientSoundtrack.transitionTo(
@@ -34,14 +37,17 @@ export function useSpectator(
       } else if (eventName === "narration") {
         setIsLive(true);
         setStreamingText((prev) => prev + data);
+      } else if (eventName === "scene_image") {
+        setStreamingImageUrl(data);
       } else if (eventName === "done") {
         setIsLive(false);
         if (playthroughId) {
-          void queryClient.invalidateQueries({
+          await queryClient.invalidateQueries({
             queryKey: ["playthrough-turns", playthroughId],
           });
         }
         setStreamingText("");
+        setStreamingImageUrl(null);
       }
     },
     [playthroughId, queryClient, musicTracks],
@@ -54,5 +60,5 @@ export function useSpectator(
 
   const status = useSSE(url, handleEvent, Boolean(url));
 
-  return { streamingText, isLive, status };
+  return { streamingText, streamingImageUrl, isLive, status };
 }

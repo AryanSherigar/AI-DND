@@ -65,6 +65,7 @@ export const useScenarioMusic = (scenarioId: string | null) => {
   const discardMutation = useMutation({
     mutationFn: (jobId: string) =>
       discardMusicGenerationJob(requireScenarioId(scenarioId), jobId),
+    onSuccess: invalidate,
   });
 
   return {

@@ -56,8 +56,13 @@ services:
       PYTHONPATH: /app
       MEMORY_SERVICE_URL: http://memory-layer:8002
       MEMORY_SERVICE_API_KEY: ${MEMORY_SERVICE_API_KEY:-dev-memory-layer-key-change-in-production}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      CORE_API_PUBLIC_URL: ${CORE_API_PUBLIC_URL:-http://localhost:80}
+      GCS_BUCKET_NAME: ${GCS_BUCKET_NAME:-}
     expose:
       - "8000"
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,8 +119,9 @@ services:
     image: ghcr.io/hydra-db/hydradb:${HYDRADB_IMAGE_TAG:-sha-02a4002}
     container_name: aidnd-hydradb
     restart: unless-stopped
-    entrypoint: ["sh", "-c", "mkdir -p /tmp/graph /var/cache/slatedb && echo '${HYDRADB_API_KEY:-context-memory-local-smoke-token-32b}' > /tmp/graph/auth-token && exec graph-node"]
+    entrypoint: ["sh", "-c", "mkdir -p /tmp/graph /var/cache/slatedb && printf '%s' \"$$HYDRADB_API_KEY\" > /tmp/graph/auth-token && exec graph-node"]
     environment:
+      HYDRADB_API_KEY: ${HYDRADB_API_KEY:-context-memory-local-smoke-token-32b}
       CLOUD_PROVIDER: local
       LOCAL_PATH: /tmp/graph
       GRAPH_NAMESPACE: default
@@ -166,7 +172,7 @@ services:
       CONTEXT_MEMORY_HYDRADB_URL: http://hydradb:8443
       CONTEXT_MEMORY_HYDRADB_TOKEN: ${HYDRADB_API_KEY:-context-memory-local-smoke-token-32b}
       CONTEXT_MEMORY_HYDRADB_DATABASE: ${HYDRADB_GRAPH_ID:-default}
-      CONTEXT_MEMORY_API_KEY: ${MEMORY_LAYER_API_KEY:-dev-memory-layer-key-change-in-production}
+      CONTEXT_MEMORY_API_KEY: ${MEMORY_SERVICE_API_KEY:-dev-memory-layer-key-change-in-production}
       CONTEXT_MEMORY_ALLOWED_ORIGINS: ${CORS_ORIGINS:-}
       GOOGLE_CLOUD_API_KEY: ${GOOGLE_CLOUD_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gemini-3.5-flash-lite}
@@ -219,3 +225,4 @@ volumes:
   postgres_memory_data:
   hydradb_store:
   hydradb_cache:
+  uploads_data:

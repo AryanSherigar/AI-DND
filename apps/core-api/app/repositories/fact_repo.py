@@ -20,6 +20,12 @@ class FactRepo:
         await self.session.flush()
         return fact
 
+    async def create_all(self, facts: list[Fact]) -> list[Fact]:
+        """Bulk-persist facts in a single flush (e.g. scenario duplication)."""
+        self.session.add_all(facts)
+        await self.session.flush()
+        return facts
+
     async def get_by_id(self, fact_id: uuid.UUID) -> Fact | None:
         """Retrieve a fact by its primary key ID."""
         stmt = select(Fact).where(Fact.fact_id == fact_id)

@@ -69,7 +69,12 @@ const CONFIG_PATTERN_MAP: Record<string, HazardPatternType> = {
   homing_orbs: "homing_orbs",
 };
 
-function boundedFinite(value: unknown, fallback: number, minimum: number, maximum: number): number {
+function boundedFinite(
+  value: unknown,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(minimum, Math.min(maximum, value))
     : fallback;
@@ -117,21 +122,40 @@ export function useGameLoop(
   onComplete: (outcome: DodgeOutcome) => void,
 ): UseGameLoopResult {
   const preset = getDodgePreset(dodgeConfig.difficulty);
-  const requestedDurationMs = dodgeConfig.duration_ms ??
-    (dodgeConfig.duration_seconds ? dodgeConfig.duration_seconds * 1000 : undefined);
-  const durationMs = boundedFinite(requestedDurationMs, preset.durationMs, 5_000, 120_000);
+  const requestedDurationMs =
+    dodgeConfig.duration_ms ??
+    (dodgeConfig.duration_seconds
+      ? dodgeConfig.duration_seconds * 1000
+      : undefined);
+  const durationMs = boundedFinite(
+    requestedDurationMs,
+    preset.durationMs,
+    5_000,
+    120_000,
+  );
   const maxHitPoints = boundedFinite(
-    dodgeConfig.hit_points ?? dodgeConfig.health, preset.hitPoints, 1, 10,
+    dodgeConfig.hit_points ?? dodgeConfig.health,
+    preset.hitPoints,
+    1,
+    10,
   );
   const invulnerabilityMs = boundedFinite(
-    dodgeConfig.invulnerability_ms, POST_HIT_INVULNERABILITY_MS, 250, 5_000,
+    dodgeConfig.invulnerability_ms,
+    POST_HIT_INVULNERABILITY_MS,
+    250,
+    5_000,
   );
-  const configuredPatterns = (dodgeConfig.pattern_order ?? dodgeConfig.enabled_patterns ?? [])
+  const configuredPatterns = (
+    dodgeConfig.pattern_order ??
+    dodgeConfig.enabled_patterns ??
+    []
+  )
     .map((pattern) => CONFIG_PATTERN_MAP[pattern])
     .filter((pattern): pattern is HazardPatternType => Boolean(pattern));
-  const enabledPatterns = configuredPatterns.length > 0
-    ? [...new Set(configuredPatterns)]
-    : (Object.keys(HAZARD_PATTERN_GENERATORS) as HazardPatternType[]);
+  const enabledPatterns =
+    configuredPatterns.length > 0
+      ? [...new Set(configuredPatterns)]
+      : (Object.keys(HAZARD_PATTERN_GENERATORS) as HazardPatternType[]);
   const containerRef = useRef<HTMLDivElement>(null);
   const startRef = useRef<() => void>(() => {});
   const pauseRef = useRef<() => void>(() => {});
@@ -167,7 +191,7 @@ export function useGameLoop(
         antialias: true,
       });
       if (destroyed) {
-        app.destroy(true, { children: true });
+        app.destroy({ removeView: true }, { children: true });
         return;
       }
       isInitialized = true;
@@ -186,16 +210,21 @@ export function useGameLoop(
         style: dodgeConfig.obstacle_style,
         color: dodgeConfig.obstacle_color,
       });
-      app.stage.addChild(arena.container, hazardLayer.container, player.container);
+      app.stage.addChild(
+        arena.container,
+        hazardLayer.container,
+        player.container,
+      );
 
       const controllerState = createPlayerControllerState();
-      cleanupControls = attachPlayerControls(
-        controllerState,
-        app.canvas,
-        () => pauseRef.current(),
+      cleanupControls = attachPlayerControls(controllerState, app.canvas, () =>
+        pauseRef.current(),
       );
       app.canvas.tabIndex = 0;
-      app.canvas.setAttribute("aria-label", "Ashfall Dodge arena. Use W A S D to move.");
+      app.canvas.setAttribute(
+        "aria-label",
+        "Ashfall Dodge arena. Use W A S D to move.",
+      );
 
       let playerX = ARENA_WIDTH / 2;
       let playerY = ARENA_HEIGHT / 2;
@@ -237,10 +266,13 @@ export function useGameLoop(
 
       const spawnWave = (): void => {
         const isExplicitOrder = (dodgeConfig.pattern_order?.length ?? 0) > 0;
-        const candidates = enabledPatterns.filter((pattern) => pattern !== lastPattern);
+        const candidates = enabledPatterns.filter(
+          (pattern) => pattern !== lastPattern,
+        );
         const patternType = isExplicitOrder
           ? enabledPatterns[orderedPatternIndex++ % enabledPatterns.length]
-          : candidates[Math.floor(Math.random() * candidates.length)] ?? enabledPatterns[0];
+          : (candidates[Math.floor(Math.random() * candidates.length)] ??
+            enabledPatterns[0]);
         lastPattern = patternType;
         const spawns = HAZARD_PATTERN_GENERATORS[patternType](
           {
@@ -279,7 +311,12 @@ export function useGameLoop(
         }
 
         const deltaSeconds = deltaMs / 1000;
-        const velocity = computeVelocity(controllerState, playerX, playerY, PLAYER_MAX_SPEED);
+        const velocity = computeVelocity(
+          controllerState,
+          playerX,
+          playerY,
+          PLAYER_MAX_SPEED,
+        );
         const clamped = clampToArena(
           playerX + velocity.vx * deltaSeconds,
           playerY + velocity.vy * deltaSeconds,
@@ -293,7 +330,8 @@ export function useGameLoop(
 
         hazardLayer.updatePositions(liveHazards, deltaMs, deltaSeconds);
         for (const hazard of liveHazards) {
-          if (hazard.spawn.homing) steerHoming(hazard.spawn, playerX, playerY, deltaSeconds);
+          if (hazard.spawn.homing)
+            steerHoming(hazard.spawn, playerX, playerY, deltaSeconds);
         }
         liveHazards = liveHazards.filter((hazard) => {
           if (!shouldDespawn(hazard)) return true;
@@ -307,8 +345,8 @@ export function useGameLoop(
         arena.updateBoundaryTint(currentHitPoints / maxHitPoints);
 
         if (!isInvulnerable) {
-          const hit = liveHazards.find(
-            (hazard) => hazardCollidesWithPlayer(
+          const hit = liveHazards.find((hazard) =>
+            hazardCollidesWithPlayer(
               playerX,
               playerY,
               PLAYER_RADIUS,
@@ -355,7 +393,9 @@ export function useGameLoop(
       // If init() hasn't resolved yet, don't destroy here — setup()'s own
       // post-await `destroyed` check above handles teardown once init
       // finishes, which is the earliest point destroy() is safe to call.
-      if (isInitialized) app.destroy(true, { children: true });
+      if (isInitialized) {
+        app.destroy({ removeView: true }, { children: true });
+      }
     };
     // difficulty is intentionally the only dependency — a reload mid-game
     // restarts the encounter fresh (design spec §4 accepted simplification),

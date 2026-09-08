@@ -20,6 +20,14 @@ class ConditionRepo:
         await self.session.flush()
         return condition
 
+    async def create_all(
+        self, conditions: list[ScenarioCondition]
+    ) -> list[ScenarioCondition]:
+        """Bulk-persist conditions in a single flush (e.g. scenario duplication)."""
+        self.session.add_all(conditions)
+        await self.session.flush()
+        return conditions
+
     async def get_by_id(self, condition_id: uuid.UUID) -> ScenarioCondition | None:
         """Retrieve a condition by its primary key ID."""
         stmt = select(ScenarioCondition).where(

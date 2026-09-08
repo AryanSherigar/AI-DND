@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useStudioStore } from "../../stores/studio.store";
 import { createScenario } from "../../api/scenarios.api";
 import { PublishFlow } from "../PublishFlow/PublishFlow";
+import { extractErrorMessage } from "@/shared/lib/extractErrorMessage";
 
 // Initial editable entities & facts
 const INITIAL_ENTITIES = [
@@ -78,13 +79,14 @@ export const Step4Review: React.FC = () => {
       setSaveState(false, new Date());
       setIsSubmitting(false);
       navigate(`/setup/${response.scenario_id}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setIsSubmitting(false);
       setSaveState(false);
       setErrorMsg(
-        err.response?.data?.detail ||
-          err.message ||
+        extractErrorMessage(
+          err,
           "Failed to save scenario. Please check your inputs.",
+        ),
       );
     }
   };
@@ -109,13 +111,14 @@ export const Step4Review: React.FC = () => {
       setIsSubmitting(false);
       setDraftScenarioId(response.scenario_id);
       setShowPublishFlow(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setIsSubmitting(false);
       setSaveState(false);
       setErrorMsg(
-        err.response?.data?.detail ||
-          err.message ||
+        extractErrorMessage(
+          err,
           "Failed to save scenario. Please check your inputs.",
+        ),
       );
     }
   };
@@ -245,7 +248,10 @@ export const Step4Review: React.FC = () => {
         </h3>
         <div className="space-y-3">
           {facts.map((f) => (
-            <div key={f.id} className="rounded-md bg-surface-inset border border-border-subtle p-3">
+            <div
+              key={f.id}
+              className="rounded-md bg-surface-inset border border-border-subtle p-3"
+            >
               <input
                 type="text"
                 value={f.text}

@@ -1,3 +1,27 @@
 {
-  "buildPath": "comp"
+  "buildPath": "comp",
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "apps/frontend/src/features/studio/components/NewbieWizard/Step4Review.tsx"
+        ],
+        "createdAt": "2026-09-08T14:46:44.487Z",
+        "reason": "false positive: border-b-2 on rounded-full + animate-spin is the standard Tailwind spinner idiom, not a decorative accent border"
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "apps/frontend/src/features/studio/components/PublishFlow/PublishFlow.tsx"
+        ],
+        "createdAt": "2026-09-08T14:46:44.570Z",
+        "reason": "false positive: border-b-2 on rounded-full + animate-spin is the standard Tailwind spinner idiom, not a decorative accent border"
+      }
+    ]
+  }
 }

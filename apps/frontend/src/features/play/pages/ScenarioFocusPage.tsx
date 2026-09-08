@@ -40,7 +40,9 @@ export const ScenarioFocusPage: React.FC = () => {
   if (isError || !scenario) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 pt-14 text-center">
-        <h1 className="font-display text-2xl text-content">Scenario not found</h1>
+        <h1 className="font-display text-2xl text-content">
+          Scenario not found
+        </h1>
         <p className="max-w-sm font-sans text-sm text-content-faint">
           It may have been unpublished, or the link is wrong.
         </p>

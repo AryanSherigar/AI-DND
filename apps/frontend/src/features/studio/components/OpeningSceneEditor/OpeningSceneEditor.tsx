@@ -19,7 +19,9 @@ export const OpeningSceneEditor: React.FC<OpeningSceneEditorProps> = ({
   };
 
   if (isLoading || openingScene === undefined) {
-    return <p className="text-sm text-content-faint">Loading opening scene...</p>;
+    return (
+      <p className="text-sm text-content-faint">Loading opening scene...</p>
+    );
   }
 
   return (

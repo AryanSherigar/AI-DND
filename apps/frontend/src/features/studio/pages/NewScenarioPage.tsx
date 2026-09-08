@@ -4,6 +4,24 @@ import { useStudioStore } from "../stores/studio.store";
 import { StudioDocumentLayout } from "../components/Layout/StudioDocumentLayout";
 import { MasterModeCreateFlow } from "../components/MasterModeCreateFlow/MasterModeCreateFlow";
 
+const SaveStatusIndicator: React.FC<{
+  isSaving: boolean;
+  lastSaved: Date | null;
+}> = ({ isSaving, lastSaved }) => {
+  if (isSaving) {
+    return (
+      <span className="flex items-center gap-2 text-content-muted">
+        <span className="h-3 w-3 animate-spin rounded-full border-b-2 border-content-muted" />
+        Saving…
+      </span>
+    );
+  }
+  if (lastSaved) {
+    return <span className="text-success">Saved</span>;
+  }
+  return <span className="text-content-faint">Unsaved draft</span>;
+};
+
 export const NewScenarioPage: React.FC = () => {
   const { mode, setMode, isSaving, lastSaved, resetDraft } = useStudioStore();
 
@@ -69,16 +87,7 @@ export const NewScenarioPage: React.FC = () => {
 
         {/* Status indicator */}
         <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider">
-          {isSaving ? (
-            <span className="flex items-center gap-2 text-content-muted">
-              <span className="h-3 w-3 animate-spin rounded-full border-b-2 border-content-muted" />
-              Saving…
-            </span>
-          ) : lastSaved ? (
-            <span className="text-success">Saved</span>
-          ) : (
-            <span className="text-content-faint">Unsaved draft</span>
-          )}
+          <SaveStatusIndicator isSaving={isSaving} lastSaved={lastSaved} />
         </div>
       </header>
 

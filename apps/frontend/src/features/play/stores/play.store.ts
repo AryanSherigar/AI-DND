@@ -41,10 +41,7 @@ interface TurnStreamBody {
 }
 
 type MinigameResultStatus =
-  | "reconciling"
-  | "submitting"
-  | "retryable"
-  | "terminal";
+  "reconciling" | "submitting" | "retryable" | "terminal";
 
 interface PendingMinigameResult {
   result: MinigameResultPayload;
@@ -61,7 +58,9 @@ function pendingMinigameFromServer(
   const pending = state._pending_minigame;
   if (!pending || typeof pending !== "object") return null;
   const payload = pending as Partial<MinigameEventPayload>;
-  return typeof payload.minigame_id === "string" ? (payload as MinigameEventPayload) : null;
+  return typeof payload.minigame_id === "string"
+    ? (payload as MinigameEventPayload)
+    : null;
 }
 
 function isSamePendingAttempt(
@@ -136,7 +135,6 @@ interface PlayStoreState {
   continueTurn: () => void;
   stopGeneration: () => void;
   retryLastTurn: () => void;
-  editLastAction: () => string;
   clearDegradedMessage: () => void;
   active_mood: ScenarioMood;
   audio_volume: number;
@@ -280,7 +278,8 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     const { playthrough, active_minigame, pending_minigame_result } = get();
     if (!playthrough || playthrough.is_spectator) return;
     if (!playthrough.participant_id) return;
-    if (!active_minigame || active_minigame.minigame_id !== result.minigame_id) return;
+    if (!active_minigame || active_minigame.minigame_id !== result.minigame_id)
+      return;
     // Exactly once at the client boundary. The retry action below deliberately
     // resubmits this same immutable payload/attempt id.
     if (pending_minigame_result) return;
@@ -303,6 +302,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
         participant_id: playthrough.participant_id,
         action_text: MINIGAME_RESULT_ACTION_TEXT,
         action_kind: "minigame_result",
+        action_mode: "do",
         minigame_result: payload,
       },
       MINIGAME_RESULT_ACTION_TEXT,
@@ -317,7 +317,8 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       !pending_minigame_result ||
       pending_minigame_result.status !== "retryable" ||
       pending_minigame_result.attempts >= MAX_MINIGAME_RESULT_ATTEMPTS
-    ) return;
+    )
+      return;
     // A dropped SSE can mean the server committed successfully. Never replay
     // an outcome until a fresh authoritative read proves this attempt is still
     // pending; this also makes the timeout fallback safe after a lost "done".
@@ -328,13 +329,17 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       },
     });
     try {
-      const serverPlaythrough = await getPlaythrough(playthrough.playthrough_id);
+      const serverPlaythrough = await getPlaythrough(
+        playthrough.playthrough_id,
+      );
       const serverPending = pendingMinigameFromServer(serverPlaythrough.state);
       void queryClient.setQueryData(
         ["playthrough", playthrough.playthrough_id],
         serverPlaythrough,
       );
-      if (!isSamePendingAttempt(serverPending, pending_minigame_result.result)) {
+      if (
+        !isSamePendingAttempt(serverPending, pending_minigame_result.result)
+      ) {
         set({
           active_minigame: serverPending,
           pending_minigame_result: null,
@@ -369,6 +374,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
         participant_id: playthrough.participant_id,
         action_text: MINIGAME_RESULT_ACTION_TEXT,
         action_kind: "minigame_result",
+        action_mode: "do",
         minigame_result: pending_minigame_result.result,
       },
       MINIGAME_RESULT_ACTION_TEXT,
@@ -383,7 +389,8 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       !pending_minigame_result ||
       pending_minigame_result.status !== "terminal" ||
       pending_minigame_result.fallback_used
-    ) return;
+    )
+      return;
     set({
       pending_minigame_result: {
         ...pending_minigame_result,
@@ -391,13 +398,17 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
       },
     });
     try {
-      const serverPlaythrough = await getPlaythrough(playthrough.playthrough_id);
+      const serverPlaythrough = await getPlaythrough(
+        playthrough.playthrough_id,
+      );
       const serverPending = pendingMinigameFromServer(serverPlaythrough.state);
       void queryClient.setQueryData(
         ["playthrough", playthrough.playthrough_id],
         serverPlaythrough,
       );
-      if (!isSamePendingAttempt(serverPending, pending_minigame_result.result)) {
+      if (
+        !isSamePendingAttempt(serverPending, pending_minigame_result.result)
+      ) {
         set({
           active_minigame: serverPending,
           pending_minigame_result: null,
@@ -467,28 +478,6 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     if (last_submitted_action) {
       submitTurn(last_submitted_action);
     }
-  },
-
-  editLastAction: () => {
-    const { playthrough, stopGeneration } = get();
-    stopGeneration();
-
-    if (!playthrough || playthrough.turns.length === 0) return "";
-
-    const turnsCopy = [...playthrough.turns];
-    const lastTurn = turnsCopy.pop();
-    if (!lastTurn) return "";
-
-    set({
-      playthrough: {
-        ...playthrough,
-        turns: turnsCopy,
-      },
-      active_mode: lastTurn.action_mode,
-      last_submitted_action: lastTurn.action_text,
-    });
-
-    return lastTurn.action_text;
   },
 
   // Internal helpers (not part of the public store surface — no consumer

@@ -52,6 +52,20 @@ class FactMetadataStore(Protocol):
     ) -> None: ...
 
 
+class ExternalFactIdStore(Protocol):
+    """Duck-typed to `persistence.postgres.PostgresExternalFactIdStore` --
+    NEW-HIGH-01 fix: without cloning these rows, superseding a
+    template-authored fact in a cloned playthrough (via its
+    `external_fact_id`) fails to resolve and crashes
+    (`ingestion.direct_authoring.write_fact`'s `superseded_fact_id`
+    lookup)."""
+
+    def get_all_for_context(self, context_id: str) -> list[tuple[str, int, str]]: ...
+    def put(
+        self, context_id: str, external_fact_id: str, graph_id: int, logical_key: str
+    ) -> None: ...
+
+
 class FactProjector(Protocol):
     """Duck-typed to `ingestion.fact_projection.FactProjectionWriter` -- see
     `FactMetadataStore` above for why this stays a locally-declared Protocol
@@ -93,6 +107,11 @@ _ENTITY_PROPERTIES = (
     "description",
     "aliases",
 )
+# NEW-HIGH-03 fix: `entity_graph_id` (see `ingestion.alias_records`) is
+# deliberately excluded -- it's write-only (nothing reads it back; hydration
+# groups aliases by the HAS_ALIAS edge, not this property) and would
+# otherwise carry the SOURCE context's stale entity graph_id forward.
+_ALIAS_PROPERTIES = ("logical_key", "canonical_alias")
 _FACT_PROPERTIES = (
     "logical_key",
     "text",
@@ -118,10 +137,11 @@ _FACT_PROPERTIES = (
 )
 # Fact -> Entity relationship types this codebase actually writes
 # (graph_plan_builder.py's STATED_BY/ABOUT, direct_authoring.py's ABOUT/RELATES_TO).
-# SUPERSEDES (Fact -> Fact) and HAS_TURN/HAS_ALIAS/EXTRACTED_FROM/MERGED_INTO
-# involve Session/Turn/Alias nodes this template-clone scope doesn't carry
-# forward -- a template has no Turns of its own, only pre-authored/extracted
-# Facts and Entities (see ADR-7: authoring-time ingestion, not gameplay).
+# SUPERSEDES (Fact -> Fact) and HAS_TURN/EXTRACTED_FROM/MERGED_INTO involve
+# Session/Turn nodes this template-clone scope doesn't carry forward -- a
+# template has no Turns of its own, only pre-authored/extracted Facts and
+# Entities (see ADR-7: authoring-time ingestion, not gameplay). HAS_ALIAS
+# (Entity -> Alias) is now cloned too (NEW-HIGH-03) -- see _clone_aliases.
 _FACT_TO_ENTITY_RELATIONSHIP_TYPES = ("ABOUT", "STATED_BY", "RELATES_TO")
 
 
@@ -130,6 +150,8 @@ class CloneResult:
     entities_cloned: int
     facts_cloned: int
     relationships_cloned: int
+    external_fact_ids_cloned: int = 0
+    aliases_cloned: int = 0
 
 
 def clone(
@@ -140,6 +162,7 @@ def clone(
     hydra_transport: GraphTransport,
     fact_metadata_store: FactMetadataStore | None = None,
     fact_projector: FactProjector | None = None,
+    external_fact_id_store: ExternalFactIdStore | None = None,
 ) -> CloneResult:
     """Copies every Entity/Fact node and Fact->Entity edge under
     `source_context_id` into a fresh `target_context_id`. Idempotent per
@@ -157,6 +180,11 @@ def clone(
     TARGET context's `memory_embeddings`/`fact_search_index` (mem1 gap #46) --
     reusing the source fact's already-computed embedding vector where one
     exists, rather than re-embedding identical text on every clone.
+
+    `external_fact_id_store`, when given, also remaps and copies each
+    source fact's `external_fact_ids` row onto its newly-allocated fact_id
+    (NEW-HIGH-01) -- without this, `superseded_fact_id` lookups against a
+    template-authored fact fail in every cloned playthrough.
     """
     with timed_operation(
         logger,
@@ -170,7 +198,11 @@ def clone(
             hydra_transport, "Entity", source_context_id, _ENTITY_PROPERTIES
         )
         fact_rows = _read_labeled(
-            hydra_transport, "Fact", source_context_id, _FACT_PROPERTIES
+            hydra_transport,
+            "Fact",
+            source_context_id,
+            _FACT_PROPERTIES,
+            where_clause=_CURRENT_FACT_WHERE_CLAUSE,
         )
 
         entity_nodes, old_to_new_entity_id = _clone_nodes(
@@ -179,11 +211,17 @@ def clone(
         fact_nodes, old_to_new_fact_id = _clone_nodes(
             fact_rows, "Fact", "fact", target_context_id, allocator
         )
+        alias_rows = _read_labeled(
+            hydra_transport, "Alias", source_context_id, _ALIAS_PROPERTIES
+        )
+        alias_nodes, old_to_new_alias_id = _clone_nodes(
+            alias_rows, "Alias", "alias", target_context_id, allocator
+        )
 
         relationships = []
         for relationship_type in _FACT_TO_ENTITY_RELATIONSHIP_TYPES:
-            edge_rows = _read_fact_to_entity_edges(
-                hydra_transport, relationship_type, source_context_id
+            edge_rows = _read_edges(
+                hydra_transport, "Fact", relationship_type, "Entity", source_context_id
             )
             relationships.extend(
                 _clone_edges(
@@ -193,10 +231,30 @@ def clone(
                     old_to_new_entity_id,
                     target_context_id,
                     allocator,
+                    source_label="Fact",
+                    dest_label="Entity",
                 )
             )
+        # NEW-HIGH-03 fix: HAS_ALIAS wasn't carried forward by cloning at
+        # all before this -- a direct-authored (or extracted) entity's
+        # aliases silently vanished from every cloned playthrough.
+        alias_edge_rows = _read_edges(
+            hydra_transport, "Entity", "HAS_ALIAS", "Alias", source_context_id
+        )
+        relationships.extend(
+            _clone_edges(
+                alias_edge_rows,
+                "HAS_ALIAS",
+                old_to_new_entity_id,
+                old_to_new_alias_id,
+                target_context_id,
+                allocator,
+                source_label="Entity",
+                dest_label="Alias",
+            )
+        )
 
-        nodes = tuple(entity_nodes) + tuple(fact_nodes)
+        nodes = tuple(entity_nodes) + tuple(fact_nodes) + tuple(alias_nodes)
         if nodes or relationships:
             plan = GraphWritePlan(
                 context_id=target_context_id,
@@ -228,14 +286,27 @@ def clone(
                 fact_projector,
             )
 
+        external_fact_ids_cloned = 0
+        if external_fact_id_store is not None and old_to_new_fact_id:
+            external_fact_ids_cloned = _clone_external_fact_ids(
+                external_fact_id_store,
+                source_context_id,
+                target_context_id,
+                old_to_new_fact_id,
+            )
+
         result = CloneResult(
             entities_cloned=len(entity_nodes),
             facts_cloned=len(fact_nodes),
             relationships_cloned=len(relationships),
+            external_fact_ids_cloned=external_fact_ids_cloned,
+            aliases_cloned=len(alias_nodes),
         )
         ctx["entities_cloned"] = result.entities_cloned
         ctx["facts_cloned"] = result.facts_cloned
         ctx["relationships_cloned"] = result.relationships_cloned
+        ctx["external_fact_ids_cloned"] = result.external_fact_ids_cloned
+        ctx["aliases_cloned"] = result.aliases_cloned
         return result
 
 
@@ -270,6 +341,31 @@ def _clone_fact_metadata(
             visible_to_participant_id,
             hidden,
         )
+
+
+def _clone_external_fact_ids(
+    external_fact_id_store: ExternalFactIdStore,
+    source_context_id: str,
+    target_context_id: str,
+    old_to_new_fact_id: dict[int, int],
+) -> int:
+    # `logical_key` is carried forward as-is, not remapped -- `_clone_nodes`
+    # allocates the new fact's graph_id under the SAME logical_key string,
+    # just re-scoped to `target_context_id` (allocator.allocate_graph_id),
+    # so the source row's logical_key is still the right value to store.
+    rows = external_fact_id_store.get_all_for_context(source_context_id)
+    cloned = 0
+    for external_fact_id, old_graph_id, logical_key in rows:
+        new_graph_id = old_to_new_fact_id.get(old_graph_id)
+        if new_graph_id is None:
+            # This fact's own clone was skipped or excluded (e.g. archived,
+            # see _CURRENT_FACT_WHERE_CLAUSE) -- nothing to remap it onto.
+            continue
+        external_fact_id_store.put(
+            target_context_id, external_fact_id, new_graph_id, logical_key
+        )
+        cloned += 1
+    return cloned
 
 
 def _project_cloned_facts(
@@ -312,20 +408,39 @@ def _read_labeled(
     label: str,
     context_id: str,
     properties: tuple[str, ...],
+    where_clause: str | None = None,
 ) -> list[dict[str, object]]:
     projection = ", ".join(f"n.{prop} AS {prop}" for prop in properties)
+    where = f" WHERE {where_clause}" if where_clause else ""
     cypher = (
-        f"MATCH (n:{label} {{context_id: $context_id}}) RETURN n.id AS id, {projection}"
+        f"MATCH (n:{label} {{context_id: $context_id}}){where} "
+        f"RETURN n.id AS id, {projection}"
     )
     return list(hydra_transport.read(cypher, {"context_id": context_id}, None))
 
 
-def _read_fact_to_entity_edges(
-    hydra_transport: GraphTransport, relationship_type: str, context_id: str
+# NEW-CRIT-02 fix: republishing a scenario soft-archives its prior facts
+# (`is_current = false, archived = true` -- see direct_authoring.py's
+# `begin_template_republish`) rather than deleting them, so an unfiltered
+# read here would clone every historical/superseded fact version into
+# every new playthrough alongside the current ones. Entity reads have no
+# such concept and stay unfiltered.
+_CURRENT_FACT_WHERE_CLAUSE = (
+    "coalesce(n.is_current, true) = true AND coalesce(n.archived, false) = false"
+)
+
+
+def _read_edges(
+    hydra_transport: GraphTransport,
+    source_label: str,
+    relationship_type: str,
+    dest_label: str,
+    context_id: str,
 ) -> list[dict[str, object]]:
     cypher = (
-        f"MATCH (f:Fact {{context_id: $context_id}})-[r:{relationship_type}]->(e:Entity) "
-        "RETURN f.id AS src, e.id AS dst"
+        f"MATCH (s:{source_label} {{context_id: $context_id}})"
+        f"-[r:{relationship_type}]->(d:{dest_label}) "
+        "RETURN s.id AS src, d.id AS dst"
     )
     return list(hydra_transport.read(cypher, {"context_id": context_id}, None))
 
@@ -363,21 +478,24 @@ def _clone_nodes(
 def _clone_edges(
     rows: list[dict[str, object]],
     relationship_type: str,
-    old_to_new_fact_id: dict[int, int],
-    old_to_new_entity_id: dict[int, int],
+    old_to_new_src_id: dict[int, int],
+    old_to_new_dst_id: dict[int, int],
     target_context_id: str,
     allocator: GraphIdAllocator,
+    source_label: str,
+    dest_label: str,
 ) -> list[GraphRelationship]:
     relationships = []
     for row in rows:
         old_src, old_dst = int(row["src"]), int(row["dst"])
-        new_src = old_to_new_fact_id.get(old_src)
-        new_dst = old_to_new_entity_id.get(old_dst)
+        new_src = old_to_new_src_id.get(old_src)
+        new_dst = old_to_new_dst_id.get(old_dst)
         if new_src is None or new_dst is None:
-            # The Fact/Entity node this edge points to failed its own clone
-            # (e.g. missing logical_key, see _clone_nodes) -- drop the
-            # now-dangling edge rather than write a relationship to a node
-            # that was never cloned.
+            # The node this edge points to failed its own clone (e.g.
+            # missing logical_key, see _clone_nodes, or was excluded, see
+            # _CURRENT_FACT_WHERE_CLAUSE) -- drop the now-dangling edge
+            # rather than write a relationship to a node that was never
+            # cloned.
             continue
         logical_key = f"{relationship_type.lower()}:{new_src}:{new_dst}"
         graph_id = allocator.allocate_graph_id(
@@ -390,8 +508,8 @@ def _clone_edges(
                 logical_key,
                 new_src,
                 new_dst,
-                "Fact",
-                "Entity",
+                source_label,
+                dest_label,
                 {"context_id": target_context_id},
             )
         )

@@ -1,12 +1,26 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID, uuid5
 
 import httpx
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    status,
+)
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
 from api.models import (
     AgentTurnRequest,
     AgentTurnResponse,
@@ -20,13 +34,14 @@ from api.models import (
     MemoryTemplateCloneResponse,
     MemoryTemplateIngestRequest,
     MemoryTemplateIngestResponse,
+    RollbackRequest,
     RollbackResponse,
     SavePointResponse,
     ScenarioTemplateRequest,
 )
 from api.models import BatchStatus as MemoryBatchStatus
 from api.models import Fact as MemoryFact
-from context_memory.composition import build_memory_engine
+from api.stream import streamer
 from context_memory.engine import MemoryEngine
 from context_memory.ingestion.batch_models import (
     TurnBatchEntry as DomainTurnBatchEntry,
@@ -35,25 +50,16 @@ from context_memory.ingestion.batch_models import (
     dedupe_turn_entries,
 )
 from context_memory.ingestion.direct_authoring import DirectEntityInput, DirectFactInput
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Depends,
-    Header,
-    HTTPException,
-    Request,
-    status,
-)
-from pydantic import BaseModel
-
-_GLOBAL_ENGINE: MemoryEngine | None = None
+from context_memory.ingestion.rollback import SavePointOwnershipError
 
 
-def get_engine() -> MemoryEngine:
-    global _GLOBAL_ENGINE
-    if _GLOBAL_ENGINE is None:
-        _GLOBAL_ENGINE = build_memory_engine()
-    return _GLOBAL_ENGINE
+def get_engine(request: Request) -> MemoryEngine:
+    """HIGH-01 fix: the engine is built exactly once, in `lifespan`
+    (api/server.py), and stashed on `app.state.engine`. Routes must read
+    that instance rather than lazily building a second one -- see the
+    memory-layer audit's HIGH-01 finding for the duplicate-engine bug this
+    replaces."""
+    return request.app.state.engine
 
 
 router = APIRouter()
@@ -149,7 +155,7 @@ def retry_batch(
 
 @router.post("/v1/memory/search")
 def search_memory(req: SearchRequest, engine: MemoryEngine = Depends(get_engine)):
-    q_date = req.question_date or datetime.now(timezone.utc)
+    q_date = req.question_date or datetime.now(UTC)
     answer = engine.search_memories(req.context_id, req.query, q_date, req.scenario_id)
     return {"answer": answer}
 
@@ -158,13 +164,15 @@ _FACT_ID_NAMESPACE = UUID("69405270-4408-4292-924a-a8d139303566")
 
 
 def _stable_fact_uuid(fact_id: str) -> str:
-    """mem1's internal `fact_id` is a bare graph_id (`"142"`) or a
-    `fact:direct:<hash>` logical key -- neither parses as a UUID, but
-    AI-DND's real (non-mock) `Fact.fact_id` field is typed `UUID`
-    (`apps/*/app/models/memory.py`). One-way deterministic derivation is
-    safe here: a `Fact.fact_id` is never sent back into any mem1 endpoint
-    as input (`revealed_facts`/`superseded_fact_id`/`external_fact_id` are
-    separate, caller-assigned identifiers), so no reverse lookup is needed."""
+    """Fallback ONLY for facts with no caller-assigned `external_fact_id`
+    (autonomously extracted facts -- see NEW-CRIT-01). mem1's internal
+    `fact_id` is a bare graph_id (`"142"`) or a `fact:direct:<hash>`
+    logical key -- neither parses as a UUID, but AI-DND's real (non-mock)
+    `Fact.fact_id` field is typed `UUID` (`apps/*/app/models/memory.py`).
+    One-way deterministic derivation is safe here: this synthetic id is
+    never sent back into any mem1 endpoint as input. A fact carrying a real
+    `external_fact_id` uses that instead (`query_memory`), so it round-trips
+    correctly against `revealed_facts`/`superseded_fact_id` comparisons."""
     return str(uuid5(_FACT_ID_NAMESPACE, fact_id))
 
 
@@ -178,7 +186,7 @@ def query_memory(
     playthrough) is where Milestone 5's checkpoint ordering lives -- see the
     identifier mapping in the bridge plan.
     """
-    question_date = datetime.now(timezone.utc)
+    question_date = datetime.now(UTC)
     result = engine.retrieve_facts(
         context_id=str(req.playthrough_id),
         query_text=req.query_text,
@@ -193,7 +201,12 @@ def query_memory(
     )
     facts = [
         MemoryFact(
-            fact_id=_stable_fact_uuid(f.fact_id),
+            # NEW-CRIT-01 fix: prefer the caller's own authored id (set via
+            # direct authoring's `external_fact_id`) so TRS's
+            # `revealed_fact_ids` comparison can actually match -- only
+            # facts with no authored id (autonomously extracted) keep the
+            # synthetic uuid5 derivation.
+            fact_id=f.external_fact_id or _stable_fact_uuid(f.fact_id),
             subject=f.subject,
             predicate=f.predicate,
             object=f.object,
@@ -387,10 +400,14 @@ def create_save_point(
 
 @router.post("/v1/memory/rollback/{save_id}", response_model=RollbackResponse)
 def rollback_to_save_point(
-    save_id: str, engine: MemoryEngine = Depends(get_engine)
+    save_id: str,
+    req: RollbackRequest,
+    engine: MemoryEngine = Depends(get_engine),
 ) -> RollbackResponse:
     try:
-        result = engine.rollback_to(save_id)
+        result = engine.rollback_to(save_id, req.context_id)
+    except SavePointOwnershipError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     return RollbackResponse(
@@ -428,6 +445,58 @@ def get_entity(
     return EntityDetailResponse(**entity)
 
 
+def _resolve_stream_context_id(
+    context_id: str | None, playthrough_id: str | None
+) -> str:
+    """CRIT-01 fix: exactly one of `context_id`/`playthrough_id` (an
+    alias for the same identifier -- see query_memory's docstring) must be
+    given so the stream can be scoped to a single tenant."""
+    if context_id and playthrough_id and context_id != playthrough_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "context_id and playthrough_id must match when both are given",
+        )
+    resolved = context_id or playthrough_id
+    if not resolved:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "context_id (or playthrough_id) query parameter is required",
+        )
+    return resolved
+
+
+# CRIT-01 fix: moved onto `router` (previously declared directly on `app`
+# in server.py, bypassing `require_api_key`) and scoped to a single
+# tenant's writes -- see GraphStreamer.add_queue/broadcast_plan.
+@router.get("/v1/memory/stream")
+async def stream_graph(
+    request: Request,
+    context_id: str | None = Query(default=None),
+    playthrough_id: str | None = Query(default=None),
+):
+    resolved_context_id = _resolve_stream_context_id(context_id, playthrough_id)
+    if streamer.loop is None:
+        streamer.loop = asyncio.get_running_loop()
+
+    q = streamer.add_queue(resolved_context_id)
+
+    async def event_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    data = await asyncio.wait_for(q.get(), timeout=1.0)
+                    yield f"data: {json.dumps(data)}\n\n"
+                except TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            streamer.remove_queue(resolved_context_id, q)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return EntityDetailResponse(**entity)
+
+
 def _ping_postgres_pool(pool: object) -> None:
     with (
         pool.connection() as connection,  # type: ignore[attr-defined]
@@ -437,7 +506,9 @@ def _ping_postgres_pool(pool: object) -> None:
 
 
 async def _check_postgres(request: Request, timeout_seconds: float = 0.5) -> str:
-    engine = getattr(request.app.state, "engine", None) or _GLOBAL_ENGINE
+    # HIGH-01 fix: app.state.engine is the only engine instance now -- no
+    # more _GLOBAL_ENGINE fallback to check.
+    engine = getattr(request.app.state, "engine", None)
     if engine is None or not hasattr(engine, "pool") or engine.pool is None:
         return "down (uninitialized)"
     try:
@@ -509,7 +580,7 @@ async def simulate_demo(background_tasks: BackgroundTasks):
                     "id": f"demo-{int(time.time() * 1000)}-1",
                     "role": "user",
                     "content": "Hi! My name is Alice, and I am a Principal AI Engineer at TechCorp.",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 },
             }
         )
@@ -560,7 +631,7 @@ async def simulate_demo(background_tasks: BackgroundTasks):
                     "id": f"demo-{int(time.time() * 1000)}-2",
                     "role": "agent",
                     "content": "Hello Alice! Great to meet you. I've stored your role at TechCorp in long-term memory.",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 },
             }
         )
@@ -573,7 +644,7 @@ async def simulate_demo(background_tasks: BackgroundTasks):
                     "id": f"demo-{int(time.time() * 1000)}-3",
                     "role": "user",
                     "content": "I prefer dark mode UI and love drinking Matcha Latte during code reviews.",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 },
             }
         )
@@ -630,7 +701,7 @@ async def simulate_demo(background_tasks: BackgroundTasks):
                     "id": f"demo-{int(time.time() * 1000)}-4",
                     "role": "agent",
                     "content": "Noted! Preferences for Dark Mode and Matcha Latte saved to your memory profile.",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 },
             }
         )
@@ -643,7 +714,7 @@ async def simulate_demo(background_tasks: BackgroundTasks):
                     "id": f"demo-{int(time.time() * 1000)}-5",
                     "role": "user",
                     "content": "Recently moved from San Francisco to Neo-Tokyo.",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 },
             }
         )

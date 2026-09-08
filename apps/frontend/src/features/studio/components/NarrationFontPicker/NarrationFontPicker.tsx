@@ -43,7 +43,9 @@ export const NarrationFontPicker: React.FC<NarrationFontPickerProps> = ({
   };
 
   if (isLoading) {
-    return <p className="text-sm text-content-faint">Loading narration font...</p>;
+    return (
+      <p className="text-sm text-content-faint">Loading narration font...</p>
+    );
   }
 
   return (

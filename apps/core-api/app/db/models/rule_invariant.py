@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import ForeignKey, String, Text, text
+from sqlalchemy import ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,6 +14,8 @@ class RuleInvariant(Base, CreatedAtMixin):
     state_validator on every state mutation (master mode)."""
 
     __tablename__ = "rule_invariants"
+
+    __table_args__ = (Index("idx_rule_invariants_scenario_id", "scenario_id"),)
 
     invariant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

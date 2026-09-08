@@ -20,6 +20,14 @@ class EndConditionRepo:
         await self.session.flush()
         return end_condition
 
+    async def create_all(
+        self, end_conditions: list[EndCondition]
+    ) -> list[EndCondition]:
+        """Bulk-persist end conditions in a single flush (e.g. scenario duplication)."""
+        self.session.add_all(end_conditions)
+        await self.session.flush()
+        return end_conditions
+
     async def get_by_id(self, end_condition_id: uuid.UUID) -> EndCondition | None:
         """Retrieve an end condition by its primary key ID."""
         stmt = select(EndCondition).where(

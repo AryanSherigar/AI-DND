@@ -1,5 +1,7 @@
 """Unit tests for scene_image_generator: prompt grounding and failure handling."""
 
+from google.genai import errors as genai_errors
+
 from app.exceptions.turn_exceptions import SceneImageGenerationError
 from app.integrations import image_gen_client, storage_client
 from app.turn.steps import scene_image_generator
@@ -75,6 +77,19 @@ async def test_generate_scene_image_generation_failure_returns_none(
 ) -> None:
     async def fake_generate_image(prompt: str, timeout_seconds: int) -> bytes:
         raise SceneImageGenerationError()
+
+    monkeypatch.setattr(image_gen_client, "generate_image", fake_generate_image)
+
+    result = await scene_image_generator.generate_scene_image(
+        "narration", None, None, 5
+    )
+
+    assert result is None
+
+
+async def test_generate_scene_image_client_error_returns_none(monkeypatch) -> None:
+    async def fake_generate_image(prompt: str, timeout_seconds: int) -> bytes:
+        raise genai_errors.ClientError(400, {"error": {"message": "safety filter"}})
 
     monkeypatch.setattr(image_gen_client, "generate_image", fake_generate_image)
 

@@ -22,7 +22,9 @@ export const InvariantRow: React.FC<InvariantRowProps> = ({
           <span className="text-sm text-content">{invariant.label}</span>
           <Badge>{invariant.applies_to}</Badge>
         </div>
-        <span className="text-xs text-content-faint">{invariant.narrator_text}</span>
+        <span className="text-xs text-content-faint">
+          {invariant.narrator_text}
+        </span>
       </button>
       <Button
         type="button"

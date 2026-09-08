@@ -8,20 +8,24 @@ logger = logging.getLogger(__name__)
 
 class GraphStreamer:
     def __init__(self):
-        self.queues = set()
+        self.queues: dict[str, set[asyncio.Queue]] = {}
         self.loop = None
 
-    def add_queue(self) -> asyncio.Queue:
+    def add_queue(self, context_id: str) -> asyncio.Queue:
         q = asyncio.Queue()
-        self.queues.add(q)
+        self.queues.setdefault(context_id, set()).add(q)
         return q
 
-    def remove_queue(self, q: asyncio.Queue):
-        if q in self.queues:
-            self.queues.remove(q)
+    def remove_queue(self, context_id: str, q: asyncio.Queue):
+        queues = self.queues.get(context_id)
+        if queues is None:
+            return
+        queues.discard(q)
+        if not queues:
+            del self.queues[context_id]
 
-    def push_event(self, data: dict):
-        if not self.queues:
+    def push_event(self, context_id: str, data: dict):
+        if context_id not in self.queues:
             return
 
         if self.loop is None:
@@ -31,12 +35,12 @@ class GraphStreamer:
                 return
 
         try:
-            self.loop.call_soon_threadsafe(self._push_all, data)
+            self.loop.call_soon_threadsafe(self._push_all, context_id, data)
         except Exception as e:
             logger.error(f"Error pushing event: {e}")
 
     def broadcast_plan(self, plan: GraphWritePlan):
-        if not self.queues:
+        if plan.context_id not in self.queues:
             return
 
         nodes_data = []
@@ -62,10 +66,10 @@ class GraphStreamer:
 
         data = {"type": "graph_update", "nodes": nodes_data, "edges": edges_data}
 
-        self.push_event(data)
+        self.push_event(plan.context_id, data)
 
-    def _push_all(self, data):
-        for q in list(self.queues):
+    def _push_all(self, context_id: str, data: dict):
+        for q in list(self.queues.get(context_id, ())):
             try:
                 q.put_nowait(data)
             except Exception:

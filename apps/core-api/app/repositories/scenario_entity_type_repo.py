@@ -20,6 +20,14 @@ class ScenarioEntityTypeRepo:
         await self.session.flush()
         return entity_type
 
+    async def create_all(
+        self, entity_types: list[ScenarioEntityType]
+    ) -> list[ScenarioEntityType]:
+        """Bulk-persist entity type templates in a single flush (e.g. scenario duplication)."""
+        self.session.add_all(entity_types)
+        await self.session.flush()
+        return entity_types
+
     async def get_by_id(
         self, scenario_entity_type_id: uuid.UUID
     ) -> ScenarioEntityType | None:

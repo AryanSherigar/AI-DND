@@ -1,7 +1,11 @@
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
-import { IconPlayerPlayFilled, IconPlus, IconStarFilled } from "@tabler/icons-react";
+import {
+  IconPlayerPlayFilled,
+  IconPlus,
+  IconStarFilled,
+} from "@tabler/icons-react";
 import { cn } from "@/shared/lib/cn";
 import { FeaturedHeroProps } from "./FeaturedHero.types";
 

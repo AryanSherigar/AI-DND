@@ -7,6 +7,7 @@ export interface SpectatorViewProps {
   scenarioTitle: string;
   turns: TurnLogResponse[];
   streamingText: string;
+  streamingImageUrl?: string | null;
   isLive: boolean;
   narrationFont?: string | null;
 }
@@ -63,6 +64,7 @@ export function SpectatorView({
   scenarioTitle,
   turns,
   streamingText,
+  streamingImageUrl,
   isLive,
   narrationFont,
 }: SpectatorViewProps) {
@@ -90,6 +92,14 @@ export function SpectatorView({
             fontClass={activeFont.fontClass}
           />
         ))}
+
+        {streamingImageUrl && (
+          <img
+            src={streamingImageUrl}
+            alt="Scene depiction"
+            className="w-full rounded-lg border border-stone-800/60"
+          />
+        )}
 
         {streamingText && (
           <p

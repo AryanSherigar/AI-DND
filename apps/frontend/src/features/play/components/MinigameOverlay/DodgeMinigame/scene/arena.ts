@@ -3,9 +3,20 @@
 // cool blue-white toward amber/red as health drops. Plain PixiJS module,
 // no React — see docs/specs/dodge-minigame-design.spec.md §3.4/§3.6.
 
-import { BlurFilter, Container, FillGradient, Graphics, Sprite, Texture } from "pixi.js";
+import {
+  BlurFilter,
+  Container,
+  FillGradient,
+  Graphics,
+  Sprite,
+  Texture,
+} from "pixi.js";
 import { ARENA_HEIGHT, ARENA_WIDTH } from "../difficultyPresets";
-import type { DodgeBackground, DodgePalette, DodgeTexture } from "@/shared/types/minigame.types";
+import type {
+  DodgeBackground,
+  DodgePalette,
+  DodgeTexture,
+} from "@/shared/types/minigame.types";
 
 const ARENA_BACKGROUND_COLOR = 0x0a0a14;
 const VIGNETTE_EDGE_COLOR = "rgba(0,0,0,0.85)";
@@ -32,16 +43,18 @@ export interface ArenaAppearance {
 }
 
 const BACKGROUND_COLORS: Record<DodgeBackground, number> = {
-  void: 0x0a0a14, ember: 0x26120d, midnight: 0x08152c,
+  void: 0x0a0a14,
+  ember: 0x26120d,
+  midnight: 0x08152c,
 };
 const PALETTE_BOUNDARY_COLORS: Record<DodgePalette, number> = {
-  ashfall: BOUNDARY_FULL_HEALTH_COLOR, ember: 0xffa05c, aurora: 0x87f7d1,
+  ashfall: BOUNDARY_FULL_HEALTH_COLOR,
+  ember: 0xffa05c,
+  aurora: 0x87f7d1,
 };
 
 function buildBackground(color: number): Graphics {
-  return new Graphics()
-    .rect(0, 0, ARENA_WIDTH, ARENA_HEIGHT)
-    .fill(color);
+  return new Graphics().rect(0, 0, ARENA_WIDTH, ARENA_HEIGHT).fill(color);
 }
 
 function buildVignette(): Graphics {
@@ -84,7 +97,9 @@ function buildTexture(texture: DodgeTexture | undefined): Graphics | null {
   for (let x = 12; x < ARENA_WIDTH; x += texture === "stars" ? 43 : 17) {
     for (let y = 9; y < ARENA_HEIGHT; y += texture === "stars" ? 37 : 19) {
       const size = texture === "stars" ? 1.5 : 0.7;
-      graphics.circle(x + ((y / 19) % 3), y, size).fill({ color: 0xffffff, alpha: texture === "stars" ? 0.22 : 0.06 });
+      graphics
+        .circle(x + ((y / 19) % 3), y, size)
+        .fill({ color: 0xffffff, alpha: texture === "stars" ? 0.22 : 0.06 });
     }
   }
   return graphics;
@@ -92,7 +107,9 @@ function buildTexture(texture: DodgeTexture | undefined): Graphics | null {
 
 export function buildArena(appearance: ArenaAppearance = {}): ArenaScene {
   const container = new Container();
-  const backgroundColor = BACKGROUND_COLORS[appearance.background ?? "void"] ?? ARENA_BACKGROUND_COLOR;
+  const backgroundColor =
+    BACKGROUND_COLORS[appearance.background ?? "void"] ??
+    ARENA_BACKGROUND_COLOR;
   container.addChild(buildBackground(backgroundColor));
   if (appearance.backgroundAssetUrl) {
     const sprite = new Sprite(Texture.from(appearance.backgroundAssetUrl));
@@ -143,7 +160,8 @@ export function buildArena(appearance: ArenaAppearance = {}): ArenaScene {
       });
   };
 
-  const fullHealthColor = PALETTE_BOUNDARY_COLORS[appearance.palette ?? "ashfall"];
+  const fullHealthColor =
+    PALETTE_BOUNDARY_COLORS[appearance.palette ?? "ashfall"];
   drawBoundary(fullHealthColor);
 
   // hitPointsFraction: 1 = full health (cool blue-white), 0 = critical
@@ -162,8 +180,8 @@ export function buildArena(appearance: ArenaAppearance = {}): ArenaScene {
     const warningT = 1 - clamped;
     drawBoundary(
       (lerpChannel(r, 0xff, warningT) << 16) |
-      (lerpChannel(g, 0x6b, warningT) << 8) |
-      lerpChannel(b, 0x4a, warningT),
+        (lerpChannel(g, 0x6b, warningT) << 8) |
+        lerpChannel(b, 0x4a, warningT),
     );
   };
 

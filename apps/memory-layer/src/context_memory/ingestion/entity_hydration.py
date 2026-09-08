@@ -1,8 +1,15 @@
 """Bulk HydraDB read for `EntityRegistry`'s lazy per-context hydration (see
-`EntityRegistry._hydrate`). Entity nodes carry no `aliases` property --
-aliases live on separate `Alias` nodes reached via `HAS_ALIAS` edges (see
-`graph_plan_builder.py`'s `_entity_node`/`_alias_records`) -- so this reads
-both and joins them by graph id.
+`EntityRegistry._hydrate`). Aliases live on separate `Alias` nodes reached
+via `HAS_ALIAS` edges (see `ingestion.alias_records.alias_records`, shared
+by both `graph_plan_builder.py`'s extraction path and
+`direct_authoring.write_entity`'s direct-authoring path -- NEW-HIGH-03) --
+so this reads both and joins them by graph id.
+
+NOTE: `direct_authoring.write_entity` ALSO writes a flat, comma-joined
+`aliases` string property directly on the Entity node, kept only because
+`MemoryEngine.get_entity` reads it. That property is NOT read here -- it's
+a redundant legacy field for one specific caller, not this hydrator's
+source of truth.
 """
 
 from __future__ import annotations

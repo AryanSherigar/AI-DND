@@ -44,7 +44,9 @@ export const ActionChipsEditor: React.FC<ActionChipsEditorProps> = ({
   };
 
   if (isLoading) {
-    return <p className="text-sm text-content-faint">Loading action chips...</p>;
+    return (
+      <p className="text-sm text-content-faint">Loading action chips...</p>
+    );
   }
 
   return (

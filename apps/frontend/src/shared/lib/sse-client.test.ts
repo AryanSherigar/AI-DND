@@ -154,4 +154,64 @@ describe("sse-client", () => {
 
     cleanup();
   });
+
+  it("preserves leading indentation and trailing spaces on data lines per SSE spec", async () => {
+    const stream = createMockStream([
+      "event: token\ndata:   indented text with trailing   \n\n",
+      "event: done\ndata: \n\n",
+    ]);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: stream,
+      }),
+    );
+
+    const receivedEvents: Array<{ event: string; data: string }> = [];
+    const cleanup = createGetSSEConnection(
+      "http://localhost:8001/v1/stream",
+      null,
+      { onEvent: (event, data) => receivedEvents.push({ event, data }) },
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(receivedEvents).toEqual([
+      { event: "token", data: "  indented text with trailing   " },
+      { event: "done", data: "" },
+    ]);
+
+    cleanup();
+  });
+
+  it("correctly handles CRLF line endings split across chunk boundaries", async () => {
+    const stream = createMockStream([
+      "event: narration\r\ndata: Split chunk\r",
+      "\n\r\nevent: done\r\ndata: \r\n\r\n",
+    ]);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: stream,
+      }),
+    );
+
+    const receivedEvents: Array<{ event: string; data: string }> = [];
+    const cleanup = createGetSSEConnection(
+      "http://localhost:8001/v1/stream",
+      null,
+      { onEvent: (event, data) => receivedEvents.push({ event, data }) },
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(receivedEvents).toEqual([
+      { event: "narration", data: "Split chunk" },
+      { event: "done", data: "" },
+    ]);
+
+    cleanup();
+  });
 });

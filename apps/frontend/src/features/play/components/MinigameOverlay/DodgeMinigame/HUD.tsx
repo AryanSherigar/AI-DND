@@ -6,8 +6,14 @@ import { HUDProps } from "./HUD.types";
  * live values useGameLoop already derived — no PixiJS/game-state knowledge
  * of its own. See docs/specs/dodge-minigame-design.spec.md §3.4.
  */
-export function HUD({ hitPoints, maxHitPoints, timeRemainingMs, durationMs }: HUDProps) {
-  const timeFraction = durationMs > 0 ? Math.max(0, timeRemainingMs / durationMs) : 0;
+export function HUD({
+  hitPoints,
+  maxHitPoints,
+  timeRemainingMs,
+  durationMs,
+}: HUDProps) {
+  const timeFraction =
+    durationMs > 0 ? Math.max(0, timeRemainingMs / durationMs) : 0;
 
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col gap-2 p-3">

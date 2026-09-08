@@ -35,7 +35,7 @@ async def test_generate_and_upload_cover_image_uses_scenario_covers_prefix(
     monkeypatch,
 ) -> None:
     async def fake_generate_image(prompt: str, timeout_seconds: int) -> bytes:
-        return b"fake-image-bytes"
+        return b"\x89PNG\r\n\x1a\nfake-image-bytes"
 
     captured_object_keys: list[str] = []
 

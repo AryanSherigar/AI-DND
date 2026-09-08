@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String, text
+from sqlalchemy import ForeignKey, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,6 +13,8 @@ class ScenarioMap(Base, TimestampMixin):
     """A creator-authored map image within a master-mode scenario."""
 
     __tablename__ = "scenario_maps"
+
+    __table_args__ = (Index("idx_scenario_maps_scenario_id", "scenario_id"),)
 
     map_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

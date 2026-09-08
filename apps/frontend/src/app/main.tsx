@@ -2,7 +2,10 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import { logEvent } from "@/shared/lib/logger";
+import { initializeAuthInterceptors } from "@/features/auth/lib/setupAuthInterceptor";
 import "../index.css";
+
+initializeAuthInterceptors();
 
 window.addEventListener("error", (event) => {
   logEvent("error", "unhandled_frontend_error", {

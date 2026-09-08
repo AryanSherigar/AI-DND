@@ -30,6 +30,7 @@ from datetime import datetime
 from typing import Protocol
 
 from context_memory.core.graph import GraphNode, GraphRelationship, GraphWritePlan
+from context_memory.ingestion.alias_records import alias_records
 from context_memory.ingestion.graph_writer import GraphWriter
 from context_memory.ingestion.ports import GraphIdAllocator
 
@@ -66,6 +67,12 @@ class ExternalFactIdStore(Protocol):
     def put(
         self, context_id: str, external_fact_id: str, graph_id: int, logical_key: str
     ) -> None: ...
+
+    def get_all_for_context(self, context_id: str) -> list[tuple[str, int, str]]:
+        """Every `(external_fact_id, graph_id, logical_key)` row for one
+        context -- used by `cloning.template_clone` to remap and copy
+        these rows into a cloned playthrough context (NEW-HIGH-01)."""
+        ...
 
 
 class FactProjector(Protocol):
@@ -133,7 +140,16 @@ def write_entity(
     allocator: GraphIdAllocator,
     graph_writer: GraphWriter,
 ) -> int:
-    """Direct-writes one Entity node. Returns its graph_id."""
+    """Direct-writes one Entity node (plus, when aliases are given, Alias
+    nodes/HAS_ALIAS edges matching the extraction path's own shape -- see
+    `alias_records`). Returns its graph_id.
+
+    NEW-HIGH-03 fix: the flat comma-joined `aliases` property on the Entity
+    node itself is ALSO still written -- `MemoryEngine.get_entity` reads it
+    directly and would otherwise regress -- but it's no longer the only
+    place aliases live. `entity_hydration.HydraEntityHydrator` reads only
+    HAS_ALIAS edges, which previously didn't exist for direct-authored
+    entities at all, silently dropping their aliases on every rehydration."""
     logical_key = f"entity:{entity.canonical_name}"
     graph_id = allocator.allocate_graph_id("entity", context_id, logical_key)
     node = GraphNode(
@@ -149,11 +165,16 @@ def write_entity(
             aliases=", ".join(entity.aliases) if entity.aliases else None,
         ),
     )
+    alias_nodes_and_edges = alias_records(
+        context_id, graph_id, entity.aliases, allocator
+    )
+    nodes = (node,) + tuple(alias_node for alias_node, _ in alias_nodes_and_edges)
+    relationships = tuple(has_alias for _, has_alias in alias_nodes_and_edges)
     plan = GraphWritePlan(
         context_id=context_id,
         plan_key=f"plan:direct-entity:{logical_key}",
-        nodes=(node,),
-        relationships=(),
+        nodes=nodes,
+        relationships=relationships,
     )
     graph_writer.write(plan)
     return graph_id

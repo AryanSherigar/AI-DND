@@ -30,12 +30,16 @@ class FakeHydraTransport:
         about_rows=(),
         stated_by_rows=(),
         relates_to_rows=(),
+        alias_rows=(),
+        has_alias_rows=(),
     ):
         self.entity_rows = list(entity_rows)
         self.fact_rows = list(fact_rows)
         self.about_rows = list(about_rows)
         self.stated_by_rows = list(stated_by_rows)
         self.relates_to_rows = list(relates_to_rows)
+        self.alias_rows = list(alias_rows)
+        self.has_alias_rows = list(has_alias_rows)
         self.read_calls: list[str] = []
 
     def read(self, cypher, parameters, bookmark):
@@ -44,12 +48,16 @@ class FakeHydraTransport:
             return self.entity_rows
         if "MATCH (n:Fact" in cypher:
             return self.fact_rows
+        if "MATCH (n:Alias" in cypher:
+            return self.alias_rows
         if "[r:ABOUT]" in cypher:
             return self.about_rows
         if "[r:STATED_BY]" in cypher:
             return self.stated_by_rows
         if "[r:RELATES_TO]" in cypher:
             return self.relates_to_rows
+        if "[r:HAS_ALIAS]" in cypher:
+            return self.has_alias_rows
         raise AssertionError(f"unexpected cypher in FakeHydraTransport: {cypher}")
 
     def write(self, cypher, rows, idempotency_key):

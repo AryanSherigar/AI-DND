@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -70,16 +71,22 @@ class AuthService:
             to_encode, settings.secret_key, algorithm=settings.jwt_algorithm
         )
 
-    def generate_refresh_token(self, user: User) -> str:
+    async def generate_refresh_token(self, user: User) -> str:
+        """Issue a fresh refresh token and record its jti as the user's only
+        valid one, invalidating any previously issued refresh token."""
         expire = datetime.now(timezone.utc) + timedelta(
             days=settings.jwt_refresh_expire_days
         )
+        jti = str(uuid.uuid4())
         to_encode = {
             "sub": str(user.user_id),
             "exp": expire,
             "token_version": user.token_version,
             "type": "refresh",
+            "jti": jti,
         }
+        user.current_refresh_jti = jti
+        await self.user_repo.update(user)
         return jwt.encode(
             to_encode, settings.secret_key, algorithm=settings.jwt_algorithm
         )

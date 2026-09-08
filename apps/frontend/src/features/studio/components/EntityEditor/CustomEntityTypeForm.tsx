@@ -35,7 +35,9 @@ export const CustomEntityTypeForm: React.FC<CustomEntityTypeFormProps> = ({
         placeholder="Type name (e.g. Vehicle)"
         required
       />
-      {typeKey && <p className="text-xs text-content-faint">Stored as: {typeKey}</p>}
+      {typeKey && (
+        <p className="text-xs text-content-faint">Stored as: {typeKey}</p>
+      )}
       <AttributesSchemaEditor
         value={attributesSchema}
         onChange={onAttributesSchemaChange}

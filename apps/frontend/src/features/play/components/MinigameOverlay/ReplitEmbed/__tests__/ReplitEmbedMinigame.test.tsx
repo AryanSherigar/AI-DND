@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { ReplitEmbedMinigame } from "../ReplitEmbedMinigame";
 
-const EMBED_URL = "https://demo-repl.example.dev/game";
+const EMBED_URL = "https://demo-repl.replit.dev/game";
 const TIMEOUT_SECONDS = 5;
 
 function getIframe(): HTMLIFrameElement {
@@ -37,6 +37,19 @@ describe("ReplitEmbedMinigame", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("refuses to render the iframe for a non-Replit embed URL", () => {
+    render(
+      <ReplitEmbedMinigame
+        replitEmbedUrl="https://attacker.example.com/payload"
+        timeoutSeconds={TIMEOUT_SECONDS}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    expect(document.querySelector("iframe")).not.toBeInTheDocument();
+    expect(screen.getByText(/not from a trusted host/i)).toBeInTheDocument();
   });
 
   it("shows the loading state while waiting for the handshake", () => {

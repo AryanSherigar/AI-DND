@@ -42,7 +42,7 @@ export const StudioChatDrawer: React.FC<StudioChatDrawerProps> = ({
       >
         <div className="flex items-center justify-between p-4 border-b border-border-subtle">
           <h3 className="text-xs font-semibold text-content uppercase tracking-widest">
-AERO
+            AERO
           </h3>
           <button
             onClick={() => setIsDrawerOpen(false)}

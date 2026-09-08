@@ -3,6 +3,7 @@ import { signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "@/shared/lib/firebase";
 import { exchangeFirebaseToken, logoutUser } from "../api/auth.api";
 import { useAuthStore } from "../stores/auth.store";
+import { extractErrorMessage } from "@/shared/lib/extractErrorMessage";
 
 export const useAuth = () => {
   const {
@@ -23,19 +24,23 @@ export const useAuth = () => {
         await exchangeFirebaseToken(idToken);
       setAuth(access_token, apiUser);
       setError(null);
-    } catch (err: any) {
-      setError(err.message || "Login failed");
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err, "Login failed"));
     }
   };
 
   const loginAsDevUser = async () => {
+    if (!import.meta.env.DEV) {
+      setError("Dev login is unavailable in this environment.");
+      return;
+    }
     try {
       const { access_token, user: apiUser } =
         await exchangeFirebaseToken("mock-dev-token");
       setAuth(access_token, apiUser);
       setError(null);
-    } catch (err: any) {
-      setError(err.message || "Dev login failed");
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err, "Dev login failed"));
     }
   };
 

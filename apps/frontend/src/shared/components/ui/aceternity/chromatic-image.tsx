@@ -68,11 +68,7 @@ void main() {
 }
 `;
 
-function createShader(
-  gl: WebGLRenderingContext,
-  type: number,
-  source: string,
-) {
+function createShader(gl: WebGLRenderingContext, type: number, source: string) {
   const shader = gl.createShader(type);
   if (!shader) return null;
   gl.shaderSource(shader, source);
@@ -84,18 +80,24 @@ function createShader(
   return shader;
 }
 
-function approach(current: number, target: number, speed: number, delta: number) {
+function approach(
+  current: number,
+  target: number,
+  speed: number,
+  delta: number,
+) {
   return current + (target - current) * (1 - Math.exp(-speed * delta));
 }
 
 function parseColor(color: string): [number, number, number] {
   const value = color.startsWith("#") ? color.slice(1) : "111111";
-  const hex = value.length === 3
-    ? value
-        .split("")
-        .map((character) => character + character)
-        .join("")
-    : value;
+  const hex =
+    value.length === 3
+      ? value
+          .split("")
+          .map((character) => character + character)
+          .join("")
+      : value;
   return [
     parseInt(hex.slice(0, 2), 16) / 255,
     parseInt(hex.slice(2, 4), 16) / 255,
@@ -191,7 +193,9 @@ export function ChromaticImage({
     let frame = 0;
     let isRendering = false;
     let previousTime = performance.now();
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
 
     const resize = () => {
       const width = canvas.clientWidth;
@@ -271,7 +275,10 @@ export function ChromaticImage({
         gl.UNSIGNED_BYTE,
         image,
       );
-      gl.uniform1f(uniforms.imageAspect, image.naturalWidth / image.naturalHeight);
+      gl.uniform1f(
+        uniforms.imageAspect,
+        image.naturalWidth / image.naturalHeight,
+      );
       imageLoaded = true;
       setReady(true);
       requestRender();

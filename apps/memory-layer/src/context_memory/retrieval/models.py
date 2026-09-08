@@ -58,6 +58,11 @@ class RetrievedFact:
     # its own expression grammar rather than mem1 filtering server-side.
     when_active: dict | None = None
     hidden: bool = False
+    # NEW-CRIT-01 fix: the caller's own authored id for this fact, when one
+    # was registered via `external_fact_ids` (direct authoring / cloning).
+    # `None` for autonomously extracted facts -- the API layer falls back
+    # to its `uuid5(internal_id)` derivation in that case, unchanged.
+    external_fact_id: str | None = None
 
 
 @dataclass

@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextvars
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from context_memory.cloning.template_clone import CloneResult, clone
 from context_memory.core.config import Config
@@ -31,6 +31,7 @@ from context_memory.ingestion.rollback import (
     RollbackResult,
     RollbackService,
     SavePoint,
+    SavePointOwnershipError,
     SavePointStore,
 )
 from context_memory.ingestion.sources.chat import adapt_chat_turn
@@ -55,7 +56,7 @@ logger = get_logger(__name__)
 # replay should be. A pure function of turn_number is also what gives turns
 # 10/11/12 in one batch distinct, correctly-ordered timestamps instead of
 # the single `datetime.now()` every record in the batch used to share.
-_SYNTHETIC_TURN_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+_SYNTHETIC_TURN_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def _synthetic_turn_occurred_at(turn_number: int) -> datetime:
@@ -195,7 +196,7 @@ class MemoryEngine:
     ) -> SavePoint:
         return self._save_point_store.create(context_id, session_id, label)
 
-    def rollback_to(self, save_id: str) -> RollbackResult:
+    def rollback_to(self, save_id: str, context_id: str) -> RollbackResult:
         if self._rollback_service is None:
             raise RuntimeError(
                 "rollback_to called without a RollbackService configured"
@@ -203,6 +204,10 @@ class MemoryEngine:
         save_point = self._save_point_store.get(save_id)
         if save_point is None:
             raise ValueError(f"unknown save_id: {save_id}")
+        if save_point.context_id != context_id:
+            raise SavePointOwnershipError(
+                f"save_id {save_id!r} does not belong to context {context_id!r}"
+            )
         with correlation_scope(
             JournalContext(
                 context_id=save_point.context_id, session_id=save_point.session_id
@@ -498,7 +503,7 @@ class MemoryEngine:
         version produced, so a republish behaves as a real replace rather
         than an accumulation of every version ever published."""
         self.begin_template_republish(context_id)
-        occurred_at = datetime.now(timezone.utc)
+        occurred_at = datetime.now(UTC)
         record = ContextRecord(
             record_id=f"{context_id}:template-lore:{content_hash(lore_text)[7:23]}",
             occurred_at=occurred_at,
@@ -547,7 +552,7 @@ class MemoryEngine:
             {"context_id": context_id},
             None,
         )
-        now_epoch = int(datetime.now(timezone.utc).timestamp())
+        now_epoch = int(datetime.now(UTC).timestamp())
         nodes = tuple(
             GraphNode(
                 int(row["id"]),
@@ -595,6 +600,7 @@ class MemoryEngine:
             self._hydra_transport,
             self._fact_metadata_store,
             self._fact_projection_writer,
+            self._external_fact_id_store,
         )
 
     def get_entity(
@@ -737,7 +743,7 @@ class MemoryEngine:
                 {"context_id": context_id, "session_id": session_id},
             ) as ctx,
         ):
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             # Ingest user turn
             self.add_turn_async(context_id, session_id, "user", user_message, now)

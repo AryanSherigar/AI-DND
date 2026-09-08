@@ -6,9 +6,10 @@ Bare `§N` references below are sections of docs/fixes_and_evaluation_findings.m
 from __future__ import annotations
 
 import contextvars
-from collections.abc import MutableMapping
+from collections.abc import MutableMapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Protocol
 
 from context_memory.core.config import Config
 from context_memory.core.llm_client import LLMClient
@@ -34,6 +35,17 @@ from context_memory.retrieval.temporal_resolver import TemporalQueryResolver
 logger = get_logger(__name__)
 
 
+class ExternalFactIdReverseLookup(Protocol):
+    """Duck-typed to `persistence.postgres.PostgresExternalFactIdStore` --
+    a locally-declared Protocol for the same reason `direct_authoring.py`'s
+    `ExternalFactIdStore` is: this module depends only on the one batched
+    read shape it needs (NEW-CRIT-01)."""
+
+    def get_external_ids_for_graph_ids(
+        self, context_id: str, graph_ids: Sequence[int]
+    ) -> dict[int, str]: ...
+
+
 def _epoch_to_iso(epoch_seconds: int | None) -> str | None:
     """Fact nodes store valid_from/valid_to as raw epoch ints (graph_plan_builder.py);
     the AI-DND `Fact` contract wants ISO 8601 strings. `9999999999` and `0` are
@@ -41,7 +53,7 @@ def _epoch_to_iso(epoch_seconds: int | None) -> str | None:
     not real dates -- surfaced as `None`, matching the contract's `str | None`."""
     if epoch_seconds is None or epoch_seconds in (0, 9999999999):
         return None
-    return datetime.fromtimestamp(epoch_seconds, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(epoch_seconds, tz=UTC).isoformat()
 
 
 class HybridRetrievalEngine:
@@ -55,6 +67,7 @@ class HybridRetrievalEngine:
         temporal_resolver_client: LLMClient | None = None,
         query_rewriter_client: LLMClient | None = None,
         rerank_client: LLMClient | None = None,
+        external_fact_id_store: ExternalFactIdReverseLookup | None = None,
     ) -> None:
         """`llm_client` is the reader/answer-synthesis role, and also the default
         for temporal resolution/query rewriting when no role-specific client is
@@ -68,6 +81,7 @@ class HybridRetrievalEngine:
         self._pool = pool
         self._hydra = hydra_client
         self._config = config or Config()
+        self._external_fact_id_store = external_fact_id_store
         self._temporal_resolver_client = temporal_resolver_client or llm_client
         self._query_rewriter_client = query_rewriter_client or llm_client
         self._rerank_client = rerank_client or llm_client
@@ -206,13 +220,18 @@ class HybridRetrievalEngine:
             )
         ]
 
+        top_visible = visible[:top_k]
+        external_id_by_fact_id = self._fetch_external_fact_ids(
+            context_id, [s.fact_id for s in top_visible]
+        )
         facts = [
             self._to_retrieved_fact(
                 scored,
                 graph_data.get(scored.fact_id, {}),
                 metadata_by_fact_id.get(scored.fact_id, (None, None, None, False)),
+                external_id_by_fact_id.get(scored.fact_id),
             )
-            for scored in visible[:top_k]
+            for scored in top_visible
         ]
         resolved_time_point = str(as_of_turn) if as_of_turn is not None else None
         return RetrievedFacts(
@@ -320,6 +339,38 @@ class HybridRetrievalEngine:
             logger.warning("pre_authored_fact_metadata lookup skipped: %s", e)
             return {}
 
+    def _fetch_external_fact_ids(
+        self, context_id: str, fact_ids: list[str]
+    ) -> dict[str, str]:
+        """NEW-CRIT-01 fix: one batched reverse lookup (graph_id ->
+        external_fact_id) for the whole result set, keyed back onto the
+        caller's own `ScoredFact.fact_id` string -- mirrors
+        `_fetch_fact_metadata`'s numeric-id-skip-non-numeric pattern, since
+        only pre-authored facts have a real integer graph_id at all."""
+        if self._external_fact_id_store is None:
+            return {}
+        numeric_id_by_fact_id: dict[int, str] = {}
+        for fact_id in fact_ids:
+            try:
+                numeric_id_by_fact_id[int(fact_id)] = fact_id
+            except (TypeError, ValueError):
+                continue
+        if not numeric_id_by_fact_id:
+            return {}
+        try:
+            external_by_graph_id = (
+                self._external_fact_id_store.get_external_ids_for_graph_ids(
+                    context_id, list(numeric_id_by_fact_id.keys())
+                )
+            )
+        except Exception as e:
+            logger.warning("external_fact_ids lookup skipped: %s", e)
+            return {}
+        return {
+            numeric_id_by_fact_id[graph_id]: external_id
+            for graph_id, external_id in external_by_graph_id.items()
+        }
+
     def _fetch_checkpoint_order(self, template_context_id: str) -> list[str] | None:
         try:
             with self._pool.connection() as conn:
@@ -344,6 +395,7 @@ class HybridRetrievalEngine:
             None,
             False,
         ),
+        external_fact_id: str | None = None,
     ) -> RetrievedFact:
         # §9 fix: `subject`/`object_literal` are the real triple components
         # extraction (or direct authoring) wrote onto the Fact node -- used
@@ -382,6 +434,7 @@ class HybridRetrievalEngine:
             # here before this fix.
             when_active=when_active,
             hidden=hidden,
+            external_fact_id=external_fact_id,
         )
 
     def _retrieve_ranked(

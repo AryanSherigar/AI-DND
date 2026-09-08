@@ -2,7 +2,14 @@
 
 import uuid
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, text
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +26,8 @@ class PlaythroughShare(Base, CreatedAtMixin):
             "mode IN ('spectate', 'join')",
             name="ck_playthrough_shares_mode",
         ),
+        UniqueConstraint("share_token", name="uq_playthrough_shares_token"),
+        Index("ix_playthrough_shares_token", "share_token"),
     )
 
     share_id: Mapped[uuid.UUID] = mapped_column(
@@ -29,8 +38,6 @@ class PlaythroughShare(Base, CreatedAtMixin):
     )
     share_token: Mapped[str] = mapped_column(
         String(255),
-        unique=True,
-        index=True,
         nullable=False,
     )
     playthrough_id: Mapped[uuid.UUID] = mapped_column(

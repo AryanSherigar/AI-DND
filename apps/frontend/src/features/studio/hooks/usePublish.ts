@@ -1,15 +1,37 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getScenario, publishScenario } from "../api/scenarios.api";
 import { extractErrorMessage } from "@/shared/lib/extractErrorMessage";
 
+const assertScenarioId = (scenarioId: string | null): string => {
+  if (!scenarioId) {
+    throw new Error("Scenario must be saved before it can be published.");
+  }
+  return scenarioId;
+};
+
+const resolvePublishInterval = (
+  query: { state: { data?: { status?: string } } },
+  onComplete: () => void,
+): number | false => {
+  const isPublishing = query.state.data?.status === "publishing";
+  if (!isPublishing && query.state.data?.status === "published") {
+    onComplete();
+  }
+  return isPublishing ? 1000 : false;
+};
+
 export const usePublish = (scenarioId: string | null) => {
+  const queryClient = useQueryClient();
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["my-scenarios"] });
+    if (scenarioId) {
+      queryClient.invalidateQueries({ queryKey: ["scenario", scenarioId] });
+    }
+  };
+
   const publishMutation = useMutation({
-    mutationFn: () => {
-      if (!scenarioId) {
-        throw new Error("Scenario must be saved before it can be published.");
-      }
-      return publishScenario(scenarioId);
-    },
+    mutationFn: () => publishScenario(assertScenarioId(scenarioId)),
+    onSuccess: invalidate,
   });
 
   const statusQuery = useQuery({
@@ -17,8 +39,7 @@ export const usePublish = (scenarioId: string | null) => {
     queryFn: () => getScenario(scenarioId as string),
     enabled: Boolean(scenarioId) && publishMutation.isSuccess,
     initialData: publishMutation.data,
-    refetchInterval: (query) =>
-      query.state.data?.status === "publishing" ? 1000 : false,
+    refetchInterval: (query) => resolvePublishInterval(query, invalidate),
   });
 
   const scenario = statusQuery.data ?? publishMutation.data ?? null;

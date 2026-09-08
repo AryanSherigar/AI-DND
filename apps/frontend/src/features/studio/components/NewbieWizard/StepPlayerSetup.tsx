@@ -369,7 +369,9 @@ const PlayerSetupPreview: React.FC<PlayerSetupPreviewProps> = ({ inputs }) => {
                 {field.required && <span className="text-danger">*</span>}
               </label>
               {field.description && (
-                <p className="text-xs text-content-faint">{field.description}</p>
+                <p className="text-xs text-content-faint">
+                  {field.description}
+                </p>
               )}
 
               {field.type === "single_select" && (

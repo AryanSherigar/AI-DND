@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +20,8 @@ class Fact(Base, CreatedAtMixin):
             "(object_entity_id IS NOT NULL) != (object_literal IS NOT NULL)",
             name="ck_facts_object_exclusive",
         ),
+        Index("idx_facts_scenario_id", "scenario_id"),
+        Index("idx_facts_subject_entity_id", "subject_entity_id"),
     )
 
     fact_id: Mapped[uuid.UUID] = mapped_column(

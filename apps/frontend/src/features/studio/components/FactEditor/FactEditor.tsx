@@ -106,7 +106,9 @@ export const FactEditor: React.FC<FactEditorProps> = ({ scenarioId }) => {
           </Button>
         )}
       </div>
-      {isLoading && <p className="text-sm text-content-faint">Loading facts…</p>}
+      {isLoading && (
+        <p className="text-sm text-content-faint">Loading facts…</p>
+      )}
       {!isLoading && facts.length === 0 && (
         <EmptyState
           title="No facts yet"

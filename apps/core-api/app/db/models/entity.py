@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, String, Text, text
+from sqlalchemy import Boolean, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,6 +15,8 @@ class Entity(Base, TimestampMixin):
     """A creator-authored master-mode world entity (character, location, item, ...)."""
 
     __tablename__ = "entities"
+
+    __table_args__ = (Index("idx_entities_scenario_id", "scenario_id"),)
 
     entity_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

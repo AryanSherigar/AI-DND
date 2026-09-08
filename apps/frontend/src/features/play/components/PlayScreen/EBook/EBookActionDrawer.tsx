@@ -37,6 +37,13 @@ const MODES: ModeOption[] = [
   },
 ];
 
+const getModeButtonClass = (isActive: boolean, isSepia: boolean): string => {
+  if (!isActive) return "opacity-60 hover:opacity-100 hover:bg-zinc-800/40";
+  return isSepia
+    ? "bg-[#2c2217] text-[#faf4e8] font-bold shadow-sm"
+    : "bg-zinc-100 text-zinc-950 font-bold shadow-sm";
+};
+
 export function EBookActionDrawer({
   isOpen,
   onClose,
@@ -103,13 +110,10 @@ export function EBookActionDrawer({
                   type="button"
                   onClick={() => setActiveMode(mode.key)}
                   title={mode.hint}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    isActive
-                      ? isSepia
-                        ? "bg-[#2c2217] text-[#faf4e8] font-bold shadow-sm"
-                        : "bg-zinc-100 text-zinc-950 font-bold shadow-sm"
-                      : "opacity-60 hover:opacity-100 hover:bg-zinc-800/40"
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${getModeButtonClass(
+                    isActive,
+                    isSepia,
+                  )}`}
                 >
                   {mode.label}
                 </button>

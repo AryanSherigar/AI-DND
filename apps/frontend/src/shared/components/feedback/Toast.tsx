@@ -7,6 +7,12 @@ export interface ToastProps {
   durationMs?: number;
 }
 
+const TYPE_ICONS: Record<NonNullable<ToastProps["type"]>, string> = {
+  error: "⚠️",
+  success: "✓",
+  info: "ℹ",
+};
+
 export const Toast: React.FC<ToastProps> = ({
   message,
   type = "error",
@@ -28,7 +34,7 @@ export const Toast: React.FC<ToastProps> = ({
   return (
     <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-2xl font-mono text-xs animate-in fade-in slide-in-from-bottom-4 duration-200">
       <div className={`flex items-center gap-3 ${styles[type]}`}>
-        <span>{type === "error" ? "⚠️" : type === "success" ? "✓" : "ℹ"}</span>
+        <span>{TYPE_ICONS[type]}</span>
         <span className="max-w-xs sm:max-w-sm truncate">{message}</span>
         <button
           onClick={onClose}

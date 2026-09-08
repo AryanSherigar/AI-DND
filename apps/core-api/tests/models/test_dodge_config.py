@@ -50,7 +50,11 @@ def test_dodge_config_accepts_existing_upload_reference() -> None:
 
 def test_dodge_config_rejects_image_or_foreign_audio_reference() -> None:
     with pytest.raises(ValidationError, match="application upload"):
-        DodgeConfig(audio={"music_asset_url": "/uploads/scenario-covers/b3f91d47-bf96-4cc9-b247-705b0bb07d9a.png"})
+        DodgeConfig(
+            audio={
+                "music_asset_url": "/uploads/scenario-covers/b3f91d47-bf96-4cc9-b247-705b0bb07d9a.png"
+            }
+        )
 
 
 def test_tiered_outcome_ranges_reject_overlapping_inclusive_scores() -> None:

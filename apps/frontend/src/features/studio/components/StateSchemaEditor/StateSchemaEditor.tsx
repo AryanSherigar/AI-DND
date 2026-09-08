@@ -21,7 +21,9 @@ export const StateSchemaEditor: React.FC<StateSchemaEditorProps> = ({
   };
 
   if (isLoading || schema === undefined) {
-    return <p className="text-sm text-content-faint">Loading state schema...</p>;
+    return (
+      <p className="text-sm text-content-faint">Loading state schema...</p>
+    );
   }
 
   return (

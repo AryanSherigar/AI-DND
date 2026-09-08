@@ -14,7 +14,7 @@ async def test_jwt_generation(db_session: AsyncSession):
     user = await auth_service._upsert_user("test-123", "Test User")
 
     access_token = auth_service.generate_access_token(user)
-    refresh_token = auth_service.generate_refresh_token(user)
+    refresh_token = await auth_service.generate_refresh_token(user)
 
     assert access_token is not None
     assert refresh_token is not None

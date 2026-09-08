@@ -20,6 +20,12 @@ class InvariantRepo:
         await self.session.flush()
         return invariant
 
+    async def create_all(self, invariants: list[RuleInvariant]) -> list[RuleInvariant]:
+        """Bulk-persist invariants in a single flush (e.g. scenario duplication)."""
+        self.session.add_all(invariants)
+        await self.session.flush()
+        return invariants
+
     async def get_by_id(self, invariant_id: uuid.UUID) -> RuleInvariant | None:
         """Retrieve an invariant by its primary key ID."""
         stmt = select(RuleInvariant).where(RuleInvariant.invariant_id == invariant_id)

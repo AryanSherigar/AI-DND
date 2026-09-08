@@ -102,7 +102,9 @@ export const MinigameEditor: React.FC<MinigameEditorProps> = ({
         <h1 className="text-lg font-semibold text-content">Minigames</h1>
         <Button onClick={handleOpenCreate}>New Minigame</Button>
       </div>
-      {isLoading && <p className="text-sm text-content-faint">Loading minigames…</p>}
+      {isLoading && (
+        <p className="text-sm text-content-faint">Loading minigames…</p>
+      )}
       {!isLoading && orderedMinigames.length === 0 && (
         <EmptyState
           title="No minigames yet"

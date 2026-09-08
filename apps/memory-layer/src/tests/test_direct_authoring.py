@@ -77,8 +77,14 @@ class WriteEntityTests(unittest.TestCase):
             writer,
         )
 
-        [(_cypher, rows, _key)] = transport.writes
-        self.assertEqual(rows[0]["aliases"], "King of Curses, Ryomen")
+        # NEW-HIGH-03 fix: write_entity now also emits Alias nodes/HAS_ALIAS
+        # edges (their own label-batched write() calls) alongside the
+        # Entity node -- find the Entity write specifically rather than
+        # assuming it's the only one.
+        entity_rows = next(
+            rows for cypher, rows, _key in transport.writes if "SET n:Entity" in cypher
+        )
+        self.assertEqual(entity_rows[0]["aliases"], "King of Curses, Ryomen")
 
 
 class WriteFactTests(unittest.TestCase):

@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, text
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,10 @@ class EndCondition(Base, CreatedAtMixin):
     """
 
     __tablename__ = "end_conditions"
+
+    __table_args__ = (
+        Index("idx_end_conditions_scenario_priority", "scenario_id", "priority"),
+    )
 
     end_condition_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

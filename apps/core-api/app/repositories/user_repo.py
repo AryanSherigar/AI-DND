@@ -39,6 +39,12 @@ class UserRepo:
         await self.session.flush()
         return user
 
+    async def update(self, user: User) -> User:
+        """Flush changes to an existing user entity."""
+        await self.session.flush()
+        await self.session.refresh(user)
+        return user
+
     async def update_profile(
         self,
         user: User,

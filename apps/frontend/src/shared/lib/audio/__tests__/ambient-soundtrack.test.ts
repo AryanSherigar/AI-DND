@@ -47,7 +47,10 @@ describe("AmbientSoundtrackController", () => {
     controller.setVolume(0.8);
 
     expect(listener).toHaveBeenCalledTimes(2);
-    expect(listener).toHaveBeenNthCalledWith(1, { volume: 0.4, isMuted: false });
+    expect(listener).toHaveBeenNthCalledWith(1, {
+      volume: 0.4,
+      isMuted: false,
+    });
     expect(listener).toHaveBeenNthCalledWith(2, { volume: 0.4, isMuted: true });
   });
 
