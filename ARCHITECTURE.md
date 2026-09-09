@@ -1,1108 +1,758 @@
-# AI-DND — Main Product RFC
+# wevr — System Architecture
 
 | | |
 |---|---|
 | **Authors** | Aryan Sherigar, Parth Dambhare |
-| **Status** | Final |
-| **Date** | 26 August 2026 |
-| **Version** | 1.0 |
+| **Status** | Living document — describes the system as actually built and deployed |
+| **Last updated** | 10 September 2026 |
+
+This document replaces the original pre-build RFC. That RFC proposed a design before any code existed; a lot has changed since — scene images, mood-based music, minigames, master-mode maps, and Cloud Run deployment all moved from "stretch goal" or "undecided" to shipped, working features, and several early design assumptions (SSE transport, the memory layer's real name and mechanics, the exact turn pipeline) turned out differently once built. Where the two documents would disagree, this one is correct: every claim here was traced against the actual code, not reproposed from the original design.
 
 ---
 
 ## Table of Contents
 
-1. [Context & Goals](#context--goals)
-   - [Problem Statement](#problem-statement)
-   - [What We Are Building](#what-we-are-building)
-   - [Target Persona](#target-persona)
-   - [Core Product Loop](#core-product-loop)
-   - [Key Product Decisions and Trade-offs](#key-product-decisions-and-trade-offs)
-   - [Non-Goals](#non-goals)
-   - [Open Items Carried Into Architecture](#open-items-carried-into-architecture)
-2. [Technology Stack](#technology-stack)
-3. [File Structure](#file-structure)
-6. [System Architecture — C4 Level 3 — C4 Level 2 — C4 Level 1: Context](#system-architecture---c4-level-1-context)
-3. [System Architecture — C4 Level 2: Containers](#system-architecture--c4-level-2-containers)
-4. [System Architecture — C4 Level 3: Components](#system-architecture--c4-level-3-components)
-7. [Data Flow & Sequence](#data-flow--sequence)
-   - [Transport Model](#transport-model)
-   - [Critical Path: Player Turn (Solo)](#critical-path-player-turn-solo)
-   - [Multiplayer Delta](#multiplayer-delta)
-8. [Data Models & Schema](#data-models--schema)
-   - [Key Decisions](#key-decisions)
-   - [Schema](#schema)
-   - [Schema Additions](#schema-additions-post-scenario-ingestion-design)
-9. [Scenario Ingestion](#scenario-ingestion)
-   - [The Gap](#the-gap)
-   - [Two Distinct Ingestion Paths](#two-distinct-ingestion-paths)
-   - [Authoring-Time Ingestion by Mode](#authoring-time-ingestion-by-mode)
-   - [Template Memory Space](#template-memory-space--ingest-once-clone-per-playthrough)
-   - [Memory API Contract Change](#memory-api-contract-change)
-   - [Playthrough Setup Screen](#playthrough-setup-screen)
-10. [API Specifications](#api-specifications)
-   - [Core API](#core-api)
-   - [Turn Resolution Service](#turn-resolution-service)
-11. [Cross-Cutting Concerns](#cross-cutting-concerns)
-   - [Latency & Performance](#latency--performance)
-   - [Authentication & Authorization](#authentication--authorization)
-   - [Error Handling & Degradation](#error-handling--degradation)
-   - [Content Safety](#content-safety)
-   - [Data Consistency](#data-consistency)
-   - [Partner Track](#partner-track)
-12. [Architecture Decision Records](#architecture-decision-records-adrs)
-    - [ADR-1: Core API and Turn Resolution Service split](#adr-1-core-api-and-turn-resolution-service-as-two-separate-services)
-    - [ADR-2: SSE over WebSocket](#adr-2-sse-over-websocket)
-    - [ADR-3: PostgreSQL as single primary store](#adr-3-postgresql-as-single-primary-store)
-    - [ADR-4: Validate-before-apply](#adr-4-validate-before-apply-for-ai-tool-call-state-mutations)
-    - [ADR-5: Batched memory writes](#adr-5-batched-memory-writes--not-per-turn-not-per-tool-call)
-    - [ADR-6: Memory layer as external system](#adr-6-memory-layer-treated-as-an-external-system)
-    - [ADR-7: Ingest-once-clone-many](#adr-7-ingest-once-clone-many-for-scenario-memory-template)
-    - [ADR-8: Scenario versioning via snapshot](#adr-8-scenario-versioning-via-scenario_snapshot-not-a-version-table)
-    - [ADR-9: when_active and active conditions](#adr-9-when_active-on-facts-and-active-conditions-instead-of-trigger-writes-to-memory)
-    - [ADR-10: Minigames as an interstitial handoff](#adr-10-minigames-as-an-interstitial-handoff-not-a-new-pauseresume-state-machine)
-13. [Open Items](#open-items)
+1. [Overview](#overview)
+2. [Key Product Decisions & Trade-offs](#key-product-decisions--trade-offs)
+3. [Non-Goals](#non-goals)
+4. [Technology Stack](#technology-stack)
+5. [Deployment](#deployment)
+6. [Monorepo File Structure](#monorepo-file-structure)
+   - [Frontend](#frontend-appsfrontend)
+   - [Core API](#core-api-appscore-api)
+   - [Turn Resolution Service](#turn-resolution-service-appsturn-resolution-service)
+   - [Memory Layer (HydraDB)](#memory-layer-appsmemory-layer)
+7. [System Architecture — C4 Level 1: Context](#system-architecture--c4-level-1-context)
+8. [System Architecture — C4 Level 2: Containers](#system-architecture--c4-level-2-containers)
+9. [System Architecture — C4 Level 3: Components](#system-architecture--c4-level-3-components)
+10. [Data Flow & Sequence](#data-flow--sequence)
+    - [Transport Model](#transport-model)
+    - [The Turn Resolution Pipeline](#the-turn-resolution-pipeline)
+    - [Multiplayer Delta](#multiplayer-delta)
+    - [Minigame Flow](#minigame-flow)
+    - [Scene Image Flow](#scene-image-flow)
+11. [Data Models & Schema](#data-models--schema)
+12. [Scenario & Memory Ingestion](#scenario--memory-ingestion)
+13. [API Specifications](#api-specifications)
+    - [Core API](#core-api-endpoints)
+    - [Turn Resolution Service](#turn-resolution-service-endpoints)
+    - [Memory Layer (internal)](#memory-layer-internal-endpoints)
+14. [Cross-Cutting Concerns](#cross-cutting-concerns)
+15. [Architecture Decision Records (ADRs)](#architecture-decision-records-adrs)
+16. [Known Limitations & Deferred Work](#known-limitations--deferred-work)
 
 ---
 
-# Context & Goals
+## Overview
 
-## Problem Statement
+wevr is an engine and platform for creating and playing text-based AI-driven games, spanning two authoring modes on one shared scenario model:
 
-Text-based roleplay and interactive fiction have a long, active fan base, from tabletop-style solo journaling and D&D-adjacent play to AI-driven story generators, but no platform currently lets a creator build a genuinely deep, structured world (on the scale of a LOTR or GoT setting, with factions, characters, relationships, history, and rules) and have that world played by others as an actual interactive game, not just read as static lore or a single scripted chat.
+- **Newbie mode** — a creator writes lore and a premise; the AI narrates freely on top of it, no rules authoring required.
+- **Master mode** — a creator defines structured game state (stats, factions, entities, facts, invariants, win/lose conditions, minigames) that the AI narrator must respect, enforced through validated tool-calling rather than free-form generation.
 
-Existing tools sit at two extremes. On one end, generic AI chat/roleplay tools let a player improvise a story with an LLM, but offer no durable world model, no rules enforcement, and nothing for a creator to "publish" as a repeatable, shareable game. On the other end, traditional game engines (including text-based ones) demand real technical skill to build anything, putting complex world creation out of reach for most fans.
+**Core product loop:** a creator authors a scenario in Studio (from a short premise to a fully structured world, with AI-generated cover art, an AI-composed score, and optional maps and minigames) → publishes it, which ingests its foundational lore into a graph-based memory layer → other players discover it through a filterable feed → a player starts an independent playthrough, and a Gemini-powered narrator drives it turn by turn, streaming narration live and retrieving grounded world facts from memory for consistency → any playthrough is shareable via link for spectating or turn-based multiplayer.
 
-There is no engine today that lets a newcomer spin up a fun scenario in minutes, while also giving a dedicated creator the tools to build a deterministic, rules-governed world at genuine scale, publish it, and have strangers discover and play it, solo or together.
+**Target persona:** AI gaming enthusiasts, D&D and tabletop roleplay fans, and interactive fiction readers who want either a quick, low-effort story to play, or the tools to build and share a large-scale, rules-governed world, without needing to be a programmer.
 
-## What We Are Building
+**Four services, one repository:**
 
-An engine and platform for creating and playing text-based AI-driven games, spanning a full spectrum of complexity:
+| Service | Path | Purpose |
+|---|---|---|
+| Frontend | `apps/frontend/` | React + Vite + TypeScript. Studio (authoring) and Play (discovery + gameplay) surfaces. |
+| Core API | `apps/core-api/` | Python + FastAPI. Auth, scenario CRUD, publish flow, discovery, playthroughs, ratings/reviews, uploads. Stateless request/response only — no AI calls (with two narrow, documented exceptions, see below), no streaming. |
+| Turn Resolution Service (TRS) | `apps/turn-resolution-service/` | Python + FastAPI. Orchestrates the per-turn gameplay loop: validates action → loads state → retrieves memory → calls Gemini → validates tool calls → streams narration → persists state. The only service with narration/tool-calling AI calls and SSE streaming. |
+| Memory Layer (HydraDB) | `apps/memory-layer/` | Python + FastAPI + a vendored Rust graph engine. Provenance-preserving, bitemporal long-term memory: turns conversation and authored lore into a durable graph with hybrid vector/graph retrieval. Developed as part of this project, not a third-party product, but architecturally treated as an external system (see [ADR-6](#adr-6-memory-layer-treated-as-an-external-system)) because the rest of the monorepo integrates with it purely over HTTP. |
 
-- **Newbie mode**: a creator writes lore and a premise; the AI narrates freely on top of it, no rules authoring required.
-- **Master mode**: a creator defines structured game state (stats, inventory, factions, timelines, win/lose conditions, custom rules) that the AI narrator must respect, enforced through tool-calling rather than free-form generation alone.
+**A documented exception to "no AI calls outside TRS":** `apps/core-api/app/integrations/image_gen_client.py` and `music_gen_client.py` call Vertex AI directly for AI-generated scenario cover art and AI-composed music tracks. Both are synchronous, Studio-only authoring actions (not part of the live gameplay loop), and both are explicitly called out in code as an approved, narrow exception to the "Gemini calls only from TRS" rule — not an accidental violation of it.
 
-Both modes share a single world/scenario model, so complexity is something a creator opts into incrementally, not a separate track. Published scenarios are discoverable by other players through a tagged, filterable feed, and can be played solo or in turn-based multiplayer, with sessions shareable via link for others to spectate or join.
+---
 
-## Target Persona
+## Key Product Decisions & Trade-offs
 
-AI gaming enthusiasts, D&D and tabletop roleplay fans, and interactive fiction readers who want either a quick, low-effort story to play, or the tools to build and share a serious, large-scale world, without needing to be a programmer. No formal "indie AI gaming studio" category exists yet in a structured way; this project is a candidate first step toward one.
+- **Dual-mode engine, one schema.** Newbie and master mode share a single `scenarios` table and world model rather than being separate products — complexity is a dial creators opt into, not a fork in the product.
+- **Turn-based, not real-time, multiplayer.** One participant acts at a time; the AI narrates between turns. Avoids real-time synchronization complexity entirely.
+- **Streaming to absorb AI latency.** Turn resolution can involve memory retrieval, one or more Gemini tool-call round-trips, and a Postgres write — real, variable time. Narration streams to the player as it's generated rather than waiting for a complete response.
+- **Lightweight, creator-declared content safety.** Creators self-tag a scenario's content level at publish; the publish flow validates against the declared tag rather than running open-ended content classification. There is still no runtime content moderation during active play — see [Known Limitations](#known-limitations--deferred-work).
+- **Lightweight-but-real auth.** Firebase Auth (Google Sign-In) issues identity; both Core API and TRS independently issue and verify their own short-lived JWTs on top of it, with refresh-token rotation. See [Authentication & Authorization](#authentication--authorization).
+- **Real scale, not simulated scale.** The memory layer is a genuine hybrid vector+graph retrieval system (Postgres/pgvector + a native graph engine with multi-hop traversal), not a keyword-search stand-in — built to actually support large, structured worlds.
 
-## Core Product Loop
-
-1. **Create**: author a scenario, from a short premise to a full structured world, using the engine's unified authoring model.
-2. **Publish**: submit the scenario with metadata (genre/tag, complexity tier, player count support, estimated playtime, cover image); it passes a lightweight, creator-declared content check before appearing in the discovery feed.
-3. **Discover**: other players browse or filter the feed by tag, genre, complexity, player count, and playtime, and see social signals (play count, ratings).
-4. **Play**: a player starts an independent playthrough of a published scenario. An AI narrator, with tool-calling authority over structured game state where the scenario defines it, drives the experience turn by turn, backed by a graph-based memory layer for world consistency at scale.
-5. **Share**: any playthrough can be shared via link for others to spectate, or to join as a turn-based multiplayer participant.
-
-## Key Product Decisions and Trade-offs
-
-- **Dual-mode engine, one schema.** Rather than building two separate products for casual and power users, the engine uses a single scenario/world data model that scales from a paragraph of lore to a fully structured, rule-governed setting. This is a harder schema design problem but avoids fragmenting the product or the audience.
-- **Turn-based, not real-time, multiplayer.** Multiplayer play is scoped to one participant acting at a time, with the AI narrating between turns. This matches the target audience's existing expectations from tabletop and turn-based roleplay, and avoids the real-time synchronization complexity of simultaneous play.
-- **Streaming to absorb AI latency.** Turn resolution may involve graph memory retrieval, one or more tool calls, and narrative generation, which takes real time. Responses are streamed to the player rather than returned all at once. This is an accepted trade-off, not an oversight: the target audience is accustomed to "the AI is thinking" pauses in this genre.
-- **Lightweight, creator-declared content safety.** Creators tag their own scenario's content level at publish time; a lightweight check validates against the declared tag rather than performing open-ended content classification. This is intentionally minimal for hackathon scope, with a more robust system planned post-hackathon.
-- **Lightweight auth for the hackathon.** Account and identity needs (publishing, ratings, shareable sessions, multiplayer participants) are met with a fast, minimal auth implementation, explicitly to be replaced with a more robust system afterward.
-- **Real scale, not simulated scale.** Because the product's premise is supporting genuinely large, structured worlds, the architecture (particularly the graph-based memory and retrieval layer) is built to actually handle that scale, not merely to avoid ruling it out later.
+---
 
 ## Non-Goals
 
-The following are explicitly not being built for this project:
+Still explicitly not built:
 
-- **Real-time multiplayer voice chat.** A separate WebRTC/signaling infrastructure concern, orthogonal to the AI orchestration this project demonstrates.
-- **Full audio narration.** The engine does not read the full story aloud.
-- **Real-time or simultaneous multiplayer.** Multiplayer is turn-based only.
-- **Monetization or creator economy.** No payments, subscriptions, or revenue-sharing are designed or built; noted only as a future direction.
-- **Non-text core gameplay remains the default, with one bounded exception.** Images, music, and character-voice audio (if built) are optional presentation layers on top of a text-based core, not alternate modes of play. The one exception is master-mode minigames (see Partner Track below): short, deterministic interstitial sequences outside the AI narration loop, entered and exited via explicit state transitions — never a replacement for the text-driven core loop, and never involving the AI narrator directly.
+- **Real-time multiplayer voice chat.**
+- **Full audio narration** — the engine does not read the full story aloud.
+- **Real-time or simultaneous multiplayer** — turn-based only.
+- **Monetization or creator economy** — no payments, subscriptions, or revenue-sharing.
+- **Character-line text-to-speech** and **PNG-tuber style character avatars** — not built.
+- **Voice input (speech-to-text)** — not built.
+- **Playthrough forking** — a player branching their own copy from a shared session. Still undecided; the `playthrough_shares` table would accommodate it, but the clone/branch operation and its memory-layer implications are not designed.
 
-The following are conditional stretch goals, attempted only if the core product loop is solid and time remains, and are not committed deliverables:
+**Shipped since the original RFC** (these were "conditional stretch goals" or open questions at RFC time — they are now real, built features, not aspirations): AI-generated scene images (Gemini, per-turn, "see" action mode only), mood-based background music (both a curated default track library per mood and Vertex AI Lyria-002 generation), and master-mode minigames via a Replit partnership (a curated built-in dodge/survival game, plus a "bring your own" Replit-embed path with a starter SDK in `replit-template/`).
 
-- **Voice input (speech-to-text)**, allowing a player to speak instead of type.
-- **Character-line text-to-speech**, voicing a specific AI character's dialogue line (distinct from full narration, which remains a non-goal).
-- **On-click scene images**, generated illustrative images for scenes.
-- **Mood-based background music**, from a small curated, non-copyright, mood-tagged track library (not generative music).
-- **Forking a playthrough**, letting another player branch their own copy from a shared session, built only if it falls out cheaply from the core session architecture.
-- **PNG-tuber style character avatars** (AI-generated sprite states swapped during speech), dependent entirely on character-line TTS existing first.
-- User Recommendation System
-
-## Open Items Carried Into Architecture
-
-A small number of decisions are deliberately deferred past Context & Goals and must be resolved before or during the build:
-
-- **Final decision on playthrough forking** (build vs. defer), pending core session architecture being implemented.
-- **Partner track selection**, deferred until the architecture is reviewed with the team. Integration slots are identified; track is not.
-- **Memory batch trigger specifics** (fixed N turns, checkpoint-based, or time-based) — deferred to implementation, does not affect other architectural decisions.
-- **Effect C** (trigger-driven direct game state mutation) — deferred to a future design pass.
-
-The following were open at Context & Goals and have since been resolved: invalid tool-call / state-validation strategy (resolved in Level 3: Pydantic validate-before-apply), runtime content guardrails (resolved as explicit non-goal, flagged for post-hackathon).
+---
 
 ## Technology Stack
 
 | Layer | Choice | Notes |
 |---|---|---|
-| **Frontend language** | TypeScript | Type safety across the full frontend codebase |
-| **Frontend framework** | React + Vite | Fast HMR in dev, strong ecosystem, team familiarity. Vite handles bundling and dev server. |
-| **Core API** | Python + FastAPI | Consistent with mem1's FastAPI stack; async-native, fast to build |
-| **Turn Resolution Service** | Python + FastAPI | Same stack as Core API; SSE streaming supported natively via FastAPI's `StreamingResponse` |
-| **Primary database** | PostgreSQL 16 via Cloud SQL | Google Cloud managed Postgres; zero operational overhead, automatic backups |
-| **Auth provider** | Google Sign-In (Firebase Auth) | Lightweight, fast to integrate for hackathon; explicitly flagged for replacement post-hackathon |
-| **AI narrator** | Gemini via Vertex AI / Google Cloud Agent Builder | Mandatory hackathon platform; handles narrative generation and tool-calling |
-| **Image generation** _(stretch)_ | Vertex AI (Imagen) | Co-located on Google Cloud; same billing account, no additional auth setup |
-| **TTS service** _(stretch)_ | Deferred to future | Not selected; deferred alongside the character-line TTS feature itself |
-| **mem1 deployment** | Cloud Run (Docker container) | mem1 is already a containerized FastAPI service; Cloud Run drops it in with no changes |
+| **Frontend language** | TypeScript, strict mode | |
+| **Frontend framework** | React 18 + Vite | React Router v6 (`createBrowserRouter`); Studio/Play/Spectator routes lazy-loaded. |
+| **Frontend server state** | TanStack React Query | ~40+ hooks across features; single shared `QueryClient`. |
+| **Frontend client state** | Zustand | Exactly three stores: `auth.store.ts`, `studio.store.ts`, `play.store.ts` (the last owns turn-submission/SSE lifecycle). |
+| **Frontend UI kit** | Tailwind CSS + a small owned shadcn-style component set, plus an `aceternity/`-style motion component set | No inline styles. |
+| **Core API** | Python + FastAPI, async throughout | `asyncpg`/SQLAlchemy async engine. |
+| **Turn Resolution Service** | Python + FastAPI | SSE via `StreamingResponse` / `sse-starlette`. |
+| **Memory Layer** | Python + FastAPI, plus a vendored Rust graph engine (HydraDB, `SlateDB`-backed) | Own React+Vite chat/graph-visualization UI, not used by the product — integrated headlessly over HTTP. |
+| **Primary database** | PostgreSQL 16 via Cloud SQL | Two logical databases: `aidnd_db` (Core API + TRS, shared schema) and `context_memory` (memory layer, separate instance database, includes pgvector). |
+| **Object storage** | Google Cloud Storage | Cover images, scene images, map images, generated audio. Falls back to local disk automatically outside production (see [ADR-14](#adr-14-storage-client-abstracts-gcs-vs-local-disk-by-environment)). |
+| **Auth provider** | Firebase Auth (Google Sign-In) | Both backend services independently verify Firebase tokens and issue their own app JWTs (access + refresh) on top. |
+| **AI narrator** | Gemini on Vertex AI, **Express Mode** (API-key auth via `google-genai`, not full ADC/service-account auth) | Narration + master-mode tool-calling model: `gemini-3.5-flash-lite`. Same auth pattern reused for every other Vertex AI call in the system — see [ADR-12](#adr-12-vertex-ai-accessed-via-express-mode-api-key-everywhere). |
+| **Image generation** | Gemini on Vertex AI, `gemini-3.1-flash-image`, via `generate_content` | Not the Imagen API — this project's Vertex AI access does not include an Imagen model, so images are extracted from `inline_data` parts of a `generate_content` response instead. Used for scene images (TRS) and scenario cover art (Core API). |
+| **Music generation** | Vertex AI Lyria-002, via a raw `predict` REST call | The `google-genai` SDK has no dedicated Lyria endpoint, so `music_gen_client.py` calls the publisher-model `predict` endpoint directly through the SDK's underlying API client. Produces one fixed-length (~32.8s) loopable track per mood. |
+| **Memory-layer embeddings** | Vertex AI `text-embedding-005` via `google-genai` | Replaced an earlier local `sentence-transformers`/`torch` model — embeddings now require a live Google Cloud call, no local model weights. |
+| **Deployment platform** | Google Cloud Run (Frontend, Core API, TRS, Memory Layer) + a standalone GCE VM (HydraDB's own graph engine) | See [Deployment](#deployment). |
 
-### Deployment Platform
+---
 
-All services deploy to **Google Cloud** (mandatory for the hackathon):
+## Deployment
 
-- **Cloud Run** — serverless containers for Core API, Turn Resolution Service, and mem1. Scales to zero between requests, no cluster management, straightforward CI/CD via container push.
-- **Cloud SQL** — managed Postgres 16 instance. Connects to Cloud Run services via Cloud SQL connector (no public IP needed).
-- **Vertex AI** — Gemini API and Imagen API accessed via standard Vertex AI SDKs from within Cloud Run services.
-- **Firebase Auth** — handles Google Sign-In token issuance; both Cloud Run services validate tokens on every request.
+All four Cloud-Run-hosted services (`frontend`, `core-api`, `turn-resolution-service`, `memory-layer`) deploy independently to **Cloud Run**, region `us-central1`, project `wevr-507318`. Deploys are currently **manual** — there is no CI/CD pipeline in the repository (`.github/workflows/` does not exist); each service is rebuilt with `gcloud builds submit` and redeployed with `gcloud run deploy`.
 
-The architecture is intentionally sized for hackathon scale on Cloud Run. A post-hackathon scaling path would move long-running stateful services (notably the Turn Resolution Service's persistent SSE notification channel for multiplayer) to GKE if volume demands it, without architectural changes.
+**Why HydraDB's graph engine is not on Cloud Run:** it's a stateful process (`SlateDB`-backed), so it runs on a dedicated GCE VM instead, reached over HTTPS with a bearer token — a deliberate speed-over-hardening trade-off for now (no VPC connector; the firewall rule is scoped to the token, not the network). The `memory-layer` FastAPI service itself (the Python side, which talks to both Postgres and the HydraDB VM) does run on Cloud Run like the other three services.
 
-## File Structure
+**Data stores:**
+- **Cloud SQL** (Postgres 16, single instance, two databases): `aidnd_db` for Core API + TRS (shared schema, TRS never runs migrations, only reads/writes what Core API's Alembic migrations define), `context_memory` for the memory layer (separate migration runner, `scripts/run_migrations.py`).
+- **Google Cloud Storage** — one bucket for all generated/uploaded media (cover images, scene images, map images, audio).
 
-Monorepo. Three apps share one repository. Every file has a single, precise responsibility — no file mixes concerns. This keeps individual files small, readable, and safe to hand to an AI coding assistant without overwhelming context.
+**Identity:** each Cloud Run service has its own service account (least-privilege: Cloud SQL client + Secret Manager accessor for all; Core API and TRS additionally get object-admin scoped to the uploads bucket). Firebase Auth is a separate Google Cloud project from the one hosting Cloud Run — cross-project Firebase token verification needs no IAM link, but any new frontend origin must be added to Firebase's Authorized Domains list or sign-in breaks.
+
+**Secrets** are stored in Secret Manager and mounted as environment variables at deploy time (JWT signing key, Gemini/Vertex API key, memory-layer API key, HydraDB bearer token, database URLs).
+
+**CORS:** Core API and TRS both read an explicit `CORS_ORIGINS` allow-list from configuration — every deployed frontend origin (the Cloud Run frontend URL, and any additional deployment such as a Replit mirror) must be added there explicitly, or browser requests from that origin are rejected regardless of auth validity.
+
+---
+
+## Monorepo File Structure
 
 ```
 AI-DND/
 ├── apps/
 │   ├── frontend/
 │   ├── core-api/
-│   └── turn-resolution-service/
+│   ├── turn-resolution-service/
+│   └── memory-layer/
+├── replit-template/           # Starter kit + minigame-sdk.js for creator-hosted Replit minigames
+├── docs/                      # Architecture docs, ADRs, feature specs
+├── music/                     # Mood-tagged ambient tracks (curated default soundtrack library)
 ├── docker-compose.yml         # Full local stack (all services + Postgres)
-├── docker-compose.dev.yml     # Dev overrides (hot-reload mounts)
-├── .github/
-│   └── workflows/
-│       ├── deploy-frontend.yml
-│       ├── deploy-core-api.yml
-│       └── deploy-trs.yml
-├── .env.example
+├── ARCHITECTURE.md            # This document
+├── PRODUCT.md                 # Product/brand schema
+├── CLAUDE.md                  # Engineering guidelines enforced on every file
 └── README.md
 ```
 
----
+Every file has a single, precise responsibility — no file mixes concerns (enforced by `CLAUDE.md`'s layering rules). This is what actually keeps files small and legible, not just an aspiration.
 
 ### Frontend (`apps/frontend/`)
 
-Feature-based organisation. Each feature owns its components, hooks, store slice, API calls, and types. Nothing leaks across features except through `shared/`.
+Feature-based. Six feature directories now exist — the original design anticipated only three (`studio/`, `play/`, `auth/`); `profile/`, `landing/`, and `misc/` were added as the product grew.
 
 ```
-apps/frontend/
-├── src/
-│   ├── features/
-│   │   ├── studio/                        # Scenario authoring surface
-│   │   │   ├── components/
-│   │   │   │   ├── EntityEditor/
-│   │   │   │   │   ├── EntityEditor.tsx
-│   │   │   │   │   └── EntityEditor.types.ts
-│   │   │   │   ├── FactEditor/
-│   │   │   │   │   ├── FactEditor.tsx
-│   │   │   │   │   └── FactEditor.types.ts
-│   │   │   │   ├── ConditionEditor/
-│   │   │   │   │   ├── ConditionEditor.tsx
-│   │   │   │   │   ├── ConditionEditor.types.ts
-│   │   │   │   │   └── ExpressionBuilder/
-│   │   │   │   │       ├── ExpressionBuilder.tsx  # Visual condition builder
-│   │   │   │   │       ├── FieldPicker.tsx         # Picks game state field
-│   │   │   │   │       ├── OperatorPicker.tsx      # <, >, ==, etc.
-│   │   │   │   │       └── ValueInput.tsx          # Typed value entry
-│   │   │   │   ├── StateSchemaEditor/
-│   │   │   │   │   └── StateSchemaEditor.tsx      # Defines typed game state fields
-│   │   │   │   ├── EndConditionsEditor/
-│   │   │   │   │   └── EndConditionsEditor.tsx    # Win/lose condition authoring
-│   │   │   │   ├── SetupSchemaEditor/
-│   │   │   │   │   └── SetupSchemaEditor.tsx      # Player setup fields authoring
-│   │   │   │   ├── NarratorPersonaEditor/
-│   │   │   │   │   └── NarratorPersonaEditor.tsx  # System prompt / AI persona
-│   │   │   │   ├── ScenarioMetaForm/
-│   │   │   │   │   └── ScenarioMetaForm.tsx       # Title, tags, cover, playtime
-│   │   │   │   └── PublishFlow/
-│   │   │   │       ├── PublishFlow.tsx             # Publish confirmation + status
-│   │   │   │       └── ContentTagPicker.tsx
-│   │   │   ├── hooks/
-│   │   │   │   ├── useScenario.ts                 # React Query: scenario CRUD
-│   │   │   │   ├── useEntities.ts                 # React Query: entity CRUD
-│   │   │   │   ├── useFacts.ts                    # React Query: fact CRUD
-│   │   │   │   ├── useConditions.ts               # React Query: condition CRUD
-│   │   │   │   └── usePublish.ts                  # Publish flow state
-│   │   │   ├── stores/
-│   │   │   │   └── studio.store.ts                # Zustand: active entity, panel state
-│   │   │   ├── api/
-│   │   │   │   ├── scenarios.api.ts
-│   │   │   │   ├── entities.api.ts
-│   │   │   │   ├── facts.api.ts
-│   │   │   │   └── conditions.api.ts
-│   │   │   ├── types/
-│   │   │   │   ├── scenario.types.ts
-│   │   │   │   ├── entity.types.ts
-│   │   │   │   ├── fact.types.ts
-│   │   │   │   └── condition.types.ts
-│   │   │   └── pages/
-│   │   │       ├── StudioPage.tsx                 # Creator dashboard
-│   │   │       ├── NewScenarioPage.tsx
-│   │   │       └── EditScenarioPage.tsx
-│   │   │
-│   │   ├── play/                                  # Discovery + gameplay surface
-│   │   │   ├── components/
-│   │   │   │   ├── DiscoveryFeed/
-│   │   │   │   │   ├── DiscoveryFeed.tsx
-│   │   │   │   │   ├── ScenarioCard.tsx
-│   │   │   │   │   ├── FeedFilters.tsx
-│   │   │   │   │   └── FeedSortBar.tsx
-│   │   │   │   ├── SetupScreen/
-│   │   │   │   │   ├── SetupScreen.tsx            # Pre-game setup fields
-│   │   │   │   │   └── SetupField.tsx             # Single field (text or select)
-│   │   │   │   ├── PlayScreen/
-│   │   │   │   │   ├── PlayScreen.tsx             # Main play layout
-│   │   │   │   │   ├── NarrationStream.tsx        # Renders streaming SSE tokens
-│   │   │   │   │   ├── ActionInput.tsx            # Player action text input
-│   │   │   │   │   ├── TurnIndicator.tsx          # Whose turn it is (multiplayer)
-│   │   │   │   │   └── TurnHistory/
-│   │   │   │   │       ├── TurnHistory.tsx        # Scrollable past turns
-│   │   │   │   │       └── TurnEntry.tsx          # Single turn (action + narration)
-│   │   │   │   └── SpectatorView/
-│   │   │   │       └── SpectatorView.tsx          # Read-only play view
-│   │   │   ├── hooks/
-│   │   │   │   ├── useDiscovery.ts                # React Query: discovery feed
-│   │   │   │   ├── usePlaythrough.ts              # React Query: playthrough state
-│   │   │   │   ├── useTurnStream.ts               # SSE: per-request narration stream
-│   │   │   │   ├── useNotifications.ts            # SSE: multiplayer turn-order channel
-│   │   │   │   ├── useSpectator.ts                # SSE: spectator live stream
-│   │   │   │   └── useSetup.ts                    # Setup form state
-│   │   │   ├── stores/
-│   │   │   │   └── play.store.ts                  # Zustand: active turn, SSE state
-│   │   │   ├── api/
-│   │   │   │   ├── discovery.api.ts
-│   │   │   │   ├── playthroughs.api.ts
-│   │   │   │   ├── turns.api.ts
-│   │   │   │   ├── share.api.ts
-│   │   │   │   └── ratings.api.ts
-│   │   │   ├── types/
-│   │   │   │   ├── playthrough.types.ts
-│   │   │   │   ├── turn.types.ts
-│   │   │   │   └── participant.types.ts
-│   │   │   └── pages/
-│   │   │       ├── DiscoveryPage.tsx
-│   │   │       ├── SetupPage.tsx
-│   │   │       ├── PlayPage.tsx
-│   │   │       └── SpectatorPage.tsx
-│   │   │
-│   │   └── auth/                                  # Auth surface
-│   │       ├── components/
-│   │       │   ├── LoginButton/
-│   │       │   │   └── LoginButton.tsx
-│   │       │   └── AuthGuard/
-│   │       │       └── AuthGuard.tsx              # Wraps protected routes
-│   │       ├── hooks/
-│   │       │   └── useAuth.ts
-│   │       ├── providers/
-│   │       │   └── AuthProvider.tsx               # Firebase Auth context
-│   │       ├── stores/
-│   │       │   └── auth.store.ts                  # Zustand: current user
-│   │       ├── api/
-│   │       │   └── auth.api.ts                    # Token exchange
-│   │       ├── types/
-│   │       │   └── auth.types.ts
-│   │       └── pages/
-│   │           └── LoginPage.tsx
+apps/frontend/src/
+├── features/
+│   ├── studio/            # Authoring surface — by far the largest feature
+│   │   ├── pages/          # StudioPage, NewScenarioPage, EditScenarioPage
+│   │   ├── hooks/          # ~26 hooks, one per authoring domain (entities, facts,
+│   │   │                   #  conditions, invariants, end_conditions, maps, minigames,
+│   │   │                   #  music, uploads, publish, playtest, AI assistant chat, ...)
+│   │   ├── stores/         # studio.store.ts (Zustand)
+│   │   ├── api/            # One *.api.ts per domain
+│   │   ├── types/          # Mirrors api/
+│   │   └── components/     # 28 subdirs, incl. EntityEditor, FactEditor, ConditionEditor
+│   │       (+ ExpressionBuilder), InvariantEditor, EndConditionsEditor, MapEditor,
+│   │       MinigameEditor, MusicSlotEditor, CoverImageUploader, AIChatSidebar,
+│   │       NarratorPersonaEditor, RulesEditor, StateSchemaEditor, SetupSchemaEditor,
+│   │       ScenarioMetaForm, ScenarioDashboard, OpeningSceneEditor, ActionChipsEditor,
+│   │       NarrationFontPicker, MarkdownEditor, NewbieWizard (guided flow),
+│   │       MasterModeCreateFlow, PublishFlow, PlaytestButton, Layout/ (its own
+│   │       tabbed master-mode studio shell + nav)
 │   │
-│   ├── shared/                                    # Cross-feature shared code only
-│   │   ├── components/
-│   │   │   ├── ui/                                # shadcn/ui components (owned, customisable)
-│   │   │   │   ├── Button.tsx
-│   │   │   │   ├── Input.tsx
-│   │   │   │   ├── Select.tsx
-│   │   │   │   ├── Modal.tsx
-│   │   │   │   ├── Badge.tsx
-│   │   │   │   ├── Card.tsx
-│   │   │   │   └── Separator.tsx
-│   │   │   ├── layout/
-│   │   │   │   ├── AppShell.tsx
-│   │   │   │   └── Header.tsx
-│   │   │   └── feedback/
-│   │   │       ├── LoadingSpinner.tsx
-│   │   │       ├── ErrorBoundary.tsx
-│   │   │       ├── EmptyState.tsx
-│   │   │       └── Toast.tsx
-│   │   ├── hooks/
-│   │   │   ├── useSSE.ts                          # Generic SSE connection hook
-│   │   │   ├── usePagination.ts
-│   │   │   └── useDebounce.ts
-│   │   ├── lib/
-│   │   │   ├── api-client.ts                      # Base fetch wrapper (auth headers, errors)
-│   │   │   ├── sse-client.ts                      # SSE connection factory
-│   │   │   └── query-client.ts                    # React Query client config
-│   │   ├── types/
-│   │   │   ├── api.types.ts                       # Generic API response shapes
-│   │   │   └── common.types.ts
-│   │   └── constants/
-│   │       ├── genres.ts                          # Fixed genre taxonomy
-│   │       ├── predicates.ts                      # Common fact predicates
-│   │       └── complexity-tiers.ts
+│   ├── play/               # Discovery + gameplay surface
+│   │   ├── pages/          # DiscoveryPage, ScenarioFocusPage, JoinPage, SetupPage,
+│   │   │                   #  PlayPage, SpectatorPage
+│   │   ├── hooks/          # useDiscovery, useSetup, useTurns, + SSE-driven:
+│   │   │                   #  useTurnStream, useNotifications, useSpectator,
+│   │   │                   #  useMinigameResult
+│   │   ├── stores/         # play.store.ts — turn submission/SSE lifecycle, minigame
+│   │   │                   #  result reconciliation, ebook chapter state
+│   │   ├── api/
+│   │   └── components/     # PlayScreen/ (splits into MasterPlayScreen /
+│   │       NewbiePlayScreen + EBook/), MinigameOverlay/, SpectatorView/,
+│   │       DiscoveryFeed/, ScenarioFocus/, SetupScreen/, MapViewer/
 │   │
-│   └── app/
-│       ├── App.tsx
-│       ├── router.tsx                             # Route definitions
-│       └── main.tsx                              # Vite entry point
+│   ├── auth/                # LoginPage, useAuth, AuthProvider (Firebase), auth.store,
+│   │                         #  AuthGuard, GoogleSignInButton, JudgeSignInButton (demo path)
+│   ├── profile/              # ProfilePage + Bookmarks/Campaigns/Creations/Reviews tabs
+│   ├── landing/               # LandingPage
+│   └── misc/                  # NotFoundPage, TermsPage, PrivacyPage
 │
-├── public/
-│   └── fonts/                                     # Retro/monospace font files
-├── index.html
-├── vite.config.ts
-├── tsconfig.json
-├── tailwind.config.ts
-├── components.json                                # shadcn/ui config
-└── package.json
+├── shared/                    # Cross-feature code only — features never import each other
+│   ├── components/
+│   │   ├── ui/                # Owned shadcn-style kit + ui/aceternity/ motion components
+│   │   ├── layout/             # AppShell, AppNav, Header, Footer, Sidebar
+│   │   ├── feedback/            # ErrorBoundary, Loader, Toast
+│   │   └── minigames/            # DodgeMinigame/ (full canvas game engine) and
+│   │                              #  ReplitEmbed/ — the two minigame delivery mechanisms
+│   ├── hooks/
+│   │   └── useSSE.ts             # The ONLY React lifecycle wrapper around SSE (see below)
+│   ├── lib/
+│   │   ├── api-client.ts          # Shared axios instance: auth header injection,
+│   │   │                          #  401-refresh-queue interceptor
+│   │   ├── sse-client.ts           # Custom fetch-based SSE transport (see ADR-11) —
+│   │   │                           #  raw browser EventSource is used NOWHERE in this app
+│   │   └── firebase.ts              # Firebase SDK init
+│   ├── constants/
+│   └── types/
+└── app/
+    ├── App.tsx
+    ├── router.tsx                   # React Router v6 route table
+    └── main.tsx
 ```
-
----
 
 ### Core API (`apps/core-api/`)
 
-One router, one service, one repository per domain. Service owns business logic; repository owns all SQL. Nothing talks to the database except repositories.
+Strict layering: `Router → Service → Repository → Database`. One router/service/repository per domain; ORM models live under `db/models/`, distinct from the Pydantic request/response schemas in `models/`.
 
 ```
-apps/core-api/
-├── app/
-│   ├── routers/                                   # HTTP routing only, no logic
-│   │   ├── auth.py
-│   │   ├── scenarios.py
-│   │   ├── entities.py
-│   │   ├── facts.py
-│   │   ├── conditions.py
-│   │   ├── playthroughs.py
-│   │   ├── share.py
-│   │   └── ratings.py
-│   ├── services/                                  # Business logic, one per domain
-│   │   ├── auth_service.py
-│   │   ├── scenario_service.py
-│   │   ├── entity_service.py
-│   │   ├── fact_service.py
-│   │   ├── condition_service.py
-│   │   ├── playthrough_service.py
-│   │   ├── share_service.py
-│   │   ├── rating_service.py
-│   │   └── publish_service.py                    # Publish flow orchestration
-│   ├── repositories/                             # All SQL lives here, nowhere else
-│   │   ├── scenario_repo.py
-│   │   ├── entity_repo.py
-│   │   ├── fact_repo.py
-│   │   ├── condition_repo.py
-│   │   ├── playthrough_repo.py
-│   │   ├── participant_repo.py
-│   │   ├── share_repo.py
-│   │   ├── rating_repo.py
-│   │   └── turn_log_repo.py
-│   ├── models/                                   # Pydantic request/response schemas
-│   │   ├── scenario.py
-│   │   ├── entity.py
-│   │   ├── fact.py
-│   │   ├── condition.py
-│   │   ├── playthrough.py
-│   │   ├── participant.py
-│   │   ├── share.py
-│   │   ├── rating.py
-│   │   └── turn_log.py
-│   ├── integrations/
-│   │   └── memory_client.py                     # Memory layer API (authoring-time ingest + clone)
-│   ├── db/
-│   │   ├── connection.py                         # Async Postgres connection pool
-│   │   ├── base.py                               # SQLAlchemy Base — all models imported here
-│   │   └── migrations/
-│   │       ├── env.py                            # Alembic environment config
-│   │       ├── script.py.mako                    # Migration file template
-│   │       └── versions/
-│   │           ├── 001_initial_schema.py
-│   │           ├── 002_scenario_additions.py
-│   │           └── 003_scenario_condition.py
-│   ├── exceptions/                               # Custom exception classes, one file per domain
-│   │   ├── base.py                               # Base app exception
-│   │   ├── scenario_exceptions.py
-│   │   ├── playthrough_exceptions.py
-│   │   └── auth_exceptions.py
-│   ├── middleware/
-│   │   ├── auth.py                               # Firebase token validation
-│   │   ├── error_handler.py
-│   │   └── logging.py
-│   ├── config.py                                 # Env vars, settings
-│   └── main.py                                   # FastAPI app + router registration
-├── tests/
-│   ├── routers/
-│   ├── services/
-│   └── repositories/
-├── alembic.ini                                   # Alembic config (points to db/migrations/)
-├── Dockerfile
-├── requirements.txt
-└── pyproject.toml
+apps/core-api/app/
+├── routers/          # 17 files: auth, scenarios, entities, facts, conditions,
+│                     #  invariants, end_conditions, scenario_entity_types, maps,
+│                     #  minigames, scenario_music, music_defaults, playthroughs,
+│                     #  share, logs, uploads, users
+│                     #  (ratings.py exists but is empty/unregistered — dead file,
+│                     #   see Known Limitations)
+├── services/         # One per domain, plus publish_service.py (publish flow
+│                     #  orchestration) and default_music.py
+├── repositories/     # All SQL lives here — nowhere else
+├── db/
+│   ├── models/        # SQLAlchemy ORM — the real schema source of truth (21 tables)
+│   └── migrations/versions/001_initial_schema.py   # squashed from 14 original files
+├── models/            # Pydantic request/response schemas (not ORM)
+├── integrations/
+│   ├── memory_client.py       # The only file permitted to call the memory layer
+│   ├── image_gen_client.py    # AI cover-art generation (approved AI-call exception)
+│   ├── music_gen_client.py    # AI music generation (approved AI-call exception)
+│   └── storage_client.py      # The only file that talks to GCS / local disk
+├── exceptions/        # One file per domain, all inherit app/exceptions/base.py
+├── middleware/         # auth.py (Firebase + app-JWT verification), error_handler.py,
+│                        #  request_context.py
+├── config.py            # All env vars read here, nowhere else
+└── main.py
 ```
-
----
 
 ### Turn Resolution Service (`apps/turn-resolution-service/`)
 
-The turn flow is a pipeline of discrete steps, each in its own file. `pipeline.py` is the only file that knows the order. Every step file knows only its own job.
+`turn/pipeline.py` is the only file that knows step order — steps in `turn/steps/` never call each other directly.
 
 ```
-apps/turn-resolution-service/
-├── app/
-│   ├── routers/
-│   │   ├── turn.py                               # POST /v1/turn
-│   │   └── session.py                            # Notifications + spectator SSE
-│   ├── turn/
-│   │   ├── pipeline.py                           # Orchestrates steps in order
-│   │   └── steps/                                # One file = one step, one job
-│   │       ├── request_receiver.py               # Validate session, participant, turn order
-│   │       ├── state_loader.py                   # Read Playthrough + scenario_snapshot
-│   │       ├── condition_evaluator.py            # Evaluate ScenarioCondition expressions
-│   │       ├── context_retrieval.py              # Call memory layer query
-│   │       ├── ai_orchestrator.py                # Call Gemini with full context
-│   │       ├── tool_handler.py                   # Prepare proposed state mutation
-│   │       ├── state_validator.py                # Pydantic validate before apply
-│   │       ├── state_writer.py                   # Write Playthrough.state + TurnLog
-│   │       ├── memory_writer.py                  # Manage batch flush to memory layer
-│   │       └── response_streamer.py              # Stream narration SSE to client
-│   ├── session/
-│   │   ├── notification_manager.py               # Multiplayer turn-order SSE channel
-│   │   ├── spectator_manager.py                  # Spectator live SSE stream
-│   │   └── turn_counter.py                       # Batch flush trigger + play_count increment
-│   ├── integrations/
-│   │   ├── memory_client.py                      # POST /v1/memory/query, POST /v1/memory/ingest
-│   │   └── gemini_client.py                      # Vertex AI Gemini SDK wrapper
-│   ├── models/
-│   │   ├── game_state.py                         # Pydantic game state schema (master mode)
-│   │   ├── turn.py                               # Turn request/response shapes
-│   │   └── tool_call.py                          # Tool invocation + result shapes
-│   ├── db/
-│   │   └── connection.py                         # Postgres connection (shared schema, no migrations here)
-│   ├── exceptions/                               # Custom exception classes
-│   │   ├── base.py
-│   │   ├── turn_exceptions.py
-│   │   ├── session_exceptions.py
-│   │   └── validation_exceptions.py
-│   ├── middleware/
-│   │   ├── auth.py
-│   │   └── error_handler.py
-│   ├── config.py
-│   └── main.py
-├── tests/
-│   ├── turn/
-│   │   └── steps/
-│   └── integrations/
-├── Dockerfile
-├── requirements.txt
-└── pyproject.toml
+apps/turn-resolution-service/app/
+├── routers/
+│   ├── turn.py         # POST /v1/turn — the gameplay loop entry point
+│   ├── session.py       # Spectate + multiplayer notification SSE
+│   └── assistant.py      # Studio AI co-writer chat (a second, distinct AI surface)
+├── turn/
+│   ├── pipeline.py         # Sequences every step below, in order
+│   ├── tool_definitions.py  # Fixed Gemini function-calling schema (master mode)
+│   ├── expression_evaluator.py, mood.py, state_paths.py, turn_order.py
+│   └── steps/                # One file, one job — see Data Flow below for the real order
+│       ├── request_receiver.py, state_loader.py, minigame_result_resolver.py,
+│       ├── condition_evaluator.py, context_retrieval.py, ai_orchestrator.py,
+│       ├── tool_handler.py, state_validator.py, map_state_sync.py,
+│       ├── minigame_trigger_evaluator.py, scene_image_generator.py, state_writer.py,
+│       ├── end_condition_evaluator.py, turn_summary_builder.py, memory_writer.py,
+│       └── response_streamer.py
+├── session/
+│   ├── notification_manager.py    # In-process pub/sub — multiplayer "your turn" signal
+│   ├── spectator_manager.py        # In-process pub/sub — live spectator relay
+│   └── access.py                    # Share-token / participant auth for session routes
+├── integrations/
+│   ├── gemini_client.py       # Narration + tool-calling — the primary AI call site
+│   ├── image_gen_client.py     # Scene-image generation (its own copy of the client;
+│   │                            #  intentional duplication, documented exception)
+│   ├── memory_client.py         # Query (per turn) + batched ingest
+│   └── storage_client.py         # Scene-image upload
+├── db/models/          # Read-only mirror of Core API's ORM models — TRS never migrates
+├── exceptions/, middleware/, models/
+├── config.py
+└── main.py
 ```
 
-## System Architecture - C4 Level 1: Context
+### Memory Layer (`apps/memory-layer/`)
+
+Not a router/service/repository layering — a pipeline-stage module layout, with `context_memory/engine.py` as a single facade and `context_memory/composition.py` as the one dependency-injection wiring point (enforced by import-layering lint rules).
+
+```
+apps/memory-layer/
+├── db/migrations/           # 14 forward-only SQL migrations → context_memory database
+├── hydradb/                  # Vendored Rust graph engine (AGPL-3.0, separately licensed;
+│                              #  runs as its own networked process, never statically linked)
+├── frontend/                  # HydraDB's own React+Vite chat/graph UI — not used by wevr
+├── scripts/                    # run_migrations.py, benchmark/eval/backfill scripts
+└── src/
+    ├── api/                     # routes.py, server.py, stream.py — the FastAPI boundary
+    ├── chat/                     # CLI REPL for interactive testing
+    ├── evaluation/                 # LongMemEval-style benchmark runner
+    └── context_memory/             # The actual engine
+        ├── engine.py                # MemoryEngine facade — everything routes through it
+        ├── composition.py            # Single DI wiring point
+        ├── core/                      # config, LLMClient, journal/tracing/tools harness
+        ├── ingestion/                  # orchestrator, extraction, entity_registry,
+        │                               #  temporal_update, graph_plan_builder, graph_writer,
+        │                               #  direct_authoring, embedding.py, rollback
+        ├── retrieval/                   # One module per hybrid-retrieval phase — see
+        │                                #  Data Models & Schema below
+        ├── persistence/                   # Postgres store implementations
+        ├── client/hydradb_http.py          # Custom HTTP/OpenCypher transport to the
+        │                                    #  graph engine (not Bolt — see below)
+        └── cloning/template_clone.py         # Per-playthrough memory space cloning
+```
+
+**Why HTTP instead of the standard Bolt protocol:** the graph engine's own README states plainly that the Neo4j Bolt driver is incompatible with HydraDB's handshake, so all graph reads/writes go through a custom JSON-over-HTTP OpenCypher transport instead — batched `UNWIND $rows` writes, causal-bookmark reads.
+
+---
+
+## System Architecture — C4 Level 1: Context
 
 **Actors:**
-- **Creator** — authors scenarios (from simple lore to full structured worlds) and publishes them
-- **Player** — discovers, plays (solo or turn-based multiplayer), shares playthroughs, rates/likes scenarios
-- _(Creator and Player are roles on the same account, not separate user types)_
+- **Creator** — authors scenarios and publishes them.
+- **Player** — discovers, plays (solo or turn-based multiplayer), shares playthroughs, rates/reviews scenarios.
+- *(Creator and Player are roles on the same account, not separate user types.)*
+
 **External systems:**
-- **Gemini / Google Cloud Agent Builder** — powers the AI narrator: narrative generation and tool-calling authority over structured game state. Mandatory hackathon platform.
-- **mem1** — pre-existing graph-based memory service (reused, not built for this hackathon). Provides world-fact storage, temporal/bitemporal reasoning, and grounded retrieval with an abstention gate. Integrated headlessly via its API (`/v1/chat`, `/v1/memory/search`, `/v1/memory/ingest`, `/v1/memory/stream`), our system does not use its bundled UI.
-- **Auth provider** — lightweight identity provider (e.g., Google Sign-In/Firebase Auth), exact choice deferred to implementation
-- **Partner service** — placeholder; track undecided, will integrate at whichever boundary fits naturally once chosen
-- **Image generation service** _(conditional stretch)_ — for on-click scene images, if built
-- **TTS service** _(conditional stretch)_ — for character-line voice, if built
+- **Gemini on Vertex AI** — narration, master-mode tool-calling, scene-image generation, cover-art generation, and the Studio AI co-writer chat. Reached via Express Mode (API key), not full ADC.
+- **Vertex AI Lyria-002** — mood-based music generation.
+- **Firebase Auth** — Google Sign-In token issuance. Both Core API and TRS validate Firebase tokens and additionally issue/verify their own app-level JWTs.
+- **Replit** — the platform partner integration: creators either use a curated built-in minigame or host their own minigame on Replit and embed it via a sandboxed iframe at play time.
 
+**Developed-but-externally-integrated system:**
+- **HydraDB (the memory layer)** — provenance-preserving, bitemporal graph memory with hybrid vector/graph retrieval. Built as part of this project, but every other service reaches it purely over its HTTP API (`apps/memory-layer`), never through shared code or a shared database connection — architecturally equivalent in status to a genuinely external system. See [ADR-6](#adr-6-memory-layer-treated-as-an-external-system).
 
-![[Pasted image 20260825170128.png]]
+---
+
 ## System Architecture — C4 Level 2: Containers
 
-**Frontend**
+**Frontend** — single web app, five in-app-chrome surfaces plus two "outside the app shell" surfaces:
+- *In the standard app layout*: Landing, Discovery, Scenario detail, Studio (authoring), Profile.
+- *Deliberately outside the standard chrome* (siblings of the main layout route, not children): Play, Setup, Spectate, Join, Login — the immersive gameplay surfaces render without shared header/nav.
 
-- **Web app** — single application, two surfaces sharing one account/session:
-    - _Studio surface_: scenario authoring (freeform + AI-assisted for newbie mode, fully manual structured editor for master mode), publish flow
-    - _Play surface_: discovery feed, active play screen (streamed narrative, turn indicator, action input), session sharing
+**Backend services:**
+- **Core API** — stateless CRUD, auth, publish, discovery, uploads, ratings/reviews. No streaming.
+- **Turn Resolution Service** — the live gameplay loop: action validation, memory retrieval, Gemini orchestration (narration + tool-calling), streamed response, state persistence, batched memory writes, multiplayer turn-order and spectator fan-out.
+- **Memory Layer (HydraDB)** — ingestion (authoring-time and runtime), 4-phase hybrid retrieval, template-to-playthrough cloning, rollback/save-points.
 
-**Backend services**
+**Storage:**
+- **PostgreSQL (`aidnd_db`)** — single durable store for scenarios, playthroughs, accounts, discovery metadata, turn history. Shared by Core API (owns migrations) and TRS (read/write, no migrations).
+- **PostgreSQL (`context_memory`)** — the memory layer's own database (with pgvector), plus the vendored HydraDB graph engine for graph-native storage/traversal.
+- **Google Cloud Storage** — cover images, scene images, map images, audio.
 
-- **Core API** — stateless request/response service handling auth, scenario CRUD, publish, discovery/search/filtering, ratings and social signals
-- **Turn Resolution Service** — orchestrates the gameplay loop per player action: validates the action, retrieves context from mem1, calls Gemini with tool-calling authority, streams the narrated response back over SSE, writes new facts to mem1. Owns game-state validation (mechanism deferred). Stretch-goal outputs (mood tag, image/TTS triggers) would attach here without new containers.
+**External systems** *(unchanged from Level 1)*: Gemini/Vertex AI, Lyria, Firebase Auth, Replit.
 
-**Storage**
-
-- **PostgreSQL** — single durable store: scenarios, playthroughs/sessions, accounts, discovery metadata
-
-**External systems** _(from Level 1, unchanged)_: Gemini/Agent Builder, mem1, auth provider, partner service (track TBD)
-
-![[Pasted image 20260825172042.png]]
+---
 
 ## System Architecture — C4 Level 3: Components
 
-1. **Player submits action.** Frontend Play surface sends `POST /turn` to Turn Resolution Service, with the action text, session ID, and auth token. This opens the connection that will carry the streamed response.
-2. **Request receiver validates the request.** Confirms the session exists, the player is a valid participant, and (for solo play) that it's a no-op turn-order check, always their turn.
-3. **State loader fetches current playthrough state from Postgres.** Narrative history/position (newbie mode) or the full typed game state (master mode).
-4. **Context retrieval calls mem1's new lightweight search endpoint**, passing the current action and relevant identifiers, gets back grounded world facts (or an abstention signal if nothing relevant is known).
-5. **AI orchestrator calls Gemini**, passing the player action, loaded state, retrieved mem1 context, and (for master-mode) tool definitions.
-6. **Gemini generates a response**, optionally invoking one or more tools mid-generation (e.g., "update relationship," "move location").
-7. **If a tool was called**, the tool-call handler prepares the proposed state mutation, and the **state validator** checks it against the Pydantic-defined schema _before_ it's applied. If invalid, the mutation is rejected, Gemini's tool-call result is returned as a failure, and the AI is expected to recover in its next output token (still generating within the same call).
-8. **Response streamer begins streaming Gemini's narration text back over the still-open connection from step 1**, token by token, to the Play surface, which renders it live.
-9. **Once generation completes, state writer persists the updated (validated) playthrough state to Postgres.**
-10. **The connection from step 1 closes** once streaming is complete. No memory write happens on this turn (batched/periodic only, per earlier decision), unless this turn happens to trigger the batch flush.
+**Turn Resolution Service** is the most complex container — see [The Turn Resolution Pipeline](#the-turn-resolution-pipeline) below for its full, real component breakdown; that section *is* its Level 3 view.
 
-![[Pasted image 20260825182109.png]]
-Core API is intentionally simple relative to Turn Resolution Service: standard stateless request/response handling for auth (delegating to the external auth provider), scenario CRUD (create/edit/delete for creators, including both newbie freeform and master structured authoring writes), the publish flow (attaching discovery metadata and running the lightweight content-tag check), and discovery/search (filtered, sorted queries against Postgres for tag, genre, complexity, player count, playtime, and social signals). It has no AI orchestration responsibilities and no streaming, every endpoint is a conventional request-in, response-out call against Postgres. No further component breakdown is needed at this stage; if it grows in complexity post-hackathon (e.g., a dedicated search service), that would warrant its own Level 3 pass at that time.
+**Core API** is intentionally simple relative to TRS: standard stateless request/response handling for auth, scenario CRUD (both newbie freeform and master structured authoring writes across 21 tables), the publish flow (content-tag check + authoring-time memory ingestion), discovery (filtered/sorted Postgres queries), uploads (including the two AI-generation exceptions), and ratings/reviews. No AI orchestration in the live-play sense, no streaming — every endpoint is a conventional request-in, response-out call against Postgres, GCS, or the memory layer's authoring endpoints.
 
+**Memory Layer** breaks into two component groups, both fronted by `engine.py`:
+- **Ingestion** — orchestrator, extraction (LLM-based, for newbie-mode lore and runtime turn batches), entity resolution (3-tier: exact/alias match → embedding-based blocking → bounded LLM disambiguation), direct authoring (master-mode entities/facts, no LLM), graph-plan building and writing, rollback.
+- **Retrieval** — a 4-phase hybrid pipeline: Phase 0 (temporal resolution, query rewriting), Phase 1 (vector cosine search + Postgres full-text search, seeded top-60), Phase 2 (real graph traversal via HydraDB's native `algo.MSpaths` multi-hop path algorithm, bitemporal filtering), Phase 3 (Reciprocal Rank Fusion across 4 channels, LLM reranking, a strict low-evidence Abstention Gate, optional LLM answer synthesis).
 
+---
 
 ## Data Flow & Sequence
 
 ### Transport Model
 
-Turn responses use **per-request SSE**, not a persistent long-lived connection. Each player action is a `POST /turn`; the response streams back over that same connection (`text/event-stream`) as the AI narrator generates it, then the connection closes. There is no always-open socket between turns. Session continuity comes from server-side state in Postgres, not a kept-open channel. This matches how ChatGPT and Claude web actually work, and is simpler than the original Level 2 assumption: no long-lived connection to manage, no reconnection logic needed for the main turn-response path.
+Turn responses use **per-request SSE**, not a persistent long-lived connection: each player action is one `POST /v1/turn`, and the response streams back over that same connection until it closes. Session continuity comes from server-side Postgres state, not a kept-open channel.
 
-For **multiplayer only**, a separate lightweight SSE channel exists solely for turn-order notifications — carrying almost no data, just a signal to the next participant that it is now their turn. This channel is not used for narration content, which stays on the per-request response stream. Solo play does not use this channel at all.
+**A real deviation from the original design:** the frontend does not use the browser's native `EventSource` anywhere in the codebase. `EventSource` cannot send an `Authorization` header, and this app's auth is JWT-bearer (not cookie-based), so `shared/lib/sse-client.ts` implements its own fetch-based streaming reader instead — `createGetSSEConnection` for the persistent multiplayer-notification/spectator channels, `createPostSSEConnection` for the one-shot POST-then-stream turn and assistant-chat channels. See [ADR-11](#adr-11-fetch-based-sse-transport-instead-of-native-eventsource).
 
-### Critical Path: Player Turn (Solo)
+For **multiplayer only**, a separate persistent SSE channel (`GET /v1/session/{id}/notifications`) exists solely for turn-order signaling — a `your_turn` event with no narration payload. Solo play never opens this channel.
 
-1. Player submits action — `POST /turn` to the Turn Resolution Service, carrying action text, session ID, and auth token. This opens the connection that will carry the streamed response.
-2. **Request receiver** validates the session and participant. For solo play, the turn-order check is a no-op — it is always the player's turn.
-3. **State loader** reads current playthrough state from Postgres: narrative history and position for newbie mode, or the full typed game state for master mode.
-4. **Context retrieval** calls `POST /v1/memory/query` on the memory layer, passing the action text, scenario ID, playthrough ID, participant ID, and current checkpoint. Returns ranked structured facts, or an explicit abstention signal if nothing relevant is known.
-5. **AI orchestrator** calls Gemini with the player action, loaded state, retrieved facts, and tool definitions (master mode only).
-6. **Gemini generates a response**, optionally invoking one or more tools mid-generation (e.g., update relationship, move location, modify inventory).
-7. **Tool-call handler** prepares the proposed state mutation. **State validator** (Pydantic) validates it against the defined schema *before* applying. If invalid, the mutation is rejected and returned to Gemini as a failure result; the AI recovers within the same generation without an extra round-trip.
-8. **Response streamer** streams Gemini's narration back over the still-open connection from step 1, token by token, to the Play surface.
-9. **State writer** persists the validated updated playthrough state to Postgres once generation completes.
-10. The connection closes. No `POST /v1/memory/ingest` call this turn — memory writes are batched roughly every five turns, not per-turn.
+### The Turn Resolution Pipeline
+
+`pipeline.py` sequences these steps, in this order, for every `POST /v1/turn`. Steps marked *(master only)* are skipped entirely for newbie-mode scenarios.
+
+| # | Step | What it actually does |
+|---|---|---|
+| 1 | `request_receiver` | Validates the playthrough is active, checks participant ownership and turn order, and — the one piece of gating logic here that has no RFC precedent — rejects the action outright if a minigame is pending and the submitted `action_kind` isn't `minigame_result` (or its `minigame_id`/`attempt_id` don't match the pending one). |
+| 2 | `state_loader` | Loads `scenario_snapshot` + a deep copy of `Playthrough.state`. Never reads `Scenario` directly — always the per-playthrough snapshot (ADR-8). |
+| 3 | `minigame_result_resolver` *(master only, when `action_kind == "minigame_result"`)* | Resolves the pending minigame's outcome into a state mutation + narrator instruction, clears the pending marker. |
+| 4 | `condition_evaluator` *(master only)* | Evaluates active `scenario_conditions`, applies any Effect-C state mutations, before Gemini is called. |
+| 5 | `context_retrieval` | Queries the memory layer for grounded facts. Degrades to an empty/abstained context on any failure — never blocks the turn. |
+| 6 | `ai_orchestrator` | The only step permitted to call `gemini_client`. Newbie mode: single streamed call. Master mode: a native function-calling round-trip loop, validating each proposed tool call (`tool_handler` + `state_validator`, Pydantic, before it's applied — ADR-4) inside the same generation, capped at a configured max round-trips. |
+| 7 | `map_state_sync` *(master only)* | Deterministic, non-AI: appends to `discovered_location_ids` when `current_location_id` changed. |
+| 8 | `minigame_trigger_evaluator` *(master only, solo playthroughs only)* | Evaluates `scenario_minigames` in priority order against the final working state; on first match, stamps a pending-minigame marker and (for Replit-embed minigames) fires a best-effort, SSRF-guarded pre-warm ping to the embed URL. |
+| 9 | `scene_image_generator` *(only when the request's `action_mode == "see"`)* | Generates a location-grounded scene image via Gemini. Failure is swallowed — never degrades the turn. |
+| 10 | `state_writer` | Persists the `TurnLog` row and updated `Playthrough.state`, with optimistic-lock retry. Commits explicitly inside the SSE generator, since dependency-injection cleanup would otherwise run before the generator body does. |
+| 11 | `end_condition_evaluator` *(master only, and skipped if a minigame trigger just fired this turn — minigame wins over a same-turn end-condition match)* | Checks `end_conditions` against the persisted final state; on match, marks the playthrough ended and notifies participants. |
+| 12 | `memory_writer` | Best-effort batched ingest to the memory layer, every N turns (configurable). Failures are swallowed and logged, never fail the turn. |
+| 13 | `turn_summary_builder` *(master only)* | Builds the `turn_summary` SSE payload (stat changes, inventory changes, dice rolls, active conditions) from this turn's tool calls. |
+| 14 | `response_streamer` | Formats and streams every SSE event above as it becomes available; not a discrete pipeline stage but the terminal streaming layer wrapping the whole generator. |
+
+**Two independent discriminators on every turn request**, easy to conflate but distinct:
+- `action_kind: "narrative" | "minigame_result"` — whether this submission is a normal player action or a minigame outcome being reported back.
+- `action_mode: "say" | "do" | "story" | "see"` — narration style; `"see"` is the one that additionally triggers scene-image generation.
+
+**SSE events actually emitted** by `POST /v1/turn`: `narration` (streamed chunks), `mood` (scene mood tag), `scene_image` (only for `action_mode: "see"`, on success), `turn_summary` (master mode only), `minigame` (only when a trigger matched this turn), `playthrough_ended` (only on an end-condition match), `done` (terminal success), `degraded` (terminal failure-but-graceful, e.g. an optimistic-lock or state-write error, with a user-facing message).
 
 ### Multiplayer Delta
 
-Steps 3–9 are identical. The differences are:
+Steps 1–14 are identical for multiplayer; the differences:
+- **Step 1 is not a no-op.** `request_receiver` verifies it's actually this participant's turn and rejects otherwise — a backend defense-in-depth check; the frontend is required to disable the action input for non-active participants too.
+- **After step 10 (state write)**, if `participant_count > 1`, `notification_manager.notify_next_turn` pushes a `your_turn` event to whichever participant is expected to act next.
+- **`minigame_trigger_evaluator` never fires in multiplayer** — minigames are solo-only by design (v1 scope).
+- **Spectators** get the same event stream as the acting player, relayed live by `spectator_manager` (an in-process pub/sub `publish()` call from within the pipeline itself), independent of the notification channel.
 
-- **Step 2 is not a no-op.** The request receiver verifies it is actually this participant's turn, and rejects the action otherwise. This is a backend defense-in-depth check, not the primary enforcement mechanism.
-- **Frontend enforcement is required.** It must not even be possible for a non-active participant to submit an action from the UI when it isn't their turn. The Play surface disables or hides the action input for non-active participants, informed by the turn-order state each participant's client holds. The backend check in step 2 is a safety net, not a substitute for a correct UI.
-- **After step 9**, a lightweight turn-order notification fires on the separate SSE channel, telling the next participant it is their turn — re-enabling their action input and disabling the previous actor's.
-- The **five-turn batch flush** to `POST /v1/memory/ingest` counts across the whole session, not per participant. Every fifth turn across all participants triggers the batch, regardless of which participant acted.
+Both `notification_manager` and `spectator_manager` are **in-process, single-container pub/sub** — a documented, deliberate scope limit, not multi-instance safe. See [ADR-13](#adr-13-in-process-pub-sub-for-spectator--multiplayer-notification-fan-out).
+
+### Minigame Flow
+
+1. On a matching turn, `minigame_trigger_evaluator` stamps `_pending_minigame` (an internal, non-schema key inside `Playthrough.state`) and the `minigame` SSE event carries the client-safe config (never the server-only outcome-mutation fields — `win_mutation`, `lose_mutation`, `tiered_outcomes`, `timeout_mutation`, and `narrator_instruction_template` all stay server-side).
+2. The frontend renders a full-screen overlay entirely outside the AI narration loop — either the built-in canvas game (`shared/components/minigames/DodgeMinigame/`) or a sandboxed Replit iframe (`ReplitEmbed/`), which reports its outcome back via `postMessage`.
+3. The result is submitted as the *next* turn, with `action_kind: "minigame_result"` and a matching `minigame_id`/`attempt_id` — re-entering the exact same pipeline, resolved by `minigame_result_resolver` before Gemini is called, then narrated normally.
+
+No new `Playthrough.status` value, no new Gemini tools, and no separate endpoint were introduced for this — the entire feature rides the existing `POST /v1/turn` contract via one discriminator field (ADR-10).
+
+### Scene Image Flow
+
+Scene images are not automatic on every turn — they're generated only when the player explicitly chooses the `"see"` action mode, keeping AI image-generation cost and latency off the default narration path. Generation happens after the narration loop completes but before persistence, and a generation failure never fails or degrades the turn — the `scene_image` event is simply omitted.
+
+---
 
 ## Data Models & Schema
 
-### Key Decisions
-
-1. **Scenario mode is fixed at creation.** A scenario is either newbie or master — not both, and not changeable after creation. The two modes have meaningfully different authoring flows and world data structures; allowing mid-lifecycle mode switching would add complexity for no real user benefit.
-
-2. **Discovery metadata is denormalized onto the `Scenario` table.** Genre tags, complexity tier, player count support, estimated playtime, cover image, content tag, and social signals (play count, likes, rating) live as columns directly on `Scenario`, not in a separate metadata table. The discovery feed is the highest-traffic read path — this denormalization eliminates a join on every feed query in exchange for a deliberate write-side trade-off that is acceptable at this scale.
-
-3. **Turn history is a full append-only log, not just current state.** `TurnLog` records every action and narration, sequenced by turn number within a playthrough. This serves two distinct purposes: the player-facing scroll-back feature (a user may want to re-read turns from early in a long campaign), and the memory layer's extraction pipeline, which requires the last ~10 turns as context when processing each batch. The same log serves both without a duplicate system.
-
-### Schema
+`aidnd_db` (Core API + TRS), 21 tables, defined in `apps/core-api/app/db/models/`. All primary keys are `gen_random_uuid()` UUIDs unless noted.
 
 ```
-User
-  user_id           — primary key
-  display_name
-  auth_provider_id  — opaque ID from the external auth provider
-  created_at
+User / auth
+  users
+    user_id, display_name, auth_provider_id (unique), token_version,
+    current_refresh_jti, bio, avatar_url, banner_url, created_at
 
-Scenario
-  scenario_id       — primary key
-  creator_id        — FK → User
-  title
-  mode              — "newbie" | "master", fixed at creation
-  world_data        — jsonb: freeform lore + AI-extracted structure (newbie);
-                      structured world graph entities/relationships (master)
-  status            — "draft" | "published"
-  — Discovery metadata (denormalized for read speed) —
-  genre_tags        — array, fixed taxonomy
-  complexity_tier   — "newbie" | "intermediate" | "master"
-  player_count_support — "solo" | "multiplayer" | "both"
-  estimated_playtime
-  cover_image_url
-  content_tag       — creator-declared, used for lightweight moderation
-  play_count
-  rating_avg
-  — —
-  current_version     — integer, incremented on each publish
-  created_at
-  updated_at
+Core scenario
+  scenarios
+    scenario_id, creator_id → users, title, logline, mode ("newbie"|"master"),
+    world_data (jsonb), status ("draft"|"publishing"|"published"|"publish_failed"|"archived"),
+    genre_tags (text[], GIN indexed), complexity_tier, player_count_support,
+    estimated_playtime, cover_image_url, content_tag, publish_error, published_at,
+    play_count, rating_avg, narrator_persona, setup_schema (jsonb),
+    state_schema (jsonb), end_conditions (jsonb — legacy inline copy; the
+    authoritative, queryable end conditions live in their own table below),
+    checkpoints (jsonb), rules (jsonb), current_version, opening_scene,
+    narration_font, action_chips (text[]), setup_archetypes (jsonb),
+    created_at, updated_at
 
-Playthrough
-  playthrough_id    — primary key
-  scenario_id       — FK → Scenario
-  created_by        — FK → User
-  state             — jsonb: current narrative position / typed game state;
-                      Pydantic-validated before every write (master mode)
-  checkpoint        — current progression point, passed to memory layer for
-                      visibility-scoped retrieval
-  turn_count        — total turns taken so far; used to trigger the ~5-turn
-                      memory batch flush
-  status            — "active" | "completed" | "abandoned"
-  scenario_version   — integer, which version this playthrough was created on
-  scenario_snapshot  — jsonb: static copy of narrator_persona, state_schema,
-                       end_conditions, checkpoints, and active conditions at
-                       creation time. TRS reads this, never Scenario directly.
-  created_at
-  updated_at
+Master-mode authoring
+  entities
+    entity_id, scenario_id → scenarios, entity_type, canonical_name, aliases (text[]),
+    description, obtainable, attributes_schema (jsonb), narrator_instruction,
+    is_player, timestamps
+  facts
+    fact_id, scenario_id → scenarios, subject_entity_id → entities, predicate,
+    object_entity_id → entities (nullable) XOR object_literal (nullable) — exactly
+    one of the two is set, enforced by a CHECK constraint, valid_from, when_active
+    (jsonb), hidden, superseded_fact_id → facts (self-referential), metadata (jsonb),
+    created_at
+  scenario_conditions
+    condition_id, scenario_id → scenarios, label, condition_expression (jsonb),
+    condition_version, narrator_instruction, metadata (jsonb),
+    state_mutation (jsonb — Effect C: pre-turn mutation applied when true), created_at
+  rule_invariants
+    invariant_id, scenario_id → scenarios, label, invariant_expression (jsonb),
+    applies_to, narrator_text, created_at
+  end_conditions
+    end_condition_id, scenario_id → scenarios, condition_expression (jsonb),
+    outcome_tag ("win"|"lose"), outcome_title, outcome_text, is_secret,
+    priority (indexed with scenario_id — first-match-wins evaluation order),
+    created_at
+  scenario_entity_types
+    scenario_entity_type_id, scenario_id → scenarios, type_key, display_label,
+    attributes_schema (jsonb), unique(scenario_id, type_key), timestamps
+  scenario_minigames
+    minigame_id, scenario_id → scenarios, label, minigame_type,
+    trigger_condition_expression (jsonb), priority, outcome_mode,
+    win_mutation / lose_mutation / timeout_mutation (jsonb, nullable),
+    tiered_outcomes (jsonb), narrator_instruction_template, dodge_config (jsonb),
+    replit_embed_url, timestamps
 
-Participant
-  participant_id    — primary key
-  playthrough_id    — FK → Playthrough
-  user_id           — FK → User
-  role              — "owner" | "joined"
-  turn_order_position — integer; determines turn sequence in multiplayer
-  joined_at
+Maps
+  scenario_maps
+    map_id, scenario_id → scenarios, name, image_url, display_order, timestamps
+  map_pins
+    pin_id, map_id → scenario_maps, scenario_id → scenarios, entity_id → entities,
+    x, y, is_start_location (unique partial index — one start location per
+    scenario), created_at
+  map_connections
+    connection_id, scenario_id → scenarios, entity_id_a / entity_id_b → entities
+    (CHECK entity_id_a < entity_id_b — always a sorted pair; unique per scenario),
+    label, created_at
 
-PlaythroughShare
-  share_token       — unique, unguessable token (the share link key)
-  playthrough_id    — FK → Playthrough
-  mode              — "spectate" | "join"
-  created_at
+Music
+  scenario_music
+    scenario_music_id, scenario_id → scenarios, mood (6 fixed values: peaceful,
+    mystery, tension, combat, melancholy, triumph), source ("upload"|"generated"|
+    "default"), track_url, generation_prompt, key, bpm, duration_seconds,
+    unique(scenario_id, mood), timestamps
+  music_generation_jobs
+    job_id, scenario_id → scenarios, creator_id → users, mood, status ("pending"|
+    "running"|"succeeded"|"failed"), prompt, preview_url, key, bpm,
+    duration_seconds, error_message, timestamps
+    — persisted, not in-memory, because Core API is stateless/multi-instance
+  music_generation_log
+    log_id, scenario_id → scenarios, creator_id → users, created_at
+    — append-only; generation quota is COUNT(*) over this table, not a mutable
+    counter, specifically to avoid a race condition on concurrent requests
 
-TurnLog
-  turn_id           — primary key
-  playthrough_id    — FK → Playthrough
-  turn_number       — sequential integer within the playthrough
-  participant_id    — FK → Participant (who acted; nullable for system entries)
-  action_text       — the player's submitted action
-  narration_text    — AI-generated narration, written once streaming completes
-  tool_calls        — jsonb: tool invocations and validated results for this turn,
-                      if any
-  created_at
+Playthrough / session
+  playthroughs
+    playthrough_id, scenario_id → scenarios, created_by → users, state (jsonb),
+    checkpoint, turn_count, status ("active"|"completed"|"abandoned"),
+    scenario_version, scenario_snapshot (jsonb — see ADR-8), ended_outcome_tag
+    ("win"|"lose", nullable), ended_outcome_title, ended_outcome_text, is_playtest,
+    timestamps
+  participants
+    participant_id, playthrough_id → playthroughs, user_id → users,
+    role ("owner"|"joined"), turn_order_position,
+    unique(playthrough_id, user_id) and unique(playthrough_id, turn_order_position),
+    joined_at
+  turn_logs
+    turn_id, playthrough_id → playthroughs, turn_number, participant_id →
+    participants (nullable), action_text, narration_text, tool_calls (jsonb),
+    image_url, location_id, scene_image_prompt, unique(playthrough_id, turn_number),
+    created_at
+  playthrough_shares
+    share_id, share_token (unique, indexed), playthrough_id → playthroughs,
+    mode ("spectate"|"join"), created_at
 
-  INDEX (playthrough_id, turn_number) — supports paginated scroll-back queries
-  ("give me turns 80–100") and last-N-turns fetches for the memory layer
-  extraction pipeline
+Bookmarks / reviews
+  bookmarks
+    bookmark_id, user_id → users, scenario_id → scenarios,
+    unique(user_id, scenario_id), created_at
+  scenario_reviews
+    review_id, scenario_id → scenarios, user_id → users, rating (1–5, CHECK),
+    comment, unique(user_id, scenario_id), created_at
 ```
 
-### Schema Additions (post Scenario Ingestion design)
+**Entity relationships are not a separate concept** — they're modeled as facts with relational predicates (e.g. `member_of`, `allied_with`), same as the original design intended.
 
-The following columns are added to `Scenario` and a new table added, as a result of decisions made during the Scenario Ingestion design pass. All internal structures use jsonb to remain flexible during implementation.
+### `context_memory` (memory layer's own database)
 
-```
-Scenario — additional columns
-  narrator_persona      — text: scenario-specific system prompt / AI narrator
-                          personality. Applies to both newbie and master mode.
-  setup_schema          — jsonb: array of creator-defined player setup fields,
-                          rendered on the play surface before the first turn.
-                          Each entry: { field_key, label, type ("text"|"select"),
-                          options (array, select only), required (bool), metadata (jsonb) }
-                          Character name is always present as a system-level field,
-                          not authored here.
-  state_schema          — jsonb (master mode only): defines the typed game state
-                          fields, their types, and initial values. This is what
-                          the TRS state validator (Pydantic) validates
-                          Playthrough.state against on every write.
-  end_conditions        — jsonb (master mode only): array of win/lose conditions.
-                          Each entry uses the same visual expression tree as
-                          ScenarioCondition, with an outcome tag ("win" | "lose").
-                          Evaluated by TRS after each state write.
-  checkpoints           — jsonb (master mode only): ordered list of named
-                          progression points the creator defines. TRS advances
-                          the current checkpoint; the memory layer uses it for
-                          visibility-scoped retrieval.
-  rules                 — jsonb: empty placeholder for future custom rules /
-                          magic systems. No design now; column exists to avoid
-                          a migration later.
+Separate database, separate migration history (14 migrations). Key tables: `evidence_chunks` (immutable raw text + content hash), `graph_id_registry` (logical key → HydraDB graph-node ID), `ingestion_jobs` (per-chunk pipeline state machine), `memory_embeddings` (versioned pgvector rows, untyped dimension — currently 768-dim via `text-embedding-005`), `extraction_attempts` / `extracted_memory_candidates` / `rejected_extraction_candidates` (extraction audit trail), `graph_write_manifests` (idempotent write log, dedupe key), `fact_search_index` (Postgres full-text mirror for keyword scoring), `journal_steps` (append-only LLM call journal), `save_points` (rollback cutoffs), `pre_authored_fact_metadata` (`checkpoint`, `when_active`, `visible_to_participant_id`, `hidden` for direct-authored/template facts — needed because graph node properties are scalar-only), `scenario_template_checkpoints`, `ingestion_batches` / `ingestion_batch_chunks` (durable batch tracking, survives restart), `external_fact_ids` (maps a caller-assigned ID to the internal graph ID, so `superseded_fact_id` can resolve from Core API's/TRS's own IDs).
 
-ScenarioCondition       — creator-authored persistent active conditions (master mode)
-  condition_id          — primary key
-  scenario_id           — FK → Scenario
-  label                 — creator-facing name (e.g., "Ghost follows player")
-  condition_expression  — jsonb: visual expression tree evaluated by TRS every
-                          turn against current Playthrough.state.
-                          e.g., { field: "player.health", op: "<", value: 5,
-                                  AND: { field: "entered_cave", op: "==", value: true } }
-  condition_version     — version tag for the expression schema. Allows old
-                          expression trees to remain interpretable when the DSL
-                          stretch goal is built. Same rationale as
-                          extraction_version on Fact in the memory layer.
-  narrator_instruction  — text: passed directly to the AI orchestrator on every
-                          turn the condition is active. e.g., "A ghost is
-                          silently following the player."
-  metadata              — jsonb: forward-compatibility field
-  created_at
-```
-
-**Relationships between entities** are not a separate concept. They are modeled as facts with relational predicates (e.g., `member_of`, `allied_with`). The fact model handles them without a dedicated table or UI surface.
+The graph engine itself stores `Session`, `Turn`, `Fact`, `Entity`, `Alias` nodes and `HAS_TURN`, `EXTRACTED_FROM`, `ABOUT`, `STATED_BY`, `SUPERSEDES`, `HAS_ALIAS`, `RELATES_TO` edges — this is where the multi-hop graph traversal in retrieval Phase 2 actually runs.
 
 ---
 
-## Scenario Ingestion
+## Scenario & Memory Ingestion
 
-### The Gap
+This was an open design gap in the original RFC ("the very first turn's context retrieval finds nothing, and nothing decided how lore gets into memory in the first place"). It is now fully implemented, with two distinct, real ingestion paths:
 
-The turn flow and memory integration were designed assuming relevant world facts already exist in the memory layer when context retrieval runs on turn one. What was never decided: how a scenario's foundational lore and world data get into memory in the first place. Without an answer, the very first turn's context retrieval finds nothing.
+**1. Authoring-time ingestion — runs once per scenario, at publish** (`publish_service.py` → `memory_client.ingest_scenario_template()` → memory layer's `POST /v1/memory/template/ingest`):
+- **Master mode — direct write, no LLM extraction.** Entities and facts the creator already specified precisely map close to 1:1 onto the memory layer's Entity/Fact schema and are written directly — running them through an LLM extractor would risk the LLM reinterpreting something the creator specified exactly, contradicting master mode's core trust guarantee.
+- **Newbie mode — LLM extraction.** Freeform lore text is processed by the same extractor used for runtime ingestion, into structured entities and facts.
 
-### Two Distinct Ingestion Paths
+Output either way: a scenario-scoped **template memory space**.
 
-These are fundamentally different operations — not one ingestion pipeline run at different times:
+**2. Runtime ingestion — batched during active play** (`memory_writer` step → memory layer's `POST /v1/memory/ingest`, every N turns, configurable — not a fixed count baked into the design, unlike the original RFC's placeholder "roughly every five turns"). Captures new facts and events as they emerge during a specific playthrough.
 
-1. **Authoring-time ingestion** — runs once per scenario, at Publish. Establishes the initial world-fact baseline that exists before any player ever takes a turn. Output: a scenario-scoped template memory space.
-2. **Runtime ingestion** — runs during active play, batched roughly every five turns. Captures new facts and events that emerge during a specific playthrough. Output: new facts written into the playthrough-scoped memory space. Already designed; unchanged here.
+**Ingest-once-clone-many:** when a player starts a playthrough, Core API's `playthrough_service.py` calls `memory_client.clone_template_memory_space()` (memory layer's `POST /v1/memory/playthrough/{id}/init`), cloning the scenario's template into a fresh, isolated playthrough-scoped memory space before the player reaches the play surface — avoiding re-running LLM extraction per playthrough (ADR-7).
 
-### Authoring-Time Ingestion by Mode
+**Known, documented gap:** direct-authored/cloned facts (the master-mode and template-clone path above) are not currently projected into the memory layer's retrieval indexes (embedding + full-text) — they exist in the graph but are invisible to retrieval Phase 1 seeding until this is fixed. This is called out explicitly in the memory layer's own README as a current limitation, not something this document is glossing over.
 
-**Master mode — direct write, no LLM extraction.**
-The creator has already specified exactly what everything means through the structured editor. Running that input through an LLM extractor would be wasteful and risks the LLM reinterpreting something the creator specified precisely — directly contradicting the core trust guarantee of master mode (the system will not reinterpret your world). Master-mode entities and facts map close to 1:1 onto the memory layer's Entity and Fact schema:
-
-- **Entities**: `canonical_name`, `entity_type`, `aliases`, `description` → memory layer Entity record, direct write.
-- **Facts**: `subject` (entity), `predicate`, `object` (entity or literal), `valid_from` (optional, defaults to story start), `when_active` (optional expression, evaluated against game state during retrieval) → memory layer Fact record, direct write. Supersession between pre-authored facts is handled implicitly via `when_active` conditions, not explicit SUPERSEDES links.
-- **Active conditions** (`ScenarioCondition` rows): not ingested into the memory layer. Evaluated locally by TRS every turn against `Playthrough.state`. When a condition is active, its `narrator_instruction` is passed directly to the AI orchestrator as guaranteed context, independently of memory retrieval.
-
-**Newbie mode — LLM extraction.**
-Creator writes freeform prose (premise + optional lore). The same LLM extractor used for runtime ingestion processes this prose into structured entities and facts, which are then written to the template memory space. No structural authoring required from the creator.
-
-### Template Memory Space — Ingest Once, Clone Per Playthrough
-
-Authoring-time ingestion runs once per scenario into a **scenario-scoped template memory space**. When a player starts a new playthrough, the template is cloned into a fresh **playthrough-scoped memory space**. Dynamic facts from that player's story accumulate there without touching the template or any other player's space.
-
-**Why clone rather than re-ingest per playthrough:** re-running extraction per playthrough would duplicate LLM cost for identical lore and add extraction latency to playthrough start. Ingest-once-clone-many saves both.
-
-**Who triggers the clone:** the Core API, when it creates the `Playthrough` row. By the time the player reaches the play surface, the memory space is already initialized and TRS never has to conditionally check whether memory exists.
-
-### Memory API Contract Change
-
-Pre-authored master-mode facts carry a `when_active` expression evaluated against current game state during retrieval. This requires `POST /v1/memory/query` to accept a game state snapshot alongside the query text — so the memory layer can evaluate `when_active` conditions as part of its retrieval filtering. This is a change to the memory layer API contract from the version specified in the Memory Layer RFC.
-
-### Playthrough Setup Screen
-
-Before the first turn begins, the play surface renders a setup screen:
-
-- **Character name** — always present, system-level, not creator-authored.
-- **Creator-defined setup fields** — rendered from `Scenario.setup_schema`. Each field is either `text` (free input) or `select` (dropdown from creator-defined options). Required fields must be filled before proceeding.
-
-On submission, the Core API initializes `Playthrough.state` with the submitted values (seeding the typed game state for master mode, or a minimal starting state for newbie mode), creates the `Participant` row, triggers the memory clone, and returns — all before the player's first action.
+---
 
 ## API Specifications
 
-The system exposes two distinct services. All endpoints require an auth token in the request header except where noted.
+All endpoints require an auth token except where noted (share-token-gated spectator/join routes, and a couple of explicitly public discovery/health endpoints).
+
+### Core API Endpoints
+
+| Router | Endpoints |
+|---|---|
+| `auth.py` (`/v1/auth`) | `POST /token` (exchange Firebase token) · `POST /refresh` (rotate, cookie-based) · `POST /logout` |
+| `scenarios.py` (`/v1/scenarios`) | `POST /` · `GET /` (discovery/list — filters: `genre_tags`, `complexity_tier`, `player_count_support`, `sort`, `mine`/`saved`/`played`) · `GET /{id}` · `PATCH /{id}` · `DELETE /{id}` · `POST /{id}/publish` · `POST /{id}/playtest` · `POST /{id}/duplicate` · `POST /{id}/bookmark` · `GET`/`POST /{id}/reviews` · `GET /{id}/playthroughs` |
+| `entities.py` | Full CRUD under `/v1/scenarios/{id}/entities`, plus `POST /{entity_id}/type-change-preview` |
+| `facts.py` | Full CRUD under `/v1/scenarios/{id}/facts` |
+| `conditions.py` | Full CRUD under `/v1/scenarios/{id}/conditions` |
+| `invariants.py` | Full CRUD under `/v1/scenarios/{id}/invariants` |
+| `end_conditions.py` | Full CRUD under `/v1/scenarios/{id}/end_conditions`, plus `POST /reorder` (priority order) |
+| `scenario_entity_types.py` | Create/list/update/delete under `/v1/scenarios/{id}/entity-types` |
+| `maps.py` | Full CRUD for maps, pins, and connections under `/v1/scenarios/{id}/maps*` and `/map-connections` |
+| `minigames.py` | Full CRUD under `/v1/scenarios/{id}/minigames`, plus `POST /reorder` |
+| `scenario_music.py` | `GET /v1/scenarios/{id}/music` · `POST /{mood}/upload` · `POST /{mood}/default` · `POST /generate` (202) · `GET /jobs/{job_id}` · `POST /jobs/{job_id}/confirm` · `DELETE /jobs/{job_id}` · `GET /quota` |
+| `music_defaults.py` | `GET /v1/music/defaults` — public, the 6 built-in default tracks by mood |
+| `playthroughs.py` (`/v1/playthroughs`) | `POST /` · `POST /join` · `PATCH /{id}/character` · `GET /{id}` · `POST /{id}/abandon` · `GET /{id}/turns` |
+| `share.py` | `POST /v1/playthroughs/{id}/share` |
+| `logs.py` | `POST /v1/logs` — client-side log ingestion batch (202) |
+| `uploads.py` (`/v1/uploads`) | `POST /scenario-cover-image` · `POST /avatar` · `POST /banner` · `POST /scenario-map-image` · `POST /scenario-audio` · `POST /generate-cover-image` (AI-generated) |
+| `users.py` (`/v1/users`) | `GET`/`PATCH /me` · `GET /me/playthroughs` · `GET /{id}` (public profile) · `GET /{id}/reviews` |
+
+### Turn Resolution Service Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/turn` | Submit a player action; opens the connection that streams the response (see [The Turn Resolution Pipeline](#the-turn-resolution-pipeline) for the full event list). |
+| `GET` | `/v1/session/{playthrough_id}/spectate` | Share-token gated, no auth token required — live SSE relay for spectators. |
+| `GET` | `/v1/session/{playthrough_id}/notifications` | JWT-authed, participant-scoped — multiplayer turn-order signal (`your_turn`, `playthrough_ended`). |
+| `POST` | `/v1/studio/assistant` | Studio AI co-writer chat — a second, independent AI surface from the gameplay narrator, also SSE-streamed. |
+| `GET` | `/health` | Liveness. |
+
+### Memory Layer (internal) Endpoints
+
+Not customer/browser-facing — called only by Core API's and TRS's respective `memory_client.py` files.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/memory/template/ingest` | Authoring-time ingestion at publish (Core API). |
+| `POST` | `/v1/memory/playthrough/{id}/init` | Clone a scenario template into a fresh playthrough-scoped memory space (Core API). |
+| `POST` | `/v1/memory/query` | Structured, ranked fact retrieval for a turn — accepts a game-state snapshot so `when_active` conditions can be evaluated during retrieval (TRS). |
+| `POST` | `/v1/memory/ingest` | Batched turn ingestion (TRS), async — returns a `batch_id`. |
+| `GET` | `/v1/memory/batch/{batch_id}/status` / `POST /retry` | Poll or retry a batch. |
+| `POST` | `/v1/memory/search` | Free-text hybrid retrieval with LLM-synthesized prose answer (used by the memory layer's own chat/demo surfaces, not by the product's gameplay path). |
+| `POST` | `/v1/memory/{context_id}/save-point`, `POST /v1/memory/rollback/{save_id}` | Rollback support — not currently called by product code. |
+| `GET` | `/v1/memory/stream` | SSE stream of live graph writes, for the memory layer's own visualization UI. Auth-gated and scoped to a required `context_id`/`playthrough_id` query param (fixed from an earlier, broader-scoped version — see [Known Limitations](#known-limitations--deferred-work)). |
+| `GET` | `/v1/health` | Liveness — pings both Postgres and the HydraDB graph engine; always returns HTTP 200, caller must inspect the body for `ok`/`degraded`. |
 
 ---
-
-### Core API
-
-Stateless request/response. Handles everything except the live gameplay loop.
-
-#### Auth
-
-**`POST /v1/auth/token`**
-Exchange an external auth provider token (e.g., Google Sign-In) for an internal session token. Thin wrapper — delegates to the external auth provider.
-
----
-
-#### Scenarios
-
-**`POST /v1/scenarios`**
-Create a new scenario in draft status. Request includes `title`, `mode` (`newbie` | `master`, fixed at creation), and `narrator_persona`. Returns the created scenario with its `scenario_id`.
-
-**`GET /v1/scenarios/{scenario_id}`**
-Fetch full scenario details including all authored content. Creator-only for draft scenarios; public once published.
-
-**`PATCH /v1/scenarios/{scenario_id}`**
-Update scenario fields (title, narrator_persona, world_data, setup_schema, state_schema, end_conditions, checkpoints, rules). Allowed on both draft and published scenarios. Active playthroughs are unaffected — they are pinned to their `scenario_snapshot` at creation. Increments `current_version` on the Scenario.
-
-**`DELETE /v1/scenarios/{scenario_id}`**
-Delete a draft scenario. Published scenarios cannot be deleted while active playthroughs exist.
-
-**`POST /v1/scenarios/{scenario_id}/publish`**
-Trigger the publish flow: runs the lightweight content check against the declared `content_tag`, then triggers authoring-time ingestion into the memory layer (LLM extraction for newbie mode, direct write for master mode), creating the scenario-scoped template memory space. Returns `202 Accepted` — publish is asynchronous. Scenario status moves to `published` on completion.
-
----
-
-#### Master-Mode Authoring Sub-Resources
-
-These endpoints manage the structured world content for master-mode scenarios. All write directly to the memory layer's Entity/Fact schema shape in Postgres (`world_data`), bypassing LLM extraction.
-
-**`POST /v1/scenarios/{scenario_id}/entities`**
-Add an entity. Request: `canonical_name`, `entity_type`, `aliases` (optional), `description`.
-
-**`PATCH /v1/scenarios/{scenario_id}/entities/{entity_id}`**
-Update an entity's fields.
-
-**`DELETE /v1/scenarios/{scenario_id}/entities/{entity_id}`**
-Remove an entity and any facts that reference it as subject or object.
-
-**`POST /v1/scenarios/{scenario_id}/facts`**
-Add a fact. Request: `subject_entity_id`, `predicate`, `object` (entity ID or literal), `valid_from` (optional), `when_active` (optional expression jsonb), `superseded_fact_id` (optional — the fact this one explicitly replaces).
-
-**`PATCH /v1/scenarios/{scenario_id}/facts/{fact_id}`**
-Update a fact's fields.
-
-**`DELETE /v1/scenarios/{scenario_id}/facts/{fact_id}`**
-Remove a fact.
-
-**`POST /v1/scenarios/{scenario_id}/conditions`**
-Add an active condition. Request: `label`, `condition_expression` (jsonb expression tree), `narrator_instruction`.
-
-**`PATCH /v1/scenarios/{scenario_id}/conditions/{condition_id}`**
-Update a condition.
-
-**`DELETE /v1/scenarios/{scenario_id}/conditions/{condition_id}`**
-Remove a condition.
-
----
-
-#### Discovery Feed
-
-**`GET /v1/scenarios`**
-Returns published scenarios. Supports filtering and sorting via query parameters:
-- `genre_tags` — one or more tags from the fixed taxonomy
-- `complexity_tier` — `newbie` | `intermediate` | `master`
-- `player_count_support` — `solo` | `multiplayer` | `both`
-- `estimated_playtime` — range filter (short / medium / long, exact ranges defined at implementation)
-- `sort` — `play_count` | `rating_avg` | `created_at` (default: `created_at` descending)
-- `cursor` — pagination cursor for infinite scroll
-
-Response: array of scenario summary objects (discovery metadata fields only, not full world data), next cursor.
-
----
-
-#### Playthroughs
-
-**`POST /v1/playthroughs`**
-Create a new playthrough. Request: `scenario_id`, `setup_values` (map of `field_key` → value, covering character name and any creator-defined setup fields). Core API: creates the `Playthrough` and `Participant` rows, initializes `Playthrough.state` from `state_schema` initial values merged with setup input, writes `scenario_snapshot`, triggers the memory layer clone (`POST /v1/memory/playthrough/{id}/init`). Returns the `playthrough_id` and initialized state once clone completes.
-
-**`GET /v1/playthroughs/{playthrough_id}`**
-Fetch playthrough info (status, turn count, current participant, participant list). Auth-gated: only participants and valid share-token holders can access.
-
-**`GET /v1/playthroughs/{playthrough_id}/turns`**
-Paginated `TurnLog` for a playthrough. Used by: players scrolling back through history, spectators loading past turns before connecting to the live stream. Query params: `page`, `page_size`, `from_turn` (fetch from a specific turn number). Auth-gated: participants and valid spectate-token holders.
-
-**`POST /v1/playthroughs/{playthrough_id}/share`**
-Generate a share token. Request: `mode` (`spectate` | `join`). Returns a `share_token` and the full shareable URL. One token per mode per playthrough is sufficient; implementation may return existing token if one already exists.
-
-**`POST /v1/playthroughs/join`**
-Join a playthrough as a multiplayer participant via a `join`-mode share token. Request: `share_token`. Creates a new `Participant` row with `role: joined` and assigns a `turn_order_position`. Fails if the scenario's `player_count_support` is `solo`, or if the playthrough is not `active`.
-
----
-
-#### Ratings
-
-**`POST /v1/scenarios/{scenario_id}/rating`**
-Submit or update a rating (integer 1–5). Requires the caller to have at least 10 turns played in any playthrough of this scenario — enforced by checking `Playthrough.turn_count >= 10` for the requesting user. Updates `Scenario.rating_avg` as a running average. A user may update their rating; their previous rating is replaced, not added.
-
----
-
-### Turn Resolution Service
-
-Stateful per turn. Handles the live gameplay loop and streaming.
-
-**`POST /v1/turn`**
-Submit a player action. Request body: `playthrough_id`, `participant_id`, `action_text`. Opens the connection that carries the streamed response (`text/event-stream`). The stream emits:
-- `narration` events — token-by-token AI narration as it is generated
-- `state_update` event — the validated, updated game state, emitted once generation completes
-- `mood` event — a lightweight mood tag for background music (stretch, if built)
-- `done` event — signals stream end; connection closes
-
-On the 10th turn, also emits a `play_count_update` signal internally (TRS increments `Scenario.play_count` directly in Postgres).
-
-**`GET /v1/session/{playthrough_id}/notifications`**
-Multiplayer-only SSE channel. Long-lived connection per participant. Emits:
-- `your_turn` — signals the next participant that it is now their turn (sent after the previous actor's turn completes)
-- `participant_joined` — when a new participant joins via share link
-- `playthrough_ended` — when a win/lose condition is met
-
-Not used for narration content. Solo play does not use this endpoint.
-
-**`GET /v1/session/{playthrough_id}/spectate`**
-Live SSE stream for spectators holding a valid `spectate`-mode share token. Emits the same `narration`, `state_update`, and `done` events as `POST /v1/turn`, but read-only. Spectators load turn history separately via `GET /v1/playthroughs/{playthrough_id}/turns` (Core API), then connect here to follow the live session.
 
 ## Cross-Cutting Concerns
 
 ### Latency & Performance
 
-Turn resolution involves memory retrieval, one or more Gemini calls, optional tool-call round-trips, and a Postgres state write. This takes real, variable time. The mitigation is streaming: narration tokens begin reaching the player as soon as Gemini starts generating, so perceived latency is the time to the first token, not the time to a complete response. The target audience — turn-based AI RPG and roleplay players — is accustomed to "the AI is thinking" pauses; this is a conscious, accepted trade-off, not an oversight.
-
-Per-step latency expectations:
-- **Active condition evaluation** (TRS, post state load): cheap and deterministic — a local expression tree evaluation against an in-memory jsonb, no external calls.
-- **Memory retrieval** (`POST /v1/memory/query`): target 1–2 seconds. Player-facing and blocking; architecture is designed around this target.
-- **Gemini call + tool-call round-trips**: variable. Streaming masks end-to-end duration; the player sees output within seconds of generation starting.
-- **Postgres reads** (state loader, TurnLog): fast indexed queries, not a latency concern at hackathon scale.
-- **Postgres write** (state writer, post-generation): happens after narration has already streamed; not player-perceived.
+Turn resolution involves memory retrieval, one or more Gemini calls, optional tool-call round-trips, and a Postgres write — real, variable time, mitigated by streaming (perceived latency is time-to-first-token, not time-to-complete-response). Configured timeouts: Gemini calls, 30s (`gemini_timeout_seconds`), with up to 2 retries via `tenacity`, retrying only on classified-transient errors (timeout, server error, or a 429). Memory-layer calls have their own per-operation timeouts (query, ingest, template-ingest, and clone each configured separately — clone and template-ingest run longer, since they can trigger LLM extraction and are less latency-sensitive than an in-turn query).
 
 ### Authentication & Authorization
 
-Auth is required for every endpoint across both services — no anonymous access, including spectators. The exact auth provider is deferred to implementation (e.g., Google Sign-In / Firebase Auth); this RFC treats it as a pluggable external dependency. The auth layer is explicitly lightweight for the hackathon and flagged for replacement with a more robust system post-hackathon.
+Firebase Auth (Google Sign-In) issues the initial identity token. Both Core API and TRS then issue their **own** short-lived JWT access tokens plus a longer-lived refresh token (rotated on use, tracked via `current_refresh_jti` on `users` to detect reuse), rather than passing the Firebase token through directly on every request. A development-only header bypass (`X-Dev-User-Id`) exists, gated by `environment != "production"`.
 
-Authorization rules:
-- **Scenario** — draft scenarios are readable/editable by the creator only. Published scenarios are publicly readable (discovery feed, detail view).
-- **Playthrough** — readable by participants and valid share-token holders only. Not publicly browsable.
-- **Share tokens** — unguessable tokens validated on every request against `PlaythroughShare`. `spectate` tokens grant read-only access to turn history and the live spectate stream. `join` tokens additionally allow creating a `Participant` row.
-- **Ratings** — enforced per-user, gated on 10+ turns played in any playthrough of the scenario.
-- **Turn submission** — TRS validates that the submitting participant is the active turn holder before processing. Frontend enforces this too (action input disabled for non-active participants), but backend validation is the authoritative check.
+Authorization rules, matching the real schema:
+- **Scenarios** — draft scenarios readable/editable by their creator only; published scenarios are publicly readable.
+- **Playthroughs** — readable by participants and valid share-token holders only.
+- **Share tokens** — unguessable, validated against `playthrough_shares` on every request; `spectate` mode grants read-only turn-history and live-stream access, `join` mode additionally allows creating a `Participant` row.
+- **Reviews** — one review per user per scenario (`unique(user_id, scenario_id)` on `scenario_reviews`), enforced at the database level, not just application logic.
+- **Turn submission** — TRS validates the submitting participant is the active turn-holder before processing; the frontend also disables the action input client-side, but the backend check is authoritative.
 
 ### Error Handling & Degradation
 
-**Gemini timeout or failure mid-turn:**
-TRS retries the Gemini call. During the retry window, the player receives a visible in-stream message ("taking longer than expected…") rather than a silent wait. If retries are exhausted, the player receives an explicit failure notice and the turn is not committed — `Playthrough.state` and `TurnLog` are not written, the player may resubmit their action.
+**Gemini failure mid-turn:** retried (see Latency above); if retries are exhausted, the turn ends with a `degraded` SSE event carrying a user-facing message — `Playthrough.state` and `TurnLog` are not written, so the player can resubmit cleanly.
 
-**Postgres write failure after narration has streamed:**
-Narration has already reached the player, but the state write failed. TRS retries the write. If retries fail, the session degrades gracefully: the player is notified that the session state may not have saved correctly, but can continue playing. The next successful state write will reflect the correct state from that point forward. Partial state loss between the failed write and recovery is an accepted trade-off under graceful degradation.
+**Postgres write failure after narration has streamed:** `state_writer` retries with optimistic-lock handling; narration has already reached the player regardless, so a failure here degrades gracefully rather than silently corrupting the session.
 
-**Memory batch failure:**
-The memory layer operates on a best-effort, eventually-consistent basis relative to Postgres. If a `POST /v1/memory/ingest` batch fails, TRS does not fail the turn or block the player — gameplay continues. On the next batch trigger (5 turns later), TRS sends both the current batch and the previously failed turns (up to 10 turns total). If this combined batch also fails, the player receives a low-key, in-fiction-appropriate notice (e.g., "the world may not perfectly remember recent events") rather than a technical error. Play is never blocked by memory write failures. Postgres `TurnLog` remains the durable source of truth; memory staleness is recoverable.
+**Memory batch failure:** swallowed and logged — gameplay is never blocked by it. `Postgres.turn_logs` remains the durable source of truth; memory staleness is always recoverable on the next successful batch.
+
+**Scene image / minigame pre-warm failure:** both are explicitly best-effort and swallowed — they never affect turn success.
 
 ### Content Safety
 
-Content safety at publish time is the only active mechanism. Creators self-declare a content tag at publish; the publish flow runs a lightweight check validating the submitted content against the declared tag. There is no open-ended content classification.
-
-Runtime AI narrator content guardrails during active play are explicitly not built for this project. The narrator inherits its behavioral constraints from the scenario's declared content tag via the system prompt (`narrator_persona`). This is an acknowledged gap, not an oversight, and is flagged for a more robust solution post-hackathon.
+Unchanged from the original design: creators self-declare a content tag at publish, validated by a lightweight check. There is still no runtime content-moderation layer during active play — the narrator's behavioral constraints come entirely from the scenario's `narrator_persona` system prompt. This remains an acknowledged, not accidental, gap.
 
 ### Data Consistency
 
-Postgres is the single source of truth for all product state. The memory layer is an eventually-consistent auxiliary system — it is always derived from or consistent with Postgres data, never ahead of it, and its staleness is bounded by the batch cadence (roughly every 5 turns). Playthrough continuity never depends on memory being current; a stale or temporarily unavailable memory layer degrades retrieval quality but does not break play.
+Postgres (`aidnd_db`) is the single source of truth for all product state. The memory layer is eventually consistent relative to it, bounded by the configured batch interval — playthrough continuity never depends on memory being current. `Playthrough.state` is always Pydantic-validated before write (ADR-4); an invalid tool-call mutation is rejected before it reaches Postgres, and the narrator recovers within the same generation.
 
-`Playthrough.state` is always Pydantic-validated before write. An invalid proposed mutation (from a Gemini tool call) is rejected before it reaches Postgres; the narrator is expected to recover within the same generation. A state write that fails after validation is retried; if it cannot be persisted, the player is notified but can resubmit.
-
-### Partner Track
-
-The selected partner track is **Replit**. Creators author master-mode minigames as a new scenario sub-resource (`scenario_minigames`): a curated built-in dodge/survival challenge, or a "bring your own" path where the creator builds and hosts their own minigame on Replit and pastes the deployed URL into Studio. At play-time, the Play frontend live-embeds that URL in a sandboxed iframe during an interstitial, AI-narrator-free sequence, and the embedded page reports its outcome back via `postMessage`. A companion Replit starter template (`replit-template/`) ships a small SDK (`minigame-sdk.js`) creators fork/remix to build their own minigame without touching this repo's code, wired to the same result contract from the start.
-
-This integration sits at a new, purpose-built slot — a play-time interstitial handoff — rather than reusing the memory-layer/AI-orchestration/storage-tier slots originally proposed as candidates (see ADR-10).
+---
 
 ## Architecture Decision Records (ADRs)
 
 ### ADR-1: Core API and Turn Resolution Service as two separate services
 
-**Context:** The system has two radically different request profiles — simple CRUD and discovery queries, and the complex, stateful, streaming, multi-step gameplay loop.
-
-**Decision:** Split into two services. Core API handles auth, scenario CRUD, publish, discovery, and social signals — stateless, fast, easy to scale horizontally. Turn Resolution Service handles the entire per-turn gameplay loop — stateful for the duration of a turn, long and variable latency, highest complexity and failure surface.
-
-**Alternatives considered:** A single unified API was rejected because it would couple simple discovery queries to the most complex, failure-prone code path, making both harder to deploy, scale, and reason about independently.
-
-**Consequences:** Two services to deploy and monitor. Clean separation of concerns and a presentable "orchestration layer" architectural story. Each service can be scaled and updated independently.
-
----
+**Decision:** Split by request profile — Core API for simple CRUD/discovery, TRS for the complex, stateful, streaming gameplay loop. **Confirmed as-built**: the two remain cleanly separate, with TRS holding its own read-only mirror of the shared ORM models rather than importing Core API's.
 
 ### ADR-2: SSE over WebSocket
 
-**Context:** The system requires server-to-client streaming for narration and multiplayer turn-order notifications.
-
-**Decision:** Server-Sent Events (SSE) for both the per-request narration stream and the separate multiplayer notification channel. Player actions travel over standard HTTP POST; streaming is strictly server-to-client.
-
-**Alternatives considered:** WebSocket was rejected because multiplayer is explicitly turn-based, not real-time or simultaneous — WebSocket's bidirectional capability goes entirely unused. SSE has simpler reconnection semantics (built-in browser auto-reconnect), simpler server-side scaling (no sticky-session or pub-sub backplane for a server-to-client-only model), and is consistent with the memory layer's own `GET /v1/memory/stream` precedent.
-
-**Consequences:** No bidirectional persistent connection. Player actions are standard HTTP requests. SSE connections are per-request for narration (open for one turn, then close) and persistent for the multiplayer notification channel.
-
----
+**Decision:** Server-Sent Events for both the per-request narration stream and the multiplayer notification channel — multiplayer's turn-based nature never needs WebSocket's bidirectional capability. **Confirmed as-built, with one refinement**: the actual transport is not the browser's native `EventSource` (see [ADR-11](#adr-11-fetch-based-sse-transport-instead-of-native-eventsource)).
 
 ### ADR-3: PostgreSQL as single primary store
 
-**Context:** The system needs durable storage for scenarios, playthroughs, accounts, discovery metadata, and turn history.
-
-**Decision:** PostgreSQL as the sole primary store. `jsonb` columns handle schema-flexible content (world data, game state, scenario snapshots) while keeping core relational structure queryable and indexed. Discovery feed filtering runs as plain indexed Postgres queries — no dedicated search engine needed at hackathon scale.
-
-**Alternatives considered:** A dedicated vector database on the product side was rejected — semantic search over world facts is the memory layer's responsibility, not something to replicate in core storage. A separate search engine (e.g., Elasticsearch) was rejected as unnecessary overhead at hackathon scale.
-
-**Consequences:** Single operational dependency for primary storage. Reduces new-tech overhead given existing team familiarity with Postgres via the memory layer. `jsonb` flexibility trades some query power for schema agility where needed.
-
----
+**Decision:** Postgres as sole primary store, `jsonb` for schema-flexible content. **Confirmed as-built**, and extended: the memory layer independently made the same call for its own domain (`context_memory`, with pgvector added for embeddings) rather than introducing a separate vector database into the product's core storage.
 
 ### ADR-4: Validate-before-apply for AI tool-call state mutations
 
-**Context:** The AI narrator (Gemini) can invoke tools to mutate structured game state in master-mode scenarios. Invalid mutations must be caught.
-
-**Decision:** Pydantic models define the valid game state schema (field names, types, enums, ranges). A proposed mutation from a tool call is validated against the Pydantic model before being applied to `Playthrough.state`. Invalid mutations are rejected and returned to Gemini as a failure result within the same generation; the AI recovers without an extra round-trip.
-
-**Alternatives considered:** Apply-then-rollback was rejected — it wastes tokens and LLM cost on a committed mutation that then has to be undone. Post-hoc validation after streaming completes was rejected — by then narration describing the invalid state has already reached the player.
-
-**Consequences:** Validation is schema/constraint-level only — it catches type violations, out-of-range values, and invalid entity references, but not semantic game-logic errors (e.g., whether a character can physically reach a location). This boundary is stated honestly; the RFC does not overclaim validation coverage.
-
----
+**Decision:** Pydantic-validate every proposed tool-call mutation before applying it; invalid mutations are rejected and returned to Gemini as a failure result within the same generation. **Confirmed as-built** — this is `state_validator.py`, called from inside `ai_orchestrator.py`'s tool-calling loop (not a separate top-level pipeline step, a detail the original RFC's step list didn't capture).
 
 ### ADR-5: Batched memory writes — not per-turn, not per-tool-call
 
-**Context:** The memory layer accepts text and extracts facts via an LLM call. Writing after every turn or every tool call would scale cost linearly with gameplay.
-
-**Decision:** Memory writes are batched, triggered roughly every five turns. The exact trigger (fixed N, checkpoint-based, or time-based) is deferred to implementation. Per-turn and per-tool-call immediate writes were explicitly rejected.
-
-**Alternatives considered:** Per-tool-call immediate writes were considered (captures structured changes right away) and rejected — the cost scales with every structured action rather than being bounded and predictable. Per-turn writes were rejected for the same reason.
-
-**Consequences:** A slight staleness window exists between game events and their appearance in memory — acceptable because narration has already reached the player before any batch runs, and nothing player-facing depends on immediate memory durability. Batch failures are handled via a 10-turn catchup on the next trigger, with a low-key player notice if that also fails.
-
----
+**Decision:** Batch memory writes on a configurable turn interval rather than writing per-turn or per-tool-call. **Confirmed as-built** — the interval is a real config value (`memory_batch_turn_interval`), not hardcoded to five as the original placeholder suggested.
 
 ### ADR-6: Memory layer treated as an external system
 
-**Context:** mem1 is a large, pre-existing, independently developed service with its own UI, API, and storage. The main product integrates with it headlessly via its API contract.
-
-**Decision:** mem1 is modeled as a peer external system at C4 Level 1 — equivalent in status to Gemini or the auth provider — not folded into the product's own containers. It is explicitly disclosed as a pre-existing, reused component, not built for this hackathon.
-
-**Alternatives considered:** Treating it as an internal container was rejected — it would misrepresent authorship for hackathon judging and bloat Level 2/3 diagrams with another system's internals.
-
-**Consequences:** Clean architectural boundary. The Turn Resolution Service is designed against a stable API contract (`POST /v1/memory/query`, `POST /v1/memory/ingest`), decoupling the product architecture from the memory layer's internal implementation. The underlying implementation (mem1 as-is, the ideal design, or a mixture) remains an open question that does not block the main RFC.
-
----
+**Decision:** Model the memory layer as a peer external system at C4 Level 1, not folded into the product's own containers, even though — unlike the original RFC's assumption that it was a wholly separate pre-existing product ("mem1") — it was actually built as part of this project. **Updated rationale**: the architectural boundary is preserved anyway, because every integration point is a stable HTTP contract (`apps/*/integrations/memory_client.py`), which keeps the product's architecture decoupled from the memory layer's internal implementation regardless of who built it.
 
 ### ADR-7: Ingest-once-clone-many for scenario memory template
 
-**Context:** Every playthrough of a published scenario needs its own isolated memory space, pre-populated with the scenario's foundational world facts.
-
-**Decision:** Authoring-time ingestion runs once per scenario at publish, creating a scenario-scoped template memory space. When a player starts a new playthrough, the template is cloned into a fresh playthrough-scoped space. Dynamic facts from that player's story accumulate there independently.
-
-**Alternatives considered:** Re-ingesting per playthrough was rejected — it duplicates LLM extraction cost for identical lore and adds extraction latency to every playthrough start.
-
-**Consequences:** The memory layer requires a distinct clone operation (`POST /v1/memory/playthrough/{id}/init`) separate from ingestion. Playthrough start latency includes the clone operation, handled by Core API before the player reaches the play surface.
-
----
+**Decision:** Ingest once per scenario at publish; clone into a fresh space per playthrough. **Confirmed as-built** — `POST /v1/memory/playthrough/{id}/init`, called from `playthrough_service.py`.
 
 ### ADR-8: Scenario versioning via `scenario_snapshot`, not a version table
 
-**Context:** Creators can edit published scenarios. Active playthroughs must remain on the version they were created on.
-
-**Decision:** At playthrough creation, Core API writes a `scenario_snapshot` jsonb column on `Playthrough` containing all scenario-authored content that TRS reads during turns (`narrator_persona`, `state_schema`, `end_conditions`, `checkpoints`, active conditions). TRS reads only per-playthrough data — it never reads from `Scenario` during active turns. `Scenario` stores only a `current_version` integer for display and audit.
-
-**Alternatives considered:** A `ScenarioVersion` table snapshotting all scenario content on each publish was considered and rejected — the snapshot-on-playthrough-creation approach achieves the same isolation more simply, since TRS only ever needs the data that was current at playthrough creation, and that data is already per-playthrough.
-
-**Consequences:** Playthrough creation is slightly heavier (writes a potentially large snapshot). No old scenario content is stored beyond what live playthroughs reference. Editing a scenario does not affect any in-flight playthrough.
-
----
+**Decision:** Snapshot scenario content onto `Playthrough.scenario_snapshot` at creation time rather than a separate version table; TRS reads only per-playthrough data. **Confirmed as-built** — `state_loader.py` never queries `scenarios` directly.
 
 ### ADR-9: `when_active` on facts and active conditions, instead of trigger-writes-to-memory
 
-**Context:** Master-mode scenarios need to express world states that are conditionally true (e.g., "Sukuna is the strongest, but only after checkpoint 3") and persistent behaviors that must always reach the narrator (e.g., "a ghost follows the player while health < 5").
-
-**Decision:** Two mechanisms replace a trigger-writes-to-memory model. Pre-authored facts carry an optional `when_active` expression evaluated against current game state during retrieval — the fact is always in memory, returned only when its condition is met. Active conditions (`ScenarioCondition`) carry a condition expression evaluated by TRS every turn; when active, their `narrator_instruction` is passed directly to the AI orchestrator as guaranteed context, independently of memory retrieval.
-
-**Alternatives considered:** A trigger mechanism that writes new facts to memory when conditions fire was rejected — it requires a separate write path, adds operational complexity, and for persistent behaviors specifically, is unreliable since memory retrieval is relevance-based and may not surface the fact on every turn. The two-mechanism approach handles both use cases more cleanly.
-
-**Consequences:** `POST /v1/memory/query` must receive a game state snapshot so the memory layer can evaluate `when_active` conditions during retrieval — a change to the memory layer API contract. TRS gains a lightweight condition evaluation step after state loading on every turn.
-
----
+**Decision:** Conditionally-true facts carry a `when_active` expression evaluated at retrieval time; persistent behaviors are handled by `scenario_conditions`, evaluated by TRS every turn and injected directly as narrator context. **Confirmed as-built.**
 
 ### ADR-10: Minigames as an interstitial handoff, not a new pause/resume state machine
 
-**Context:** Master-mode scenarios need short, visually distinct minigame sequences (a curated dodge game, or a creator's own Replit-embedded app) that must run entirely outside the AI narrator's turn loop.
+**Decision:** No new `Playthrough.status`, no new endpoint — a minigame trigger rides the existing turn pipeline via one `action_kind` discriminator (`"narrative"` vs `"minigame_result"`). **Confirmed as-built, with real specifics the original design didn't have yet**: `minigame_trigger_evaluator.py` is solo-only and priority-ordered against `scenario_minigames`; a matched trigger explicitly suppresses `end_condition_evaluator` on the same turn ("minigame wins"); result submission is validated against both `minigame_id` and `attempt_id` to reject a stale overlay resolving a newer encounter; Replit-embed minigames get a best-effort, SSRF-guarded pre-warm ping (https-only, hostname-allowlisted, resolved-IP public-only check) before the client even opens the iframe.
 
-**Decision:** A minigame trigger is evaluated like an end condition (own table, `scenario_minigames`, own `trigger_condition_expression`, priority-ordered, first-match-wins) against the final state of an otherwise-normal turn. On match, the turn completes normally — narration streams as usual — and a new SSE event (`minigame_event`) carries the minigame's play-time config to the client. The frontend renders a full-screen overlay entirely outside the AI loop. On completion, the client submits the result as the *next* turn, via a new `action_kind` discriminator on the existing turn-submission schema, re-entering the exact same pipeline; the deterministic outcome mutation is applied before Gemini is called (same timing convention as active conditions' Effect C), and the AI narrates the outcome via the existing orchestrator with an injected instruction. A "pending minigame" marker lives inside `Playthrough.state` as an internal, non-schema key, the same convention already used for `_last_changed_fields`.
+### ADR-11: Fetch-based SSE transport instead of native EventSource
 
-**Alternatives considered:** A new `Playthrough.status` value (e.g. `"in_minigame"`) plus a dedicated pause/resume sub-flow and separate endpoint was rejected — it would introduce a second state machine parallel to the turn pipeline, require new endpoints outside `POST /v1/turn`, and complicate every existing status check for a feature that, functionally, only ever needs "reject a mismatched next action" and "resume where narration left off." Extending `scenario_conditions`' `state_mutation` (Effect C) to also carry minigame-trigger metadata was rejected — end conditions and minigames both need first-match-wins priority ordering and an explicit outcome payload that active conditions' Effect C shape doesn't have, so a dedicated table mirroring `end_conditions` fit the existing precedent better than overloading a shape designed for something else.
+**Context:** The browser's native `EventSource` API cannot attach custom headers, and this app's auth is JWT-bearer, carried in an `Authorization` header — not a cookie `EventSource` could ride along automatically.
 
-**Consequences:** No new Playthrough status, no new Gemini tools, no separate sub-flow endpoint — the entire feature rides the existing `POST /v1/turn` request/response contract via one new discriminator field. `request_receiver.py` gains gating logic to reject a mismatched action while a minigame is pending, and `end_condition_evaluator` is suppressed on a turn where a minigame just triggered. Multiplayer playthroughs never trigger minigames (v1 scope), evaluated at trigger time by participant count.
+**Decision:** `shared/lib/sse-client.ts` implements its own fetch-based SSE reader (`createGetSSEConnection` for persistent GET channels, `createPostSSEConnection` for one-shot POST-then-stream channels), and it is — by explicit in-code convention — the only file besides `shared/hooks/useSSE.ts` allowed to know a streamed connection exists. `grep "new EventSource"` across the frontend returns zero hits.
+
+**Consequences:** More code than reaching for the browser primitive, but auth stays consistent with every other request in the app (same bearer-token pattern, same interceptor logic mirrored manually since SSE requests bypass axios entirely). `play.store.ts` and the Studio assistant-chat hook call `createPostSSEConnection` directly rather than going through `useSSE`, because they need to trigger/retry a stream from outside a React component's lifecycle (e.g. a "retry last turn" store action).
+
+### ADR-12: Vertex AI accessed via Express Mode API key everywhere
+
+**Context:** Every AI integration in the system (TRS's narration/tool-calling and scene-image clients, Core API's cover-art and music clients, the memory layer's embedding client) needs to call a Vertex AI model.
+
+**Decision:** All of them use the same pattern — `genai.Client(vertexai=True, api_key=...)`, Vertex AI **Express Mode**, not full ADC/service-account-based Vertex auth.
+
+**Consequences:** Simpler to provision (one API key secret per service, no per-service IAM role wiring for model access specifically), but the API key must genuinely be a Vertex AI Express Mode key with access to every specific model in use (`gemini-3.5-flash-lite`, `gemini-3.1-flash-image`, Lyria-002, `text-embedding-005`) — a real, previously-hit source of confusing failures when a key or model access doesn't line up (e.g. Imagen access was unavailable on this project, which is why image generation goes through `generate_content`'s `inline_data` extraction instead of the dedicated Imagen API).
+
+### ADR-13: In-process pub/sub for spectator & multiplayer notification fan-out
+
+**Context:** Spectators and the next-turn multiplayer participant both need a live push signal when a turn completes.
+
+**Decision:** `session/spectator_manager.py` and `session/notification_manager.py` are plain in-process `dict`-backed pub/sub (`playthrough_id → list[Queue]`), not backed by Redis or any cross-instance broker.
+
+**Consequences:** Explicitly documented in-code as scoped to this stack's single-container Cloud Run deployment — it would silently stop working correctly (a spectator connected to one instance would never see events published from another) if TRS were ever scaled to multiple concurrent instances. Both are best-effort/no-op if the target has no open connection; the frontend does not depend solely on push for correctness. Flagged in [Known Limitations](#known-limitations--deferred-work), not something to scale past without fixing first.
+
+### ADR-14: Storage client abstracts GCS vs local disk by environment
+
+**Context:** Uploaded/generated media (cover images, scene images, map images, audio) needs somewhere durable to live in production, but requiring real GCS credentials for every local dev run is friction with no benefit.
+
+**Decision:** A single `storage_client.py` (one per service that needs it) branches on `environment`: GCS in production, local disk (served via a mounted static-files path) otherwise — callers never know or care which backend is active.
+
+**Consequences:** One code path to test either way. The trade-off is environment-based, not feature-based — if `GCS_BUCKET_NAME` is ever left unset in a production deployment by mistake, storage silently falls back to local disk, which is ephemeral per Cloud Run instance and would produce broken URLs after any instance restart. Worth an explicit startup check if this ever bites in practice.
 
 ---
 
-## Open Items
+## Known Limitations & Deferred Work
 
-The following are explicitly unresolved and must be decided before or during the build:
+Real, current gaps — not aspirational "open items" from a pre-build design, but things actually true of the system today:
 
-**Fork playthroughs (Open-1)**
-Whether a player can branch their own copy from a shared playthrough session is still undecided. It was scoped as "build only if cheap given core architecture." Must be resolved with the team once core session architecture is implemented — the `PlaythroughShare` and `Playthrough` data models are designed to accommodate it, but the clone/branch operation and its memory layer implications are not designed.
-
-**Partner track (Open-2) — Resolved**
-The hackathon partner track is Replit, integrated as master-mode minigames (a curated built-in challenge plus a Replit-embed path). See the Partner Track section above and ADR-10.
-
-**Auth provider specifics (Open-3)**
-The exact auth provider and implementation method are deferred to implementation time. The system is designed to treat auth as an external dependency; swapping providers requires no architectural change. Explicitly flagged for replacement with a more robust system post-hackathon.
-
-**Memory batch trigger specifics (Open-4)**
-The exact batching trigger — fixed N turns, checkpoint-based, or time-based — is deferred to implementation. Current design uses "roughly every five turns" as a placeholder. Does not affect any other architectural decision.
-
-**Effect C: trigger-driven direct game state mutation (Open-5)**
-Active conditions currently instruct the narrator but do not directly mutate `Playthrough.state`. A future extension (Effect C) would allow creator-authored conditions to directly change game state fields when they fire — without waiting for the AI narrator's tool call. Not designed, not built; deferred to a future design pass as it introduces a second state-mutation path alongside the AI narrator's tool calls.
-
-
-
-Decisions Missing:
-
-- On master-mode authoring UI:
-  Deliberately deferred. The exact fields, controls, and flow for master-mode authoring are not specified in this RFC. This isn't an oversight, the actual shape of this UI will only become clear once we're building it and iterating against real use. Specifying it in detail now would mean designing something we'd likely throw away. What is committed at the RFC level: master-mode input is fully manual and structured (no AI inference on creator intent), and it must produce data that maps directly onto the memory layer's Fact/Entity schema without going through LLM extraction. The concrete authoring UI is an implementation-phase decision, not a design gap.
-
-- On the template-clone mechanism:
-
-Deliberately deferred, pending memory layer team input. The mechanics of cloning a scenario's template memory space into a new playthrough-scoped space (copy vs. reference, performance characteristics at scale) are not specified here. This decision depends on the underlying memory layer implementation, mem1, the from-scratch ideal design, or some mixture, which is itself still undecided and owned by the memory layer team, not something to be resolved unilaterally in this RFC. What is committed: ingestion happens once per scenario, not once per playthrough, and playthroughs get an isolated, cloned copy rather than sharing or re-ingesting. The exact mechanism is a conversation to have with whoever ends up owning the memory layer implementation.
+- **No CI/CD.** `.github/workflows/` does not exist in the repository. Every deploy is a manual `gcloud builds submit` + `gcloud run deploy` sequence, run by hand.
+- **Memory-layer retrieval gap.** Direct-authored and template-cloned facts are not yet projected into the memory layer's retrieval indexes (embedding + full-text) — they exist in the graph but won't surface via Phase 1 seeding until this is fixed. Documented in the memory layer's own README, not a hidden bug.
+- **In-process SSE fan-out is single-instance only.** See [ADR-13](#adr-13-in-process-pub-sub-for-spectator--multiplayer-notification-fan-out) — would need a shared broker before TRS could safely run more than one Cloud Run instance concurrently.
+- **No runtime content moderation during active play.** Only publish-time, creator-declared content tagging exists; the narrator's behavior is bounded only by its system prompt.
+- **Playthrough forking is undecided and unbuilt.** The `playthrough_shares` schema would accommodate it, but the clone/branch mechanics and their memory-layer implications are not designed.
+- **A few dead files remain in the codebase**, worth cleaning up: `apps/core-api/app/routers/ratings.py` (empty, unregistered — reviews/ratings actually live on `scenarios.py` and `users.py`) and `apps/turn-resolution-service/app/session/turn_counter.py` (empty, unreferenced — turn-order logic actually lives in `app/turn/turn_order.py`).
+- **HydraDB's own harness capabilities are pre-production**, per its own README: journal payloads lack a production redaction/retention policy, and its Gemini environment/test migration is incomplete. (Its previously-flagged unauthenticated `/v1/memory/stream` issue has since been fixed — the route now sits behind the same API-key dependency as the rest of the router and requires a scoping `context_id`/`playthrough_id`; the README's warning text on this specific point is itself now slightly stale.)
+- **HydraDB's graph engine runs on a bare GCE VM**, reachable over HTTPS protected only by a bearer token — no VPC connector. A deliberate speed-over-hardening trade-off, flagged for revisit before any real production traffic.

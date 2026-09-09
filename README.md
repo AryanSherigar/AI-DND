@@ -6,7 +6,7 @@
 
 **An AI-native production studio for interactive fiction — creators author living, playable worlds; Gemini narrates them for audiences, turn by turn.**
 
-[**Live Demo**](https://frontend-877199650658.us-central1.run.app/) · [**Demo Video**](#-demo-video) · [**Repository**](https://github.com/AryanSherigar/AI-DND) · Built for [Agentic Cinema: The Blockbuster Hackathon](https://agentic-cinema.devpost.com/)
+[**Live Demo**](https://frontend-877199650658.us-central1.run.app/) · [**Replit Demo**](https://ai-dnd.replit.app/) · [**Demo Video**](#-demo-video) · [**Repository**](https://github.com/AryanSherigar/wevr) · Built for [Agentic Cinema: The Blockbuster Hackathon](https://agentic-cinema.devpost.com/)
 
 </div>
 
@@ -96,7 +96,7 @@ For the full system design — C4 diagrams, ADRs, data models, and API specifica
 ## Getting Started (Run Locally)
 
 ```bash
-git clone https://github.com/AryanSherigar/AI-DND.git
+git clone https://github.com/AryanSherigar/wevr.git
 cd AI-DND
 cp .env.example .env   # fill in Gemini/Vertex AI credentials, Firebase config, etc.
 docker compose up
@@ -126,7 +126,7 @@ music/                      # Mood-tagged ambient tracks for the adaptive soundt
 
 ## License
 
-License: **TBD** — see [`LICENSE`](./LICENSE) once added.
+License: **AGPL-3.0** — see [`LICENSE`](./LICENSE).
 
 The vendored graph engine inside `apps/memory-layer` (HydraDB) is separately licensed **AGPL-3.0**. It runs as its own independent, networked Docker service (accessed over HTTP, not linked into wevr's own code), so it is not part of — and does not govern the license of — the rest of this repository.
 
@@ -137,12 +137,12 @@ The vendored graph engine inside `apps/memory-layer` (HydraDB) is separately lic
 
 ## Demo Video
 
-<!-- TODO: embed 3-minute demo video link (YouTube/Vimeo) here before submitting -->
+[Watch the demo on YouTube](https://youtu.be/WOAQyLloPvk)
 
 ---
 
 <div align="center">
 
-[Live Demo](https://frontend-877199650658.us-central1.run.app/) · [Repository](https://github.com/AryanSherigar/AI-DND) · [Architecture Deep Dive](./ARCHITECTURE.md)
+[Live Demo](https://frontend-877199650658.us-central1.run.app/) · [Replit Demo](https://ai-dnd.replit.app/) · [Repository](https://github.com/AryanSherigar/wevr) · [Architecture Deep Dive](./ARCHITECTURE.md)
 
 </div>
