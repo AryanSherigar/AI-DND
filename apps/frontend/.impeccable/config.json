@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "src/features/studio/components/NewbieWizard/Step4Review.tsx"
+        ],
+        "createdAt": "2026-09-08T20:51:09.703Z",
+        "reason": "L185 is a standard CSS spinner (rounded-full + border-b-2 + animate-spin), not a card border — pre-existing code, unrelated to this edit"
+      }
+    ]
+  }
+}

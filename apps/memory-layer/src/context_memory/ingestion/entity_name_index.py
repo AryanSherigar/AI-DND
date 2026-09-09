@@ -9,7 +9,6 @@ from collections.abc import Iterable
 from typing import Any
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from context_memory.core.logging import get_logger
 
@@ -37,34 +36,20 @@ class EntityNameIndex:
     module should make unilaterally.
     """
 
-    def __init__(
-        self,
-        model: Any | None = None,
-        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-        device: str = "cpu",
-    ) -> None:
-        self._model = model
-        self.model_name = model_name
-        self.device = device
+    def __init__(self, embedder: Any | None = None) -> None:
+        self._embedder = embedder
 
         self._embeddings: dict[str, np.ndarray] = {}
         self._haystacks: dict[str, str] = {}
         self._types: dict[str, str] = {}
         self._names: dict[str, str] = {}
 
-    def _get_model(self) -> Any:
-        """Lazy loader for sentence-transformer encoder model."""
-        if self._model is None:
-            self._model = SentenceTransformer(self.model_name, device=self.device)
-        return self._model
-
     def encode_text(self, text: str) -> np.ndarray:
         """Encode text into an L2-normalized 1D float32 numpy vector."""
         if not text or not isinstance(text, str):
             raise ValueError("text must be a non-empty string")
-        model = self._get_model()
-        vector = model.encode(text, normalize_embeddings=True)
-        return np.asarray(vector, dtype=np.float32)
+        vector = self._embedder.embed(text)
+        return self._normalize_vector(np.asarray(vector, dtype=np.float32))
 
     def _normalize_vector(self, vector: np.ndarray) -> np.ndarray:
         """Ensure vector is 1D float32 and L2-normalized."""

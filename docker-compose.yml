@@ -206,6 +206,10 @@ services:
         VITE_MEASUREMENT_ID: ${VITE_MEASUREMENT_ID:-}
     container_name: aidnd-frontend
     restart: unless-stopped
+    environment:
+      PORT: "8080"
+      CORE_API_ORIGIN: "http://core-api:8000"
+      TRS_ORIGIN: "http://turn-resolution-service:8001"
     ports:
       - "80:8080"
     depends_on:

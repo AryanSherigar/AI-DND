@@ -53,3 +53,13 @@ async def test_verify_firebase_token_failure(mock_verify, db_session: AsyncSessi
         await auth_service.verify_firebase_token_and_upsert_user("invalid_token")
 
     assert "Firebase token verification failed" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@patch("app.services.auth_service.settings.environment", "production")
+async def test_mock_dev_token_rejected_in_production(db_session: AsyncSession):
+    """Regression test: the dev/test auth bypass must never be reachable in
+    production, even with the exact "mock-dev-token" sentinel value."""
+    auth_service = AuthService(UserRepo(db_session))
+    with pytest.raises(InvalidTokenError):
+        await auth_service.verify_firebase_token_and_upsert_user("mock-dev-token")

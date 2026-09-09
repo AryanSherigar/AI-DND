@@ -57,7 +57,6 @@ class MusicGenerationRequest(BaseModel):
 
     mood: MoodSlot
     prompt: str = Field(..., min_length=1, max_length=500)
-    duration_seconds: int = Field(..., ge=30, le=120)
 
 
 class MusicGenerationJobResponse(BaseModel):
@@ -85,3 +84,9 @@ class QuotaStatusResponse(BaseModel):
     scenario_generations_limit: int
     creator_generations_used_today: int
     creator_generations_limit_per_day: int
+
+
+class DefaultMusicTracksResponse(BaseModel):
+    """The 6 canonical built-in default track URLs, keyed by mood."""
+
+    tracks: dict[MoodSlot, str]

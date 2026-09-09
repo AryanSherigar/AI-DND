@@ -6,6 +6,7 @@ from dataclasses import field as dataclass_field
 
 import structlog
 
+from app.db.models.fact import Fact
 from app.db.models.participant import Participant
 from app.db.models.playthrough import Playthrough
 from app.db.models.scenario import Scenario
@@ -38,6 +39,7 @@ from app.models.turn_log import TurnLogListResponse, TurnLogResponse
 from app.repositories.condition_repo import ConditionRepo
 from app.repositories.end_condition_repo import EndConditionRepo
 from app.repositories.entity_repo import EntityRepo
+from app.repositories.fact_repo import FactRepo
 from app.repositories.invariant_repo import InvariantRepo
 from app.repositories.map_repo import MapRepo
 from app.repositories.minigame_repo import MinigameRepo
@@ -47,6 +49,7 @@ from app.repositories.scenario_music_repo import ScenarioMusicRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.share_repo import ShareRepo
 from app.repositories.turn_log_repo import TurnLogRepo
+from app.services import default_music
 from app.services.condition_state import list_active_condition_labels
 
 logger = structlog.get_logger()
@@ -59,6 +62,17 @@ EVENT_PLAYTHROUGH_STARTED = "playthrough_started"
 _CURRENT_LOCATION_FIELD = "current_location_id"
 _DISCOVERED_LOCATIONS_FIELD = "discovered_location_ids"
 _LOCATION_ENTITY_TYPE = "location"
+
+
+def _render_fact_text(fact: Fact, name_by_entity_id: dict[str, str]) -> str:
+    subject_name = name_by_entity_id.get(str(fact.subject_entity_id), "Something")
+    object_text = (
+        name_by_entity_id.get(str(fact.object_entity_id), "something")
+        if fact.object_entity_id is not None
+        else fact.object_literal
+    )
+    predicate = fact.predicate.replace("_", " ")
+    return f"{subject_name} {predicate} {object_text}."
 
 
 @dataclass
@@ -83,6 +97,7 @@ class PlaythroughService:
         share_repo: ShareRepo,
         turn_log_repo: TurnLogRepo,
         entity_repo: EntityRepo,
+        fact_repo: FactRepo,
         condition_repo: ConditionRepo,
         invariant_repo: InvariantRepo,
         end_condition_repo: EndConditionRepo,
@@ -96,6 +111,7 @@ class PlaythroughService:
         self.share_repo = share_repo
         self.turn_log_repo = turn_log_repo
         self.entity_repo = entity_repo
+        self.fact_repo = fact_repo
         self.condition_repo = condition_repo
         self.invariant_repo = invariant_repo
         self.end_condition_repo = end_condition_repo
@@ -423,7 +439,9 @@ class PlaythroughService:
         the same pinning principle applies to it: the play screen displays
         setup field labels from this snapshot, not from Scenario directly, so
         a later edit to the scenario's setup fields doesn't retroactively
-        relabel an already-active playthrough.
+        relabel an already-active playthrough. action_chips is pinned for
+        the same reason, so a creator's later edit doesn't retroactively
+        change the quick-insert chips shown in an already-active playthrough.
 
         For master mode, also pins entity attributes_schema/obtainable/
         narrator_instruction, rule_invariants, scenario_conditions
@@ -454,9 +472,14 @@ class PlaythroughService:
             "checkpoints": scenario.checkpoints,
             "narration_font": scenario.narration_font,
             "music_tracks": await self._snapshot_music_tracks(scenario.scenario_id),
+            "action_chips": scenario.action_chips,
         }
         if scenario.mode == "master":
             snapshot["entities"] = await self._snapshot_entities(scenario.scenario_id)
+            snapshot["facts"] = await self._snapshot_facts(
+                scenario.scenario_id,
+                snapshot["entities"],  # type: ignore[arg-type]
+            )
             snapshot["scenario_conditions"] = await self._snapshot_conditions(
                 scenario.scenario_id
             )
@@ -506,6 +529,26 @@ class PlaythroughService:
             for e in entities
         ]
 
+    async def _snapshot_facts(
+        self, scenario_id: uuid.UUID, entities_snapshot: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
+        """Pins non-hidden facts at playthrough creation, same rationale as
+        _snapshot_entities (ADR-8). Previously omitted entirely -- master-mode
+        playthroughs had authored facts nowhere in scenario_snapshot, so the
+        play screen's Codex could never show them, unlike entities."""
+        name_by_entity_id = {
+            str(e["entity_id"]): str(e["canonical_name"]) for e in entities_snapshot
+        }
+        facts = await self.fact_repo.list_by_scenario(scenario_id)
+        return [
+            {
+                "fact_id": str(f.fact_id),
+                "text": _render_fact_text(f, name_by_entity_id),
+            }
+            for f in facts
+            if not f.hidden
+        ]
+
     async def _load_map_data(self, scenario_id: uuid.UUID) -> _MapSnapshotData:
         """Freeze every map/pin/connection for this scenario at playthrough
         creation (ADR-8) and locate the designated start pin's entity_id."""
@@ -551,17 +594,23 @@ class PlaythroughService:
             start_entity_id=start_entity_id,
         )
 
-    async def _snapshot_music_tracks(
-        self, scenario_id: uuid.UUID
-    ) -> dict[str, str | None]:
-        """Pin the resolved track URL for each of the 6 mood slots (None for
-        a slot left on the built-in default, resolved client-side)."""
+    async def _snapshot_music_tracks(self, scenario_id: uuid.UUID) -> dict[str, str]:
+        """Pin a real, always-playable track URL for each of the 6 mood
+        slots: an explicit upload/generated track, or the canonical built-in
+        default for an untouched slot or an explicit 'use default' selection.
+        Also the sole source of music_tracks for newbie-mode scenarios,
+        which never write scenario_music rows -- every mood there falls
+        through to the built-in default."""
         rows = await self.scenario_music_repo.get_by_scenario(scenario_id)
         rows_by_mood = {row.mood: row for row in rows}
-        return {
-            mood: rows_by_mood[mood].track_url if mood in rows_by_mood else None
-            for mood in MOOD_SLOTS
-        }
+        result: dict[str, str] = {}
+        for mood in MOOD_SLOTS:
+            row = rows_by_mood.get(mood)
+            if row is not None and row.source != "default" and row.track_url:
+                result[mood] = row.track_url
+            else:
+                result[mood] = default_music.default_track_url(mood)
+        return result
 
     async def _snapshot_conditions(
         self, scenario_id: uuid.UUID

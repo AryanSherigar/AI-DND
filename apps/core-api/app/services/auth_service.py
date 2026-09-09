@@ -21,9 +21,9 @@ class AuthService:
         self.user_repo = user_repo
 
     async def verify_firebase_token_and_upsert_user(self, firebase_token: str) -> User:
-        if firebase_token == "mock-dev-token" or (
-            settings.environment in ("development", "testing")
-            and not settings.firebase_project_id
+        is_dev_or_testing = settings.environment in ("development", "testing")
+        if is_dev_or_testing and (
+            firebase_token == "mock-dev-token" or not settings.firebase_project_id
         ):
             # Bypass/mock for local testing without Firebase
             logger.info(EVENT_AUTH_DEV_BYPASS_USED)

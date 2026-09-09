@@ -18,7 +18,7 @@ import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { queryClient } from "@/shared/lib/query-client";
 import { ScenarioMood } from "@/shared/types/audio.types";
 import { ambientSoundtrack } from "@/shared/lib/audio/ambient-soundtrack";
-import { resolveMoodTrackUrl } from "@/shared/constants/audio";
+import { getMoodTrackUrl } from "@/shared/constants/audio";
 import {
   MinigameEventPayload,
   MinigameResultPayload,
@@ -199,7 +199,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
 
     if (isNewPlaythrough) {
       const initialMood = data.initial_mood || "peaceful";
-      const trackUrl = resolveMoodTrackUrl(initialMood, data.music_tracks);
+      const trackUrl = getMoodTrackUrl(initialMood, data.music_tracks);
       ambientSoundtrack.transitionTo(initialMood, trackUrl, true);
       // Resume a minigame the player left mid-resolution — reload must not
       // require a fresh SSE "minigame" event to show the overlay again.
@@ -222,7 +222,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
     set({ is_audio_muted: isMuted });
   },
   setMood: (mood: ScenarioMood) => {
-    const trackUrl = resolveMoodTrackUrl(mood, get().playthrough?.music_tracks);
+    const trackUrl = getMoodTrackUrl(mood, get().playthrough?.music_tracks);
     ambientSoundtrack.transitionTo(mood, trackUrl, true);
   },
   setActiveMode: (mode: ActionMode) => set({ active_mode: mode }),
@@ -536,7 +536,7 @@ export const usePlayStore = create<PlayStoreState>((set, get) => ({
         if (!ownsStream()) return;
         if (eventName === "mood") {
           const mood = data as ScenarioMood;
-          const trackUrl = resolveMoodTrackUrl(
+          const trackUrl = getMoodTrackUrl(
             mood,
             get().playthrough?.music_tracks,
           );

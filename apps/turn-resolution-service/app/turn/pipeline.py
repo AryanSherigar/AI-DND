@@ -347,7 +347,10 @@ async def _generate_turn_scene_image(
         prior_prompt = prior.scene_image_prompt if prior else None
 
     result = await scene_image_generator.generate_scene_image(
-        narration_text, location, prior_prompt, settings.imagen_timeout_seconds
+        narration_text,
+        location,
+        prior_prompt,
+        settings.image_generation_timeout_seconds,
     )
     if not result:
         return None

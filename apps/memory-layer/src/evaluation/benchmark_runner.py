@@ -16,7 +16,7 @@ import sys
 import time
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,7 @@ from context_memory.core.logging import (
     drain_metrics,
     enable_metrics_collection,
 )
-from context_memory.ingestion.embedding import SentenceTransformerEmbedder
+from context_memory.ingestion.embedding import VertexEmbedder
 from context_memory.ingestion.model_adapters import LLMExtractor
 from context_memory.ingestion.orchestrator import IngestionOrchestrator
 from context_memory.ingestion.sources.longmemeval import (
@@ -287,7 +287,7 @@ def evaluate_instance(
     if raw_date:
         question_date = parse_longmemeval_timestamp(raw_date, "question_date")
     else:
-        question_date = datetime.now(timezone.utc)
+        question_date = datetime.now(UTC)
 
     drain_metrics()  # discard anything stale from setup/wiring so this instance's slice starts clean
 
@@ -602,7 +602,9 @@ def main() -> int:
             database=args.hydradb_database,
             timeout_seconds=config.hydradb_request_timeout_seconds,
         )
-        embedder = SentenceTransformerEmbedder(model_name=config.embedding_model_name)
+        embedder = VertexEmbedder(
+            api_key=config.embedding_api_key, model_name=config.embedding_model_name
+        )
 
         if args.extractor == "deterministic":
             from context_memory.ingestion.fakes import DeterministicExtractor

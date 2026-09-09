@@ -79,10 +79,12 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     messages,
     isStreaming,
     sendMessage,
+    clearChat,
     stopGeneration,
     reportApplyError,
     blockValidationByMessage,
   } = useAssistantChat(activeSection, mode, scenarioId ?? null);
+  const [isConfirmingClear, setIsConfirmingClear] = useState(false);
   const masterApplier = useMasterActionApplier(
     scenarioId ?? null,
     reportApplyError,
@@ -101,6 +103,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     if (!input.trim() || isStreaming) return;
     sendMessage(input);
     setInput("");
+    setIsConfirmingClear(false);
   };
 
   const getExistingFieldValue = (target: ActionTarget): string => {
@@ -334,8 +337,41 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     );
   };
 
+  const handleClearChat = () => {
+    if (!isConfirmingClear) {
+      setIsConfirmingClear(true);
+      return;
+    }
+    clearChat();
+    setIsConfirmingClear(false);
+  };
+
   return (
     <div className="flex flex-col h-full bg-surface-inset font-sans text-content-muted relative">
+      {/* Clear Chat Control */}
+      <div className="flex items-center justify-end gap-2 px-3 py-2 border-b border-border-subtle">
+        {isConfirmingClear && (
+          <button
+            type="button"
+            onClick={() => setIsConfirmingClear(false)}
+            className="text-[10px] font-mono uppercase tracking-wider text-content-faint hover:text-content-muted"
+          >
+            Cancel
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleClearChat}
+          className={`rounded-md px-2 py-1 text-[10px] font-mono uppercase tracking-wider transition-colors ${
+            isConfirmingClear
+              ? "bg-danger/10 text-danger border border-danger/40 hover:bg-danger/20"
+              : "text-content-faint hover:text-content-muted"
+          }`}
+        >
+          {isConfirmingClear ? "Confirm clear?" : "Clear chat"}
+        </button>
+      </div>
+
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg) => (

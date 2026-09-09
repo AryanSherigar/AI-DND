@@ -15,6 +15,7 @@ from app.models.playthrough import PlaythroughCreate
 from app.repositories.condition_repo import ConditionRepo
 from app.repositories.end_condition_repo import EndConditionRepo
 from app.repositories.entity_repo import EntityRepo
+from app.repositories.fact_repo import FactRepo
 from app.repositories.invariant_repo import InvariantRepo
 from app.repositories.map_repo import MapRepo
 from app.repositories.minigame_repo import MinigameRepo
@@ -59,6 +60,7 @@ async def _seed_playthrough_with_owner(db_session: AsyncSession):
         share_repo=ShareRepo(db_session),
         turn_log_repo=TurnLogRepo(db_session),
         entity_repo=EntityRepo(db_session),
+        fact_repo=FactRepo(db_session),
         condition_repo=ConditionRepo(db_session),
         invariant_repo=InvariantRepo(db_session),
         end_condition_repo=EndConditionRepo(db_session),

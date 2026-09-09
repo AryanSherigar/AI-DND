@@ -14,11 +14,8 @@ COPY src ./src
 COPY db ./db
 COPY scripts ./scripts
 
-ENV HF_HOME=/app/.cache/huggingface
-
 RUN groupadd -g 10001 appgroup && \
     useradd -u 10001 -g appgroup -s /usr/sbin/nologin -M appuser && \
-    mkdir -p /app/.cache/huggingface && \
     chown -R appuser:appgroup /app
 USER 10001:10001
 

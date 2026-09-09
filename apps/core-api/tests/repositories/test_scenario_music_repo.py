@@ -48,20 +48,6 @@ async def test_upsert_creates_then_overwrites(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_count_filled_slots(db_session: AsyncSession):
-    scenario = await _create_scenario(db_session)
-    repo = ScenarioMusicRepo(db_session)
-    assert await repo.count_filled_slots(scenario.scenario_id) == 0
-
-    await repo.upsert(
-        scenario.scenario_id, "peaceful", source="default", track_url=None
-    )
-    await repo.upsert(scenario.scenario_id, "combat", source="default", track_url=None)
-
-    assert await repo.count_filled_slots(scenario.scenario_id) == 2
-
-
-@pytest.mark.asyncio
 async def test_get_by_scenario_and_mood_returns_none_when_unset(
     db_session: AsyncSession,
 ):

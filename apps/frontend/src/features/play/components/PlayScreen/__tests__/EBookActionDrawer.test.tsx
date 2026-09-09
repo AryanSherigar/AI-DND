@@ -80,4 +80,39 @@ describe("EBookActionDrawer", () => {
 
     expect(container.firstChild).toBeNull();
   });
+
+  it("renders no chip row when actionChips is omitted", () => {
+    render(
+      <EBookActionDrawer
+        isOpen={true}
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+        isNarrating={false}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /explore/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clicking a chip inserts its text into the textarea", () => {
+    render(
+      <EBookActionDrawer
+        isOpen={true}
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+        isNarrating={false}
+        actionChips={["I explore the ancient ruins."]}
+      />,
+    );
+
+    const chipButton = screen.getByRole("button", {
+      name: "I explore the ancient ruins.",
+    });
+    fireEvent.click(chipButton);
+
+    const textarea = screen.getByPlaceholderText(/Action/i);
+    expect(textarea).toHaveValue("I explore the ancient ruins.");
+  });
 });

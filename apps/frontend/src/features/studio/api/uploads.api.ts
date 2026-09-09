@@ -1,4 +1,5 @@
 import { apiClient } from "@/shared/lib/api-client";
+import { IMAGE_GENERATION_TIMEOUT_MS } from "../constants/upload";
 
 export interface ImageUploadResponse {
   url: string;
@@ -29,6 +30,7 @@ export const generateCoverImage = async (
   const response = await apiClient.post<ImageUploadResponse>(
     "/v1/uploads/generate-cover-image",
     body,
+    { timeout: IMAGE_GENERATION_TIMEOUT_MS },
   );
   return response.data;
 };

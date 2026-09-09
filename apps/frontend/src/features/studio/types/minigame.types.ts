@@ -14,6 +14,7 @@ export { DEFAULT_DODGE_CONFIG } from "@/shared/types/minigame.types";
 
 export type {
   DodgeConfigShape,
+  MinigameOutcomeResult,
   MinigameOutcomeTag,
   MinigameType,
   OutcomeMode,

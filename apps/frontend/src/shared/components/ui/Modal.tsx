@@ -45,10 +45,10 @@ export const Modal: React.FC<ModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-lg rounded-xl border border-border-subtle bg-surface-overlay font-sans text-content-muted shadow-elevated"
+        className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-border-subtle bg-surface-overlay font-sans text-content-muted shadow-elevated"
       >
         {title && (
-          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+          <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3">
             <h2 className="text-sm font-semibold text-content">{title}</h2>
             <button
               onClick={onClose}
@@ -68,7 +68,7 @@ export const Modal: React.FC<ModalProps> = ({
             </button>
           </div>
         )}
-        <div className="p-4">{children}</div>
+        <div className="overflow-y-auto p-4">{children}</div>
       </div>
     </div>
   );

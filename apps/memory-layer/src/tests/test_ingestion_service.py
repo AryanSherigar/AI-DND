@@ -11,8 +11,7 @@ from context_memory.core.models import ContextBatch
 from context_memory.ingestion.fakes import InMemoryChunkStore
 from context_memory.ingestion.service import IngestionPartialFailure, IngestionService
 
-ROOT = Path(__file__).resolve().parents[2]
-FIXTURES = ROOT / "docs" / "fixtures"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 class FailingChunkStore(InMemoryChunkStore):

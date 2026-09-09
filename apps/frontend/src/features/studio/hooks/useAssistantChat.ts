@@ -14,13 +14,20 @@ export type AssistantChatMode = "newbie" | "master";
 
 const TRS_BASE_URL = import.meta.env.VITE_TRS_URL || "http://localhost:8001";
 
+/** Scoped by user_id so a different account on the same browser never sees
+ * another creator's chat, and by scenario_id (falling back to "draft" pre-save
+ * in newbie mode) so distinct scenarios never share one bucket. Returns null
+ * — meaning "don't persist" — when there's no signed-in user yet, since an
+ * unscoped key would itself be the kind of cross-user leak this guards against. */
 const buildStorageKey = (
   mode: AssistantChatMode,
+  userId: string | null,
   scenarioId?: string | null,
-): string =>
-  mode === "master" && scenarioId
-    ? `aidnd_studio_assistant_chat:master:${scenarioId}`
-    : "aidnd_studio_assistant_chat";
+): string | null => {
+  if (!userId) return null;
+  const scenarioPart = scenarioId || "draft";
+  return `aidnd_studio_assistant_chat:${mode}:${userId}:${scenarioPart}`;
+};
 
 const WELCOME_BY_MODE: Record<AssistantChatMode, string> = {
   newbie:
@@ -37,9 +44,10 @@ const buildWelcome = (mode: AssistantChatMode): AssistantMessage => ({
 });
 
 const loadInitialMessages = (
-  storageKey: string,
+  storageKey: string | null,
   mode: AssistantChatMode,
 ): AssistantMessage[] => {
+  if (!storageKey) return [buildWelcome(mode)];
   try {
     const saved = localStorage.getItem(storageKey);
     if (!saved) return [buildWelcome(mode)];
@@ -57,14 +65,15 @@ export const useAssistantChat = (
   mode: AssistantChatMode = "newbie",
   scenarioId: string | null = null,
 ) => {
-  const storageKey = buildStorageKey(mode, scenarioId);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const userId = useAuthStore((s) => s.user?.user_id ?? null);
+  const storageKey = buildStorageKey(mode, userId, scenarioId);
   const [messages, setMessages] = useState<AssistantMessage[]>(() =>
     loadInitialMessages(storageKey, mode),
   );
   const [isStreaming, setIsStreaming] = useState(false);
   const cancelStreamRef = useRef<(() => void) | null>(null);
   const newbieDraft = useStudioStore((s) => s.newbieDraft);
-  const accessToken = useAuthStore((s) => s.accessToken);
   const { entities } = useEntities(mode === "master" ? scenarioId : null);
   const { facts } = useFacts(mode === "master" ? scenarioId : null);
   const { scenario } = useScenario(mode === "master" ? scenarioId : null);
@@ -90,6 +99,7 @@ export const useAssistantChat = (
   }, [storageKey, mode]);
 
   useEffect(() => {
+    if (!storageKey) return;
     try {
       localStorage.setItem(storageKey, JSON.stringify(messages));
     } catch {
@@ -104,7 +114,7 @@ export const useAssistantChat = (
     }
     setMessages([buildWelcome(mode)]);
     setIsStreaming(false);
-    localStorage.removeItem(storageKey);
+    if (storageKey) localStorage.removeItem(storageKey);
   }, [mode, storageKey]);
 
   const reportApplyError = useCallback((errorMessage: string) => {

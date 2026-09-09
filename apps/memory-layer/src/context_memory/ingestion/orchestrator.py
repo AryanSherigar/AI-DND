@@ -366,8 +366,8 @@ class IngestionOrchestrator:
         self, units: list[tuple[Chunk, ExtractionResult]]
     ) -> list[Embedding]:
         """Embeds every accepted candidate across `units` in one model call when the
-        embedder supports batching (~4.6x measured on SentenceTransformerEmbedder;
-        fixed per-call overhead dominates a model this small)."""
+        embedder supports batching -- one provider round trip per chunk of
+        candidates instead of one per candidate."""
         candidates = [
             (chunk, cand) for chunk, extraction in units for cand in extraction.accepted
         ]

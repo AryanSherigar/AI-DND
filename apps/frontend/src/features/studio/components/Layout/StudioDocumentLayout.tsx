@@ -27,7 +27,13 @@ const sections = [
   { id: "review", label: "Review & publish", icon: <IconRocket size={18} /> },
 ];
 
-export const StudioDocumentLayout: React.FC = () => {
+export interface StudioDocumentLayoutProps {
+  scenarioId?: string;
+}
+
+export const StudioDocumentLayout: React.FC<StudioDocumentLayoutProps> = ({
+  scenarioId,
+}) => {
   const [activeSection, setActiveSection] = useState("meta");
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -73,7 +79,12 @@ export const StudioDocumentLayout: React.FC = () => {
             onClick={() => scrollTo(s.id)}
           />
         ))}
-        rightPanel={<AIChatSidebar activeSection={activeSection} />}
+        rightPanel={
+          <AIChatSidebar
+            activeSection={activeSection}
+            scenarioId={scenarioId}
+          />
+        }
         rightPanelTitle="AERO"
         rightPanelSubtitle="your story-writing companion"
         showFloatingNav={false}

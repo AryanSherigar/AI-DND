@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { SSEHandlers } from "@/shared/lib/sse-client";
+import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { useStudioStore } from "../../stores/studio.store";
 import { AIChatSidebar } from "./AIChatSidebar";
 
@@ -36,10 +37,11 @@ const renderChatSidebar = (props: ComponentProps<typeof AIChatSidebar>) => {
 
 const API_URL = "http://localhost:8000";
 const SCENARIO_ID = "scenario-1";
+const USER_ID = "user-1";
 
 const seedMasterMessage = (content: string) => {
   localStorage.setItem(
-    `aidnd_studio_assistant_chat:master:${SCENARIO_ID}`,
+    `aidnd_studio_assistant_chat:master:${USER_ID}:${SCENARIO_ID}`,
     JSON.stringify([
       { id: "msg-1", role: "assistant", content, timestamp: Date.now() },
     ]),
@@ -78,6 +80,19 @@ describe("AIChatSidebar", () => {
   beforeEach(() => {
     localStorage.clear();
     useStudioStore.getState().resetDraft();
+    useAuthStore.setState({
+      user: { user_id: USER_ID, display_name: "Test Creator" },
+      accessToken: "test-token",
+      isAuthenticated: true,
+    });
+  });
+
+  afterEach(() => {
+    useAuthStore.setState({
+      user: null,
+      accessToken: null,
+      isAuthenticated: false,
+    });
   });
 
   it("renders default welcome message and dynamic prompt chips", () => {
@@ -126,7 +141,7 @@ describe("AIChatSidebar", () => {
       },
     ];
     localStorage.setItem(
-      "aidnd_studio_assistant_chat",
+      `aidnd_studio_assistant_chat:newbie:${USER_ID}:draft`,
       JSON.stringify(messagesWithAction),
     );
 
@@ -163,7 +178,7 @@ describe("AIChatSidebar", () => {
       },
     ];
     localStorage.setItem(
-      "aidnd_studio_assistant_chat",
+      `aidnd_studio_assistant_chat:newbie:${USER_ID}:draft`,
       JSON.stringify(messagesWithAction),
     );
 
@@ -199,7 +214,7 @@ describe("AIChatSidebar", () => {
       },
     ];
     localStorage.setItem(
-      "aidnd_studio_assistant_chat",
+      `aidnd_studio_assistant_chat:newbie:${USER_ID}:draft`,
       JSON.stringify(messagesWithTitleAction),
     );
 
@@ -235,11 +250,21 @@ describe("AIChatSidebar - master mode", () => {
   beforeEach(() => {
     localStorage.clear();
     useStudioStore.setState({ mode: "master" });
+    useAuthStore.setState({
+      user: { user_id: USER_ID, display_name: "Test Creator" },
+      accessToken: "test-token",
+      isAuthenticated: true,
+    });
     mockMasterScenarioReads();
   });
 
   afterEach(() => {
     useStudioStore.setState({ mode: "newbie" });
+    useAuthStore.setState({
+      user: null,
+      accessToken: null,
+      isAuthenticated: false,
+    });
     capturedSSEHandlers = null;
   });
 

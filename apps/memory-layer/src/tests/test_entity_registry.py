@@ -124,10 +124,10 @@ class _FakeSentenceModel:
     above EntityNameIndex's 0.75 default; 'david smith' vs 'david smith jr'
     -> 0.92, vs an unrelated name -> 0.38). Same pattern
     `ingestion.fakes.DeterministicEmbedder` uses elsewhere in this suite --
-    stays fast and offline instead of downloading/loading a real model just
-    to prove embedding-based candidate generation works."""
+    stays fast and offline instead of making a real Vertex AI call just to
+    prove embedding-based candidate generation works."""
 
-    def encode(self, text: str, normalize_embeddings: bool = True):
+    def embed(self, text: str):
         import numpy as np
 
         vec = np.zeros(32, dtype=np.float32)
@@ -159,7 +159,7 @@ class DuplicateEntityFixTests(unittest.TestCase):
 
         self.registry = EntityRegistry(
             InMemoryGraphIdAllocator(),
-            name_index=EntityNameIndex(model=_FakeSentenceModel()),
+            name_index=EntityNameIndex(embedder=_FakeSentenceModel()),
         )
 
     def test_nickname_style_surface_now_reaches_the_model_and_resolves(self) -> None:
@@ -602,7 +602,7 @@ class HydrationTests(unittest.TestCase):
         hydrator = FakeEntityHydrator(
             {"ctx": [HydratedEntity(7, "sherlock holmes", "person", ())]}
         )
-        name_index = EntityNameIndex(model=_FakeSentenceModel())
+        name_index = EntityNameIndex(embedder=_FakeSentenceModel())
         registry = EntityRegistry(
             InMemoryGraphIdAllocator(), name_index=name_index, hydrator=hydrator
         )
@@ -665,7 +665,7 @@ class RestartSimulationTests(unittest.TestCase):
         # curated nickname, not an exact match) reaches the model at all --
         # same requirement DuplicateEntityFixTests establishes above.
         registry_1 = EntityRegistry(
-            allocator, name_index=EntityNameIndex(model=_FakeSentenceModel())
+            allocator, name_index=EntityNameIndex(embedder=_FakeSentenceModel())
         )
         first = registry_1.resolve(
             context_id="ctx", surface="Lord Farquaad", entity_type="person"

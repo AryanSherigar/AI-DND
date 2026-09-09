@@ -78,6 +78,8 @@ export interface EBookActionDrawerProps {
   onClose: () => void;
   onSubmit: (actionText: string) => void;
   isNarrating: boolean;
+  // Master mode only — omitted (or empty) renders no chip row.
+  actionChips?: string[];
 }
 
 export interface EntityInspectTooltipProps {

@@ -5,7 +5,7 @@ import threading
 import unittest
 from collections import defaultdict
 from contextlib import nullcontext
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from context_memory.core.config import Config
 from context_memory.retrieval import HybridRetrievalEngine
@@ -222,7 +222,7 @@ class FakeHydraWithEntities:
 
 class TestRetrievalEngine(unittest.TestCase):
     def test_temporal_resolver_adds_buffer(self):
-        base_time = datetime(2026, 8, 19, tzinfo=timezone.utc)
+        base_time = datetime(2026, 8, 19, tzinfo=UTC)
         llm = FakeLLMClient([DateRange(valid_from=base_time, valid_to=base_time)])
         resolver = TemporalQueryResolver(llm)
 
@@ -270,7 +270,7 @@ class TestRetrievalEngine(unittest.TestCase):
         )
 
         ans = engine.retrieve_and_answer(
-            "ctx-1", "what is the meaning of life?", datetime.now(timezone.utc)
+            "ctx-1", "what is the meaning of life?", datetime.now(UTC)
         )
         self.assertEqual(ans, "I don't have that information in my memory.")
 
@@ -294,7 +294,7 @@ class TestRetrievalEngine(unittest.TestCase):
         engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra())
 
         ans = engine.retrieve_and_answer(
-            "ctx-1", "where is dog?", datetime.now(timezone.utc)
+            "ctx-1", "where is dog?", datetime.now(UTC)
         )
         self.assertEqual(ans, "The dog is in the park")
 
@@ -329,7 +329,7 @@ class TestRetrievalEngine(unittest.TestCase):
         seed_facts = fresh_seeds()
         expander = GraphExpander(conn, hydra)
         graph_data = expander.expand(
-            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+            "ctx-1", seed_facts, DateRange(), datetime.now(UTC)
         )
         self.assertEqual(graph_data["fact-1"]["entity_fact_count"], 2)
         self.assertEqual(graph_data["fact-3"]["entity_fact_count"], 0)
@@ -388,7 +388,7 @@ class TestRetrievalEngine(unittest.TestCase):
         seed_facts = {"fact-1": ScoredFact("fact-1", "temporary chitchat detail")}
 
         graph_data = expander.expand(
-            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+            "ctx-1", seed_facts, DateRange(), datetime.now(UTC)
         )
 
         self.assertEqual(graph_data, {})
@@ -448,7 +448,7 @@ class TestRetrievalEngine(unittest.TestCase):
         }
 
         graph_data = expander.expand(
-            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+            "ctx-1", seed_facts, DateRange(), datetime.now(UTC)
         )
 
         self.assertEqual(graph_data["fact-1"]["path_count"], 0)
@@ -489,7 +489,7 @@ class TestRetrievalEngine(unittest.TestCase):
         conn = FakeConnection(registry_rows=[("fact:fact-1", 1)])
         expander = GraphExpander(conn, FakeHydraWithValidityWindow())
         question_date = datetime.now(
-            timezone.utc
+            UTC
         )  # "now" is nowhere near this fact's window
 
         # No temporal anchor resolved -> point-in-time semantics, unchanged:
@@ -502,8 +502,8 @@ class TestRetrievalEngine(unittest.TestCase):
         # must be returned even though it's not valid "now".
         ranged = {"fact-1": ScoredFact("fact-1", "the bridge quest was active")}
         window = DateRange(
-            valid_from=datetime.fromtimestamp(20, tz=timezone.utc),
-            valid_to=datetime.fromtimestamp(30, tz=timezone.utc),
+            valid_from=datetime.fromtimestamp(20, tz=UTC),
+            valid_to=datetime.fromtimestamp(30, tz=UTC),
         )
         graph_data = expander.expand("ctx-1", ranged, window, question_date)
         self.assertIn("fact-1", graph_data)
@@ -513,8 +513,8 @@ class TestRetrievalEngine(unittest.TestCase):
             "fact-1": ScoredFact("fact-1", "the bridge quest was active")
         }
         far_window = DateRange(
-            valid_from=datetime.fromtimestamp(100, tz=timezone.utc),
-            valid_to=datetime.fromtimestamp(200, tz=timezone.utc),
+            valid_from=datetime.fromtimestamp(100, tz=UTC),
+            valid_to=datetime.fromtimestamp(200, tz=UTC),
         )
         graph_data = expander.expand(
             "ctx-1", non_overlapping, far_window, question_date
@@ -530,7 +530,7 @@ class TestRetrievalEngine(unittest.TestCase):
         seed_facts = {"fact-1": ScoredFact("fact-1", "durable fact")}
 
         graph_data = expander.expand(
-            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+            "ctx-1", seed_facts, DateRange(), datetime.now(UTC)
         )
 
         self.assertIn("fact-1", graph_data)
@@ -562,7 +562,7 @@ class TestRetrievalEngine(unittest.TestCase):
         )
 
         ans = engine.retrieve_and_answer(
-            "ctx-1", "exact term", datetime.now(timezone.utc)
+            "ctx-1", "exact term", datetime.now(UTC)
         )
         self.assertEqual(ans, "Found via keyword match")
 
@@ -591,7 +591,7 @@ class TestRetrievalEngine(unittest.TestCase):
         )
 
         ans = engine.retrieve_and_answer(
-            "ctx-1", "raw question text", datetime.now(timezone.utc)
+            "ctx-1", "raw question text", datetime.now(UTC)
         )
         self.assertEqual(ans, "Found via raw-question fallback")
 
@@ -632,7 +632,7 @@ class TestRetrievalEngine(unittest.TestCase):
         engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra())
 
         ans = engine.retrieve_and_answer(
-            "ctx-1", "how much did the herb plants earn?", datetime.now(timezone.utc)
+            "ctx-1", "how much did the herb plants earn?", datetime.now(UTC)
         )
 
         self.assertEqual(ans, "20 plants at $7.50 each is $150")
@@ -656,7 +656,7 @@ class TestRetrievalEngine(unittest.TestCase):
             text_response="answer",
         )
         march_19 = datetime(
-            2023, 3, 19, tzinfo=timezone.utc
+            2023, 3, 19, tzinfo=UTC
         )  # psycopg returns datetime for timestamptz
         conn = FakeConnection(
             semantic_rows=[("fact-1", 0.1)],
@@ -668,7 +668,7 @@ class TestRetrievalEngine(unittest.TestCase):
         )
         engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra())
         engine.retrieve_and_answer(
-            "ctx-1", "how much did the herb plants earn?", datetime.now(timezone.utc)
+            "ctx-1", "how much did the herb plants earn?", datetime.now(UTC)
         )
         self.assertIn(
             "[2023-03-19]: User sold 20 potted herb plants",
@@ -712,7 +712,7 @@ class TestRetrievalEngine(unittest.TestCase):
         )
 
         engine.retrieve_and_answer(
-            "ctx-1", "how much did the herb plants earn?", datetime.now(timezone.utc)
+            "ctx-1", "how much did the herb plants earn?", datetime.now(UTC)
         )
 
     def test_scar_rejects_off_topic_same_turn_fact(self):
@@ -923,7 +923,7 @@ class RetrieveFactsTests(unittest.TestCase):
         )
 
         result = engine.retrieve_facts(
-            "ctx-1", "where is dog?", datetime.now(timezone.utc)
+            "ctx-1", "where is dog?", datetime.now(UTC)
         )
 
         self.assertFalse(result.abstained)
@@ -958,7 +958,7 @@ class RetrieveFactsTests(unittest.TestCase):
         )
 
         result = engine.retrieve_facts(
-            "ctx-1", "where is dog?", datetime.now(timezone.utc)
+            "ctx-1", "where is dog?", datetime.now(UTC)
         )
 
         fact = result.facts[0]
@@ -983,7 +983,7 @@ class RetrieveFactsTests(unittest.TestCase):
         )
 
         result = engine.retrieve_facts(
-            "ctx-1", "what is the meaning of life?", datetime.now(timezone.utc)
+            "ctx-1", "what is the meaning of life?", datetime.now(UTC)
         )
 
         self.assertTrue(result.abstained)
@@ -1007,7 +1007,7 @@ class RetrieveFactsTests(unittest.TestCase):
         engine = HybridRetrievalEngine(llm, FakeEmbedder(), conn, FakeHydra())
 
         result = engine.retrieve_facts(
-            "ctx-1", "where is dog?", datetime.now(timezone.utc)
+            "ctx-1", "where is dog?", datetime.now(UTC)
         )
 
         self.assertFalse(result.abstained)
@@ -1033,7 +1033,7 @@ class RetrieveFactsTests(unittest.TestCase):
         )
 
         result = engine.retrieve_facts(
-            "ctx-1", "where is dog?", datetime.now(timezone.utc), as_of_turn=7
+            "ctx-1", "where is dog?", datetime.now(UTC), as_of_turn=7
         )
 
         self.assertEqual(result.resolved_time_point, "7")
@@ -1078,7 +1078,7 @@ class WhenActiveFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "is anything following me?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             game_state={
                 "player": {"health": 100}
             },  # condition NOT met -- must not matter anymore
@@ -1093,7 +1093,7 @@ class WhenActiveFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "is anything following me?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             game_state={},
         )
 
@@ -1105,7 +1105,7 @@ class WhenActiveFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "is anything following me?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             game_state={},
         )
 
@@ -1116,7 +1116,7 @@ class WhenActiveFilteringTests(unittest.TestCase):
         engine, _ = self._engine_and_conn([(42, None, None, None, True)])
 
         result = engine.retrieve_facts(
-            "ctx-1", "is anything following me?", datetime.now(timezone.utc)
+            "ctx-1", "is anything following me?", datetime.now(UTC)
         )
 
         self.assertEqual(len(result.facts), 1)
@@ -1164,7 +1164,7 @@ class WhenActiveFilteringTests(unittest.TestCase):
         engine._pool = ExplodingConnection()
 
         result = engine.retrieve_facts(
-            "ctx-1", "q", datetime.now(timezone.utc), game_state={}
+            "ctx-1", "q", datetime.now(UTC), game_state={}
         )
 
         self.assertEqual(len(result.facts), 1)
@@ -1202,7 +1202,7 @@ class CheckpointFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "what happened to the bridge?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             checkpoint="chapter_1",
             template_context_id="scenario-template::s1",
         )
@@ -1218,7 +1218,7 @@ class CheckpointFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "what happened to the bridge?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             checkpoint="chapter_3",
             template_context_id="scenario-template::s1",
         )
@@ -1236,7 +1236,7 @@ class CheckpointFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "what happened to the bridge?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             checkpoint="chapter_1",
             template_context_id="scenario-template::s1",
         )
@@ -1255,7 +1255,7 @@ class CheckpointFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "what happened to the bridge?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             checkpoint="chapter_1",
         )
 
@@ -1319,7 +1319,7 @@ class AsOfTurnFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "what happened to the bridge?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             as_of_turn=7,
         )
         self.assertEqual(result.facts, [])
@@ -1329,7 +1329,7 @@ class AsOfTurnFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "what happened to the bridge?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             as_of_turn=7,
         )
         self.assertEqual(len(result.facts), 1)
@@ -1341,7 +1341,7 @@ class AsOfTurnFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "what happened to the bridge?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             as_of_turn=1,
         )
         self.assertEqual(len(result.facts), 1)
@@ -1349,7 +1349,7 @@ class AsOfTurnFilteringTests(unittest.TestCase):
     def test_no_as_of_turn_given_skips_the_filter_entirely(self):
         engine = self._engine(turn_number=999)
         result = engine.retrieve_facts(
-            "ctx-1", "what happened to the bridge?", datetime.now(timezone.utc)
+            "ctx-1", "what happened to the bridge?", datetime.now(UTC)
         )
         self.assertEqual(len(result.facts), 1)
 
@@ -1382,7 +1382,7 @@ class ParticipantVisibilityFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "what's the secret?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             participant_id="participant-bob",
         )
         self.assertEqual(result.facts, [])
@@ -1392,7 +1392,7 @@ class ParticipantVisibilityFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "what's the secret?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             participant_id="participant-alice",
         )
         self.assertEqual(len(result.facts), 1)
@@ -1403,7 +1403,7 @@ class ParticipantVisibilityFilteringTests(unittest.TestCase):
         when_active config gaps."""
         engine = self._engine([(42, None, None, "participant-alice", False)])
         result = engine.retrieve_facts(
-            "ctx-1", "what's the secret?", datetime.now(timezone.utc)
+            "ctx-1", "what's the secret?", datetime.now(UTC)
         )
         self.assertEqual(len(result.facts), 1)
 
@@ -1412,7 +1412,7 @@ class ParticipantVisibilityFilteringTests(unittest.TestCase):
         result = engine.retrieve_facts(
             "ctx-1",
             "what's the secret?",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             participant_id="participant-bob",
         )
         self.assertEqual(len(result.facts), 1)
@@ -1451,7 +1451,7 @@ class SemanticSearchModelFilterTests(unittest.TestCase):
             return nullcontext(self)
 
     class _VersionedEmbedder:
-        model_name = "all-MiniLM-L6-v2"
+        model_name = "text-embedding-005"
         model_version = "2"
 
         def embed(self, text):
@@ -1472,7 +1472,7 @@ class SemanticSearchModelFilterTests(unittest.TestCase):
 
         semantic_query, semantic_params = conn.cursor_obj.executed[0]
         self.assertIn("model_name = %s AND model_version = %s", semantic_query)
-        self.assertIn("all-MiniLM-L6-v2", semantic_params)
+        self.assertIn("text-embedding-005", semantic_params)
         self.assertIn("2", semantic_params)
 
     def test_missing_model_attrs_fall_back_gracefully(self) -> None:
@@ -1549,7 +1549,7 @@ class CountQueryDetectionTests(unittest.TestCase):
         enable_metrics_collection()
         try:
             engine.retrieve_and_answer(
-                "ctx-1", "How many pets do I have?", datetime.now(timezone.utc)
+                "ctx-1", "How many pets do I have?", datetime.now(UTC)
             )
             records = drain_metrics()
         finally:
@@ -1583,7 +1583,7 @@ class CountQueryDetectionTests(unittest.TestCase):
         enable_metrics_collection()
         try:
             engine.retrieve_and_answer(
-                "ctx-1", "How many pets do I have?", datetime.now(timezone.utc), top_k=5
+                "ctx-1", "How many pets do I have?", datetime.now(UTC), top_k=5
             )
             records = drain_metrics()
         finally:
@@ -1656,7 +1656,7 @@ class DurationQueryTests(unittest.TestCase):
             text_response="answer",
         )
         engine = self._engine_with_a_fact(llm)
-        when = datetime(2023, 3, 21, tzinfo=timezone.utc)
+        when = datetime(2023, 3, 21, tzinfo=UTC)
         engine.retrieve_and_answer("ctx-1", "How many days ago did I run the 5K?", when)
         prompt = llm.last_reader_system_prompt
         self.assertIn("[today's date is 2023-03-21]", prompt)
@@ -1671,7 +1671,7 @@ class DurationQueryTests(unittest.TestCase):
             text_response="answer",
         )
         engine = self._engine_with_a_fact(llm)
-        when = datetime(2023, 3, 21, tzinfo=timezone.utc)
+        when = datetime(2023, 3, 21, tzinfo=UTC)
         engine.retrieve_and_answer(
             "ctx-1", "How many magazine subscriptions do I have?", when
         )
@@ -1723,7 +1723,7 @@ class GraphIdShapedFactIdTests(unittest.TestCase):
         seed_facts = {"142": ScoredFact("142", "")}
 
         graph_data = expander.expand(
-            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+            "ctx-1", seed_facts, DateRange(), datetime.now(UTC)
         )
 
         self.assertIn("142", graph_data)
@@ -1737,7 +1737,7 @@ class GraphIdShapedFactIdTests(unittest.TestCase):
         seed_facts = {"cand-abc123": ScoredFact("cand-abc123", "")}
 
         graph_data = expander.expand(
-            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+            "ctx-1", seed_facts, DateRange(), datetime.now(UTC)
         )
 
         self.assertIn("cand-abc123", graph_data)
@@ -1774,7 +1774,7 @@ class GraphIdShapedFactIdTests(unittest.TestCase):
         }
 
         graph_data = expander.expand(
-            "ctx-1", seed_facts, DateRange(), datetime.now(timezone.utc)
+            "ctx-1", seed_facts, DateRange(), datetime.now(UTC)
         )
 
         self.assertIn("142", graph_data)

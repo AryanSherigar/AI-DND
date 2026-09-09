@@ -9,6 +9,7 @@ Usage:
     PYTHONPATH=src .venv/bin/python3 scripts/profile_read_path.py \
         --instances benchmarks/longmemeval/sample30.json --limit 8
 """
+
 from __future__ import annotations
 
 import argparse
@@ -17,7 +18,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 sys.path.insert(0, "src")
 
@@ -26,7 +27,7 @@ import psycopg
 from context_memory.client.hydradb_http import HydraHttpTransport
 from context_memory.core.config import Config
 from context_memory.core.logging import drain_metrics, enable_metrics_collection
-from context_memory.ingestion.embedding import SentenceTransformerEmbedder
+from context_memory.ingestion.embedding import VertexEmbedder
 from context_memory.ingestion.sources.longmemeval import parse_longmemeval_timestamp
 from evaluation.benchmark_runner import create_pipeline
 
@@ -35,11 +36,17 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--instances", required=True)
     ap.add_argument("--limit", type=int, default=8)
-    ap.add_argument("--database-url", default=os.getenv(
-        "CONTEXT_MEMORY_DATABASE_URL",
-        "postgresql://context_memory@127.0.0.1:54329/context_memory"))
-    ap.add_argument("--hydradb-url", default=os.getenv(
-        "CONTEXT_MEMORY_HYDRADB_URL", "http://127.0.0.1:8080"))
+    ap.add_argument(
+        "--database-url",
+        default=os.getenv(
+            "CONTEXT_MEMORY_DATABASE_URL",
+            "postgresql://context_memory@127.0.0.1:54329/context_memory",
+        ),
+    )
+    ap.add_argument(
+        "--hydradb-url",
+        default=os.getenv("CONTEXT_MEMORY_HYDRADB_URL", "http://127.0.0.1:8080"),
+    )
     args = ap.parse_args()
 
     instances = json.load(open(args.instances))[: args.limit]
@@ -51,21 +58,29 @@ def main() -> int:
         bearer_token=os.getenv("CONTEXT_MEMORY_HYDRADB_TOKEN"),
         timeout_seconds=config.hydradb_request_timeout_seconds,
     )
-    embedder = SentenceTransformerEmbedder(model_name=config.embedding_model_name)
+    embedder = VertexEmbedder(
+        api_key=config.embedding_api_key, model_name=config.embedding_model_name
+    )
     _, engine, _ = create_pipeline(
-        conn, transport, config.get_extractor_client(), embedder, config=config)
+        conn, transport, config.get_extractor_client(), embedder, config=config
+    )
 
     enable_metrics_collection()
     wall: list[float] = []
     for inst in instances:
         raw_date = inst.get("question_date")
-        qdate = (parse_longmemeval_timestamp(raw_date, "question_date")
-                 if raw_date else datetime.now(timezone.utc))
+        qdate = (
+            parse_longmemeval_timestamp(raw_date, "question_date")
+            if raw_date
+            else datetime.now(UTC)
+        )
         started = time.perf_counter()
         try:
             engine.retrieve_and_answer(
                 f"longmemeval:{inst['question_id']}",
-                str(inst.get("question", "")), qdate)
+                str(inst.get("question", "")),
+                qdate,
+            )
         except Exception as exc:
             print(f"  {inst['question_id'][:34]} FAILED: {exc}", file=sys.stderr)
             continue
@@ -90,8 +105,10 @@ def main() -> int:
     print("-" * 90)
     print(f"{'WALL CLOCK total':62s} {n:6d} {total_wall:9.0f} {total_wall / n:9.0f}")
     print(f"{'  of which LLM calls':62s} {'':6s} {llm_ms:9.0f} {llm_ms / n:9.0f}")
-    print(f"{'  MECHANICAL remainder':62s} {'':6s} "
-          f"{total_wall - llm_ms:9.0f} {(total_wall - llm_ms) / n:9.0f}")
+    print(
+        f"{'  MECHANICAL remainder':62s} {'':6s} "
+        f"{total_wall - llm_ms:9.0f} {(total_wall - llm_ms) / n:9.0f}"
+    )
     return 0
 
 

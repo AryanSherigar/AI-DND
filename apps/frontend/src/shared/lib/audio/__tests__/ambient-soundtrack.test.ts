@@ -57,26 +57,39 @@ describe("AmbientSoundtrackController", () => {
   it("transitions to new mood and ignores duplicate transitions", () => {
     const firstTransition = controller.transitionTo(
       "peaceful",
-      undefined,
+      "https://example.com/peaceful.wav",
       true,
     );
     expect(firstTransition).toBe(true);
     expect(controller.getMood()).toBe("peaceful");
 
-    const duplicateTransition = controller.transitionTo("peaceful");
+    const duplicateTransition = controller.transitionTo(
+      "peaceful",
+      "https://example.com/peaceful.wav",
+    );
     expect(duplicateTransition).toBe(false);
   });
 
   it("enforces cooldown for non-combat transitions but allows combat escalation", () => {
-    controller.transitionTo("peaceful", undefined, true);
+    controller.transitionTo(
+      "peaceful",
+      "https://example.com/peaceful.wav",
+      true,
+    );
 
     // Non-combat transition immediately after should be throttled by cooldown
-    const nonCombatAttempt = controller.transitionTo("mystery");
+    const nonCombatAttempt = controller.transitionTo(
+      "mystery",
+      "https://example.com/mystery.wav",
+    );
     expect(nonCombatAttempt).toBe(false);
     expect(controller.getMood()).toBe("peaceful");
 
     // Combat transition bypasses cooldown
-    const combatAttempt = controller.transitionTo("combat");
+    const combatAttempt = controller.transitionTo(
+      "combat",
+      "https://example.com/combat.wav",
+    );
     expect(combatAttempt).toBe(true);
     expect(controller.getMood()).toBe("combat");
   });
@@ -88,9 +101,10 @@ describe("AmbientSoundtrackController", () => {
     );
   });
 
-  it("falls back to the default mood track URL when none is provided", () => {
-    controller.transitionTo("peaceful", undefined, true);
-    expect(controller.getCurrentTrackUrl()).toBe("/audio/moods/peaceful.wav");
+  it("is a no-op when no track URL is resolvable", () => {
+    const result = controller.transitionTo("peaceful", undefined, true);
+    expect(result).toBe(false);
+    expect(controller.getMood()).toBeNull();
   });
 
   it("persists settings in localStorage", () => {

@@ -5,11 +5,15 @@ import { useStudioStore } from "../stores/studio.store";
 import { StudioDocumentLayout } from "../components/Layout/StudioDocumentLayout";
 import { MasterModeStudioLayout } from "../components/Layout/MasterModeStudioLayout";
 
+import { SaveStatusIndicator } from "../components/SaveStatusIndicator/SaveStatusIndicator";
+
 export const EditScenarioPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { scenario, isLoading, error } = useScenario(id ?? null);
   const setMode = useStudioStore((s) => s.setMode);
   const hydrateFromScenario = useStudioStore((s) => s.hydrateFromScenario);
+  const isSaving = useStudioStore((s) => s.isSaving);
+  const lastSaved = useStudioStore((s) => s.lastSaved);
 
   useEffect(() => {
     if (scenario) {
@@ -78,15 +82,18 @@ export const EditScenarioPage: React.FC = () => {
             {scenario.title || "Untitled scenario"}
           </h1>
         </div>
-        <span className="shrink-0 font-mono text-xs uppercase tracking-wider text-content-faint">
-          {scenario.mode === "master" ? "Master mode" : "Newbie mode"}
-        </span>
+        <div className="flex items-center gap-4 font-mono text-xs uppercase tracking-wider">
+          <SaveStatusIndicator isSaving={isSaving} lastSaved={lastSaved} />
+          <span className="shrink-0 text-content-faint">
+            {scenario.mode === "master" ? "Master mode" : "Newbie mode"}
+          </span>
+        </div>
       </header>
       <main className="flex-1 flex flex-col relative min-h-0">
         {scenario.mode === "master" ? (
           <MasterModeStudioLayout scenarioId={id} />
         ) : (
-          <StudioDocumentLayout />
+          <StudioDocumentLayout scenarioId={id} />
         )}
       </main>
     </div>

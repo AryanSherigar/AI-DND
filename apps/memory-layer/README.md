@@ -4,11 +4,7 @@ A high-performance, provenance-preserving long-term memory substrate built on to
 
 Designed for production agentic applications and rigorous contextual benchmarks (such as **LongMemEval**), the engine turns unstructured, timestamped conversations into a durable, bitemporal graph with semantic vector indexing, 3-tier entity resolution, state-change tracking, and 4-phase hybrid retrieval with low-evidence abstention.
 
-> **Hackathon submission.** This is the top-level README. `FINAL_ARCHITECTURE.md` records the accepted system design; this file is the practical setup/run guide plus a summary of how HydraDB is used. For code-level behavior where implementation has evolved beyond that design, use the code-traced beginner guide below.
-
-New to the codebase? Start with [`docs/BEGINNER_BUILD_FLOW.md`](docs/BEGINNER_BUILD_FLOW.md), which traces the current implementation in two halves: memory ingestion/graph generation, then retrieval/response generation.
-
-That guide now also covers the AI-DND harness, scenario templates, durable batch recovery, structured retrieval, journal/replay/tools, pivotal build failures, and the remaining production/SOTA gaps. It is the current-code authority; several older planning documents describe pre-implementation states.
+> This service provides the long-term context memory engine for AI-DND.
 
 ---
 
@@ -46,7 +42,7 @@ HydraDB is **not a side component** — it's the system's sole graph authority a
 
 - **Native graph storage** for `Session`, `Turn`, `Fact`, `Entity`, and `Alias` nodes. Runtime extraction writes `HAS_TURN`, `EXTRACTED_FROM`, `ABOUT`, `STATED_BY`, `SUPERSEDES`, and `HAS_ALIAS`; direct authoring can also write `RELATES_TO` (`src/context_memory/ingestion/graph_plan_builder.py`, `direct_authoring.py`, `graph_writer.py`).
 - **Transport**: JSON-over-HTTP OpenCypher queries via a custom `HydraHttpTransport` client (`src/context_memory/client/hydradb_http.py`), authenticated with a bearer token, using batched `UNWIND $rows` writes and causal-bookmark reads for read-after-write consistency. (The Neo4j Bolt driver is incompatible with HydraDB's `SlateDBGraph/0.1.0` handshake, so HTTP is used instead of Bolt.)
-- **Knowledge-update tracking**: on a correction or real-world state change, a new `(Fact)-[:SUPERSEDES]->(Fact)` edge is written directly in HydraDB rather than mutating history — see `src/context_memory/ingestion/temporal_update.py` and §11 of `FINAL_ARCHITECTURE.md`.
+- **Knowledge-update tracking**: on a correction or real-world state change, a new `(Fact)-[:SUPERSEDES]->(Fact)` edge is written directly in HydraDB rather than mutating history — see `src/context_memory/ingestion/temporal_update.py`.
 - **Multi-hop retrieval**: Phase 2 of the retrieval pipeline (`src/context_memory/retrieval/graph_expander.py`) reads seeded facts, follows linked entities, and runs HydraDB's native `algo.MSpaths` algorithm for path signals. Current/archive and bitemporal properties on each Fact provide visibility filtering.
 - **Single-timeline rollback**: a save point marks a knowledge-time cutoff; rolling back to it archives every fact created after that point and restores whatever it superseded — both are plain `MERGE ... SET` writes on existing nodes, the same mechanism ordinary corrections already use (`src/context_memory/ingestion/rollback.py`).
 - **Live graph streaming**: every write the `GraphWriter` sends to HydraDB is also broadcast over Server-Sent Events (`src/api/stream.py`) and rendered in real time on the frontend's graph pane, so retrieved/written nodes and edges are visible as the conversation happens.
@@ -590,11 +586,6 @@ are fixed, see the chain above and §26-27 of the findings doc):
   full investigation (this was checklist item 6, closed by this conclusion
   rather than a speculative prompt change).
 
-See `docs/fixes_and_evaluation_findings.md` for the full fix list and the
-complete per-instance diagnosis behind every number above (§13 data-loss fix,
-§14 entity-resolution batching, §16 count-query widening, §18 root-cause
-correction on the data-loss bug's actual scope, §24-28 the reranker/duration/
-near-duplicate-fact/item-6 chain summarized in the table above).
 
 ---
 
@@ -762,7 +753,6 @@ Current working-tree status on 2026-09-06: default collection is blocked because
 │   │   └── client/                # HydraDB HTTP transport client
 │   └── tests/                     # Unit, contract, replay, and live-gated integration tests
 │       └── test_api_server.py     # API test suite
-└── FINAL_ARCHITECTURE.md          # Authoritative architectural specification
 ```
 
 ---
@@ -778,8 +768,7 @@ This project builds on the following third-party software, models, and datasets:
 | [FastAPI](https://github.com/tiangolo/fastapi) & [Uvicorn](https://github.com/encode/uvicorn) | REST API server | MIT |
 | [Pydantic](https://github.com/pydantic/pydantic) | Schema validation | MIT |
 | [psycopg](https://github.com/psycopg/psycopg) | PostgreSQL driver | LGPL-3.0 |
-| [Google Gen AI SDK](https://github.com/googleapis/python-genai) | Current Vertex AI/Gemini request, structured-output, and tool-call adapter | Apache-2.0 |
-| [sentence-transformers](https://github.com/UKPLab/sentence-transformers) / `all-MiniLM-L6-v2` | 384-dim fact embeddings | Apache-2.0 |
+| [Google Gen AI SDK](https://github.com/googleapis/python-genai) | Current Vertex AI/Gemini request, structured-output, tool-call, and `text-embedding-005` embedding adapter | Apache-2.0 |
 | [NumPy](https://numpy.org/) | In-memory embedding index | BSD-3-Clause |
 | [React](https://react.dev/) & [Vite](https://vitejs.dev/) | Web UI framework & dev server | MIT |
 | [Google Vertex AI](https://cloud.google.com/vertex-ai) / Gemini | Hosted inference for extraction, entity resolution, temporal reasoning, retrieval decisions, and reader synthesis | Proprietary API, used per its terms of service |

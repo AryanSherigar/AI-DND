@@ -5,7 +5,10 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-RUN npm ci
+# NOTE: npm 10.9.8 (node:22-alpine's bundled version) hits a reproducible
+# "Exit handler never called!" crash running `npm ci` against this lockfile.
+# Upgrading npm first avoids it.
+RUN npm install -g npm@11 && npm ci
 
 COPY . .
 
@@ -34,7 +37,7 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:alpine
 
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 EXPOSE 8080
 

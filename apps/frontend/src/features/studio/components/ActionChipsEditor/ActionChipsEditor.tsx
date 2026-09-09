@@ -24,6 +24,10 @@ export const ActionChipsEditor: React.FC<ActionChipsEditorProps> = ({
   const handleAdd = (): void => {
     const trimmed = draft.trim();
     if (!trimmed) return;
+    const isDuplicate = chips.some(
+      (chip) => chip.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (isDuplicate) return;
     setChips([...chips, trimmed]);
     setDraft("");
   };
@@ -84,7 +88,7 @@ export const ActionChipsEditor: React.FC<ActionChipsEditorProps> = ({
       <div className="flex items-center gap-2">
         <Input
           aria-label="New action chip"
-          placeholder="Search the cairn"
+          placeholder='Type an action, e.g. "I draw my sword and attack."'
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}

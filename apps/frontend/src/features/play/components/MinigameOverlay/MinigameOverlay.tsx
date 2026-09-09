@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { usePlayStore } from "../../stores/play.store";
 import { useMinigameResult } from "../../hooks/useMinigameResult";
-import { MinigameOutcomeResult } from "./MinigameOverlay.types";
-import { ReplitEmbedMinigame } from "./ReplitEmbed/ReplitEmbedMinigame";
-import { DodgeMinigame } from "./DodgeMinigame/DodgeMinigame";
+import { MinigameOutcomeResult } from "@/shared/types/minigame.types";
+import { ReplitEmbedMinigame } from "@/shared/components/minigames/ReplitEmbed/ReplitEmbedMinigame";
+import { DodgeMinigame } from "@/shared/components/minigames/DodgeMinigame/DodgeMinigame";
+import { useDefaultMoodTracks } from "@/shared/hooks/useDefaultMoodTracks";
+import { ForfeitConfirmModal } from "./ForfeitConfirmModal";
 
 const PENDING_STATUS_TITLES: Record<string, string> = {
   reconciling: "Checking the server…",
@@ -24,9 +27,11 @@ const PENDING_STATUS_TITLES: Record<string, string> = {
  * retried without losing the completed encounter.
  */
 export function MinigameOverlay() {
+  const [isConfirmingForfeit, setIsConfirmingForfeit] = useState(false);
   const activeMinigame = usePlayStore((s) => s.active_minigame);
   const pendingResult = usePlayStore((s) => s.pending_minigame_result);
   const { submit, retry, submitTimeoutFallback } = useMinigameResult();
+  const { data: defaultMoodTracks } = useDefaultMoodTracks();
 
   if (!activeMinigame) return null;
 
@@ -38,13 +43,37 @@ export function MinigameOverlay() {
     });
   };
 
+  const handleConfirmForfeit = (): void => {
+    setIsConfirmingForfeit(false);
+    handleResolve({ outcome_tag: "timeout" });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
+      <div className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent px-6 py-4">
+        <div className="pointer-events-auto flex items-center gap-2">
+          <span className="rounded bg-white/10 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Challenge
+          </span>
+          <span className="text-sm font-medium text-white">
+            {activeMinigame.label}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsConfirmingForfeit(true)}
+          className="pointer-events-auto rounded border border-white/20 bg-zinc-900/80 px-3 py-1 text-xs font-medium text-zinc-300 backdrop-blur transition-colors hover:bg-zinc-800 hover:text-white"
+        >
+          Forfeit
+        </button>
+      </div>
+
       {activeMinigame.minigame_type === "dodge" &&
         activeMinigame.dodge_config && (
           <DodgeMinigame
             dodgeConfig={activeMinigame.dodge_config}
             onComplete={handleResolve}
+            tensionDefaultTrackUrl={defaultMoodTracks?.tension}
           />
         )}
       {activeMinigame.minigame_type === "replit_embed" &&
@@ -55,6 +84,12 @@ export function MinigameOverlay() {
             onComplete={handleResolve}
           />
         )}
+
+      <ForfeitConfirmModal
+        isOpen={isConfirmingForfeit}
+        onConfirm={handleConfirmForfeit}
+        onCancel={() => setIsConfirmingForfeit(false)}
+      />
       {pendingResult && (
         <div
           className="absolute inset-0 flex items-center justify-center bg-black/80 p-6 text-center text-white"

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Button } from "@/shared/components/ui/Button";
 import { useScenario } from "../../hooks/useScenario";
 import { useServerSyncedState } from "../../hooks/useServerSyncedState";
@@ -11,6 +11,16 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ scenarioId }) => {
   const [rulesText, setRulesText] = useServerSyncedState<string>(
     scenario ? (scenario.rules?.text ?? "") : undefined,
   );
+
+  useEffect(() => {
+    if (rulesText === undefined || !scenario) return;
+    if (rulesText === (scenario.rules?.text ?? "")) return;
+
+    const timer = setTimeout(() => {
+      updateScenario({ rules: { text: rulesText } });
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [rulesText, scenario, updateScenario]);
 
   const handleSave = (): void => {
     updateScenario({ rules: { text: rulesText ?? "" } });

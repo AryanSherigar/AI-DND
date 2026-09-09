@@ -13,7 +13,7 @@ const LEGAL_LINKS = [
   { to: "/privacy", label: "Privacy" },
 ];
 
-const GITHUB_URL = "https://github.com";
+const GITHUB_URL = "https://github.com/AryanSherigar/AI-DND";
 
 export const Footer: React.FC = () => {
   const year = new Date().getFullYear();

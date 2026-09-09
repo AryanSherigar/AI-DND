@@ -105,4 +105,52 @@ describe("ScenarioMetaForm", () => {
     const payload = savedPayload as Record<string, unknown>;
     expect(payload.cover_image_url).toBeUndefined();
   });
+
+  it("immediately saves cover image url when image is uploaded", async () => {
+    let savedPayload: unknown = null;
+    server.use(
+      http.get(`${API_URL}/v1/scenarios/${SCENARIO_ID}`, () =>
+        HttpResponse.json({
+          scenario_id: SCENARIO_ID,
+          title: "The Hollow Cairn",
+          logline: "A dungeon of forgotten kings.",
+          genre_tags: [],
+          complexity_tier: "master",
+          content_tag: "teen",
+          player_count_support: "solo",
+          cover_image_url: null,
+        }),
+      ),
+      http.post(`${API_URL}/v1/uploads/scenario-cover-image`, () =>
+        HttpResponse.json({
+          url: "http://localhost:8000/uploads/new-cover.png",
+        }),
+      ),
+      http.patch(
+        `${API_URL}/v1/scenarios/${SCENARIO_ID}`,
+        async ({ request }) => {
+          savedPayload = await request.json();
+          return HttpResponse.json({
+            scenario_id: SCENARIO_ID,
+            ...(savedPayload as Record<string, unknown>),
+          });
+        },
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderForm();
+
+    const file = new File(["dummy content"], "cover.png", {
+      type: "image/png",
+    });
+    const input = await screen.findByLabelText(/^cover image$/i);
+    await user.upload(input, file);
+
+    await screen.findByAltText("Scenario cover preview");
+    const payload = savedPayload as { cover_image_url?: string };
+    expect(payload.cover_image_url).toBe(
+      "http://localhost:8000/uploads/new-cover.png",
+    );
+  });
 });

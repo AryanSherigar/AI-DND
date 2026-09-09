@@ -52,8 +52,11 @@ export const useScenarioFocus = (scenarioId: string | undefined) => {
       if (!scenarioId) throw new Error("Scenario ID is required");
       try {
         return await fetchScenarioDetail(scenarioId);
-      } catch {
-        // Fallback for mock IDs
+      } catch (error) {
+        // Dev-only fallback for browsing mock IDs locally; never served in
+        // production, where a fetch failure must surface as a real error.
+        if (!import.meta.env.DEV) throw error;
+
         const mockItem = mockScenarios.find(
           (item: ScenarioMock) => item.id === scenarioId,
         );

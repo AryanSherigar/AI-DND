@@ -32,7 +32,7 @@ from context_memory.client.hydradb_http import HydraHttpTransport
 from context_memory.core.config import Config
 from context_memory.core.journal import StepJournal
 from context_memory.core.logging import drain_metrics, enable_metrics_collection
-from context_memory.ingestion.embedding import SentenceTransformerEmbedder
+from context_memory.ingestion.embedding import VertexEmbedder
 from context_memory.ingestion.sources.longmemeval import parse_longmemeval_timestamp
 from evaluation.benchmark_runner import create_pipeline
 
@@ -111,7 +111,9 @@ def main() -> int:
         bearer_token=os.getenv("CONTEXT_MEMORY_HYDRADB_TOKEN"),
         timeout_seconds=config.hydradb_request_timeout_seconds,
     )
-    embedder = SentenceTransformerEmbedder(model_name=config.embedding_model_name)
+    embedder = VertexEmbedder(
+        api_key=config.embedding_api_key, model_name=config.embedding_model_name
+    )
     journal = StepJournal(pool) if config.step_journal_enabled else None
     _, engine, _ = create_pipeline(
         pool,

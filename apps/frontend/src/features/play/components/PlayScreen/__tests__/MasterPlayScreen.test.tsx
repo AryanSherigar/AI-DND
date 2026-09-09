@@ -34,6 +34,7 @@ function buildPlaythrough(
     ended_outcome_tag: null,
     ended_outcome_title: null,
     ended_outcome_text: null,
+    action_chips: [],
     ...overrides,
   };
 }

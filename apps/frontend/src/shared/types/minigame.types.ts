@@ -110,3 +110,9 @@ export interface MinigameResultPayload {
   /** Must be the attempt_id supplied in MinigameEventPayload when available. */
   attempt_id?: string;
 }
+
+// What a minigame implementation (DodgeMinigame, ReplitEmbedMinigame) hands
+// back on completion — everything MinigameResultPayload needs except
+// minigame_id, which the caller (MinigameOverlay in play/, or a Studio
+// preview) already knows and attaches itself.
+export type MinigameOutcomeResult = Omit<MinigameResultPayload, "minigame_id">;

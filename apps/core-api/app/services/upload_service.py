@@ -114,7 +114,7 @@ class UploadService:
         """Generate a scenario cover image with AI and upload it, returning its public URL."""
         prompt = self._build_cover_prompt(request)
         image_bytes = await image_gen_client.generate_image(
-            prompt, settings.imagen_timeout_seconds
+            prompt, settings.image_generation_timeout_seconds
         )
         return await self._upload_with_prefix(
             image_bytes, _GENERATED_COVER_IMAGE_CONTENT_TYPE, "scenario-covers"

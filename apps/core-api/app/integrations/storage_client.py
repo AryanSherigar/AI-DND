@@ -58,6 +58,19 @@ def _upload_blob_sync(content: bytes, content_type: str, object_key: str) -> str
     )
 
 
+def public_url_for(object_key: str) -> str:
+    """Compute the deterministic public URL for an object key already stored
+    out of band (e.g. a seeded built-in default asset), without uploading
+    anything."""
+    should_use_local = (
+        settings.environment == "development" or not settings.gcs_bucket_name
+    )
+    if should_use_local:
+        base_url = settings.core_api_public_url.rstrip("/")
+        return f"{base_url}/uploads/{object_key}"
+    return f"https://storage.googleapis.com/{settings.gcs_bucket_name}/{object_key}"
+
+
 async def upload_image(content: bytes, content_type: str, object_key: str) -> str:
     """Upload bytes to local storage in dev or GCS in production; return public URL."""
     loop = asyncio.get_running_loop()

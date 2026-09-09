@@ -49,6 +49,7 @@ export function EBookActionDrawer({
   onClose,
   onSubmit,
   isNarrating,
+  actionChips = [],
 }: EBookActionDrawerProps) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -77,6 +78,11 @@ export function EBookActionDrawer({
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
+  };
+
+  const handleChipClick = (chipText: string): void => {
+    setText(chipText);
+    setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -130,6 +136,26 @@ export function EBookActionDrawer({
             ✕ Close
           </button>
         </div>
+
+        {actionChips.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
+            {actionChips.map((chip, index) => (
+              <button
+                key={`${chip}-${index}`}
+                type="button"
+                onClick={() => handleChipClick(chip)}
+                disabled={isNarrating}
+                className={`px-3 py-1 rounded-full border font-mono text-[11px] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  isSepia
+                    ? "border-[#d8c7a8] text-[#2c2217] hover:bg-[#2c2217]/10"
+                    : "border-zinc-700 text-zinc-300 hover:bg-zinc-800/60"
+                }`}
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex items-end gap-2">
           <textarea

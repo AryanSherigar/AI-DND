@@ -43,9 +43,8 @@ export const MusicSlotEditor: React.FC<MusicSlotEditorProps> = ({
       <div>
         <h2 className="text-lg font-semibold text-content">Mood Music</h2>
         <p className="text-sm text-content-faint">
-          Set a track for each of the 6 moods your narrator can call for. All 6
-          slots must be set (custom or default) before this scenario can be
-          published.
+          Set a track for each of the 6 moods your narrator can call for. Any
+          mood left unset automatically falls back to its default track.
         </p>
         {quota && (
           <p className="text-xs text-content-faint mt-1">

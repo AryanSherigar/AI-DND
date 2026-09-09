@@ -21,36 +21,41 @@ export const MoodSlotUploadRow: React.FC<MoodSlotUploadRowProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <div className="flex flex-wrap gap-2">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="audio/mpeg,audio/wav,audio/x-wav,audio/ogg"
-        onChange={onFileSelect}
-        disabled={isBusy}
-        className="hidden"
-        aria-label={`Upload track for ${label}`}
-      />
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        disabled={isBusy}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        {isUploading ? "Uploading…" : "Upload track"}
-      </Button>
-      {isCustomTrack && (
+    <div className="space-y-1">
+      <div className="flex flex-wrap gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="audio/mpeg,audio/wav,audio/x-wav,audio/ogg"
+          onChange={onFileSelect}
+          disabled={isBusy}
+          className="hidden"
+          aria-label={`Upload track for ${label}`}
+        />
         <Button
           type="button"
-          variant="ghost"
+          variant="secondary"
           size="sm"
           disabled={isBusy}
-          onClick={onUseDefault}
+          onClick={() => fileInputRef.current?.click()}
         >
-          Use default
+          {isUploading ? "Uploading…" : "Upload track"}
         </Button>
-      )}
+        {isCustomTrack && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={isBusy}
+            onClick={onUseDefault}
+          >
+            Use default
+          </Button>
+        )}
+      </div>
+      <p className="text-xs text-content-faint">
+        MP3, WAV, or OGG, 30–120 seconds long.
+      </p>
     </div>
   );
 };

@@ -250,6 +250,12 @@ def write_fact(
             observed_at=v_from,
             superseded_at=_OPEN_ENDED_VALID_TO,
             is_current=True,
+            # Explicit rather than left unset: HydraDB's Cypher subset has no
+            # coalesce()/IS NULL support, so template_clone's WHERE clause can
+            # only compare this property directly against a literal -- a
+            # fact with no `archived` property at all would never match
+            # `n.archived = false` and would silently drop out of every clone.
+            archived=False,
             object_literal=fact.object_literal,
         ),
     )

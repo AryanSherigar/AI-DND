@@ -27,6 +27,7 @@ import { FieldExpression } from "../ConditionEditor/ExpressionBuilder/Expression
 import { StateMutationFields } from "../ConditionEditor/StateMutationFields";
 import { DodgeDifficultySlider } from "./DodgeDifficultySlider";
 import { MinigameFormProps } from "./MinigameForm.types";
+import { MinigamePreviewOverlay } from "./MinigamePreviewOverlay";
 import { ReplitTestConnectionButton } from "./ReplitTestConnectionButton";
 import { TieredOutcomeRow } from "./TieredOutcomeRow";
 
@@ -166,7 +167,10 @@ export const MinigameForm: React.FC<MinigameFormProps> = ({
     buildInitialState(minigame),
   );
   const [audioUploadError, setAudioUploadError] = useState<string | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const uploadScenarioAudio = useUploadScenarioAudio();
+  const canPreview =
+    formState.minigameType === "dodge" || !!formState.replitEmbedUrl.trim();
 
   const handleSubmit = (event: React.FormEvent): void => {
     event.preventDefault();
@@ -625,6 +629,16 @@ export const MinigameForm: React.FC<MinigameFormProps> = ({
         </div>
       )}
 
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled={!canPreview}
+        onClick={() => setIsPreviewOpen(true)}
+      >
+        Preview minigame
+      </Button>
+
       <div>
         <p className="mb-1 text-sm text-content-muted">Outcome mode</p>
         <Select
@@ -744,6 +758,14 @@ export const MinigameForm: React.FC<MinigameFormProps> = ({
 
       {submitError && <p className="text-xs text-danger">{submitError}</p>}
       <div className="flex justify-end gap-2 pt-2">
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={!canPreview}
+          onClick={() => setIsPreviewOpen(true)}
+        >
+          Preview minigame
+        </Button>
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
@@ -754,6 +776,18 @@ export const MinigameForm: React.FC<MinigameFormProps> = ({
           {isSubmitting ? "Saving…" : "Save"}
         </Button>
       </div>
+
+      {isPreviewOpen && (
+        <MinigamePreviewOverlay
+          minigameType={formState.minigameType}
+          dodgeConfig={{
+            ...formState.dodgeConfig,
+            difficulty: formState.dodgeDifficulty,
+          }}
+          replitEmbedUrl={formState.replitEmbedUrl}
+          onClose={() => setIsPreviewOpen(false)}
+        />
+      )}
     </form>
   );
 };

@@ -25,7 +25,6 @@ export interface ScenarioMusicListResponse {
 export interface MusicGenerationRequest {
   mood: ScenarioMood;
   prompt: string;
-  duration_seconds: number;
 }
 
 export interface MusicGenerationJob {

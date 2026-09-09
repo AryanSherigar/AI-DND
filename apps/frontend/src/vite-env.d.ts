@@ -11,6 +11,8 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_APP_ID: string;
   readonly VITE_MEASUREMENT_ID: string;
   readonly VITE_DEV_USER_ID?: string;
+  readonly VITE_JUDGE_EMAIL?: string;
+  readonly VITE_JUDGE_PASSWORD?: string;
 }
 
 interface ImportMeta {

@@ -118,10 +118,17 @@ export interface PlaythroughData {
   mode: "newbie" | "master";
   initial_mood?: ScenarioMood;
   // Per-scenario mood → track URL, pinned into scenario_snapshot at
-  // playthrough creation (ADR-8). A missing/null entry means the mood slot
-  // was left on the built-in default track.
+  // playthrough creation (ADR-8). Always a real, playable URL for every
+  // mood -- the backend resolves an untouched slot to its built-in default
+  // track. A null entry can still appear in a snapshot frozen before that
+  // guarantee existed; getMoodTrackUrl() is the safety net for those.
   music_tracks?: Partial<Record<ScenarioMood, string | null>>;
   narration_font?: string | null;
+  // Creator-authored quick-insert phrases for the turn input, pinned from
+  // scenario_snapshot at playthrough creation (ADR-8). [] for newbie
+  // (Studio never exposes chip authoring outside master mode) or a master
+  // scenario whose creator added none.
+  action_chips: string[];
   creator_name: string;
   cover_image_url?: string;
   opening_premise: string;

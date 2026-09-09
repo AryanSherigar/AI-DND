@@ -14,6 +14,7 @@ Usage:
     PYTHONPATH=src .venv/bin/python3 scripts/retrieval_only_rescore.py \
         --instances benchmarks/longmemeval/sample30.json --out run.jsonl
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,7 +22,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 sys.path.insert(0, "src")
 
@@ -29,7 +30,7 @@ import psycopg
 
 from context_memory.client.hydradb_http import HydraHttpTransport
 from context_memory.core.config import Config
-from context_memory.ingestion.embedding import SentenceTransformerEmbedder
+from context_memory.ingestion.embedding import VertexEmbedder
 from context_memory.ingestion.sources.longmemeval import parse_longmemeval_timestamp
 from evaluation.benchmark_runner import create_pipeline
 
@@ -42,11 +43,17 @@ def main() -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--rewrite-cache", default=_DEFAULT_CACHE)
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--database-url", default=os.getenv(
-        "CONTEXT_MEMORY_DATABASE_URL",
-        "postgresql://context_memory@127.0.0.1:54329/context_memory"))
-    ap.add_argument("--hydradb-url", default=os.getenv(
-        "CONTEXT_MEMORY_HYDRADB_URL", "http://127.0.0.1:8080"))
+    ap.add_argument(
+        "--database-url",
+        default=os.getenv(
+            "CONTEXT_MEMORY_DATABASE_URL",
+            "postgresql://context_memory@127.0.0.1:54329/context_memory",
+        ),
+    )
+    ap.add_argument(
+        "--hydradb-url",
+        default=os.getenv("CONTEXT_MEMORY_HYDRADB_URL", "http://127.0.0.1:8080"),
+    )
     args = ap.parse_args()
 
     if args.rewrite_cache:
@@ -63,9 +70,12 @@ def main() -> int:
         bearer_token=os.getenv("CONTEXT_MEMORY_HYDRADB_TOKEN"),
         timeout_seconds=config.hydradb_request_timeout_seconds,
     )
-    embedder = SentenceTransformerEmbedder(model_name=config.embedding_model_name)
+    embedder = VertexEmbedder(
+        api_key=config.embedding_api_key, model_name=config.embedding_model_name
+    )
     _, engine, _ = create_pipeline(
-        conn, transport, config.get_extractor_client(), embedder, config=config)
+        conn, transport, config.get_extractor_client(), embedder, config=config
+    )
 
     started = time.perf_counter()
     total = len(instances)
@@ -73,8 +83,11 @@ def main() -> int:
         for i, inst in enumerate(instances, start=1):
             qid = str(inst["question_id"])
             raw_date = inst.get("question_date")
-            qdate = (parse_longmemeval_timestamp(raw_date, "question_date")
-                     if raw_date else datetime.now(timezone.utc))
+            qdate = (
+                parse_longmemeval_timestamp(raw_date, "question_date")
+                if raw_date
+                else datetime.now(UTC)
+            )
             try:
                 hypothesis = engine.retrieve_and_answer(
                     context_id=f"longmemeval:{qid}",

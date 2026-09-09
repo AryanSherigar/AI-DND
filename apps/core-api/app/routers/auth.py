@@ -14,6 +14,15 @@ logger = structlog.get_logger()
 
 EVENT_AUTH_TOKEN_REFRESH_DENIED = "auth_token_refresh_denied"
 
+# Must match the URL the BROWSER sees, not this router's own route path:
+# the frontend's nginx is the only thing browsers ever talk to, and it
+# forwards /api/* to this service with the /api prefix stripped before
+# core-api ever sees the request. A cookie Path scoped to "/v1/auth/refresh"
+# never matches an actual browser request to "/api/v1/auth/refresh", so the
+# browser silently never attaches it and every refresh looks like a missing
+# token -- forcing a fresh login on every expiry instead of a silent refresh.
+REFRESH_TOKEN_COOKIE_PATH = "/api/v1/auth/refresh"
+
 
 def get_auth_service(
     session: AsyncSession = Depends(get_db_session, scope="function"),
@@ -40,7 +49,7 @@ async def exchange_token(
         httponly=True,
         secure=settings.environment != "development",
         samesite="lax",
-        path="/v1/auth/refresh",
+        path=REFRESH_TOKEN_COOKIE_PATH,
         max_age=settings.jwt_refresh_expire_days * 24 * 60 * 60,
     )
 
@@ -99,7 +108,7 @@ async def refresh_token(
             httponly=True,
             secure=settings.environment != "development",
             samesite="lax",
-            path="/v1/auth/refresh",
+            path=REFRESH_TOKEN_COOKIE_PATH,
             max_age=settings.jwt_refresh_expire_days * 24 * 60 * 60,
         )
 
@@ -116,7 +125,7 @@ async def refresh_token(
 async def logout(response: Response) -> None:
     response.delete_cookie(
         key="refresh_token",
-        path="/v1/auth/refresh",
+        path=REFRESH_TOKEN_COOKIE_PATH,
         httponly=True,
         secure=settings.environment != "development",
         samesite="lax",

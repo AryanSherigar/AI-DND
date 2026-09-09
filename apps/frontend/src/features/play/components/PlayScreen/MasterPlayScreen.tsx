@@ -55,7 +55,7 @@ export function MasterPlayScreen() {
       className={`relative h-screen h-[100dvh] w-full flex flex-col overflow-hidden font-sans transition-colors ${containerTheme}`}
     >
       <EBookHeader
-        onBack={() => navigate("/play")}
+        onBack={() => navigate("/discover")}
         onOpenCodex={toggleLeftSidebar}
         onOpenChronicle={openChronicleModal}
         activeConditions={playthrough.active_conditions}
@@ -84,6 +84,7 @@ export function MasterPlayScreen() {
         onClose={closeActionDrawer}
         onSubmit={submitTurn}
         isNarrating={isNarrating}
+        actionChips={playthrough.action_chips}
       />
 
       <EBookCodexDrawer

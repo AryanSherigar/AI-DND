@@ -483,10 +483,14 @@ class Config:
     )
 
     # -- Embedding (Milestone 7) ------------------------------------------
+    # Vertex AI `text-embedding-005`, via the same Express Mode API-key auth
+    # every other role in this file uses (`_role_api_key`) -- not a separate
+    # ADC/service-account credential.
+    embedding_api_key: str = field(
+        default_factory=lambda: _role_api_key("EMBEDDING_API_KEY")
+    )
     embedding_model_name: str = field(
-        default_factory=lambda: os.getenv(
-            "EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2"
-        )
+        default_factory=lambda: os.getenv("EMBEDDING_MODEL_NAME", "text-embedding-005")
     )
     embedding_model_version: str = field(
         default_factory=lambda: os.getenv("EMBEDDING_MODEL_VERSION", "1")

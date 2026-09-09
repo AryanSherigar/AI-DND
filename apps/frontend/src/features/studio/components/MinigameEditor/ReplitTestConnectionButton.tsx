@@ -48,7 +48,7 @@ export const ReplitTestConnectionButton: React.FC<
           src={embedUrl}
           title="Replit connection test"
           hidden
-          sandbox="allow-scripts allow-same-origin allow-forms"
+          sandbox="allow-scripts allow-forms"
         />
       )}
     </div>

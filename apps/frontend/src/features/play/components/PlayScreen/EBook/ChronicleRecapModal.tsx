@@ -40,7 +40,7 @@ export function ChronicleRecapModal({
     setIsSubmitted(true);
     setTimeout(() => {
       onClose();
-      navigate("/play");
+      navigate("/discover");
     }, 1500);
   };
 

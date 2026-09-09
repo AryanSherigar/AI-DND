@@ -3,6 +3,8 @@
 import uuid
 
 import pytest
+from google.genai import types
+
 from app.config import settings
 from app.exceptions.turn_exceptions import (
     GeminiUnavailableError,
@@ -12,14 +14,14 @@ from app.models.memory import Fact, MemoryQueryResponse
 from app.models.tool_call import MasterModeTurnResult
 from app.models.turn import LoadedState, TurnRequest
 from app.turn.steps import ai_orchestrator
-from google.genai import types
 
 
-def _turn_request() -> TurnRequest:
+def _turn_request(action_mode: str = "do") -> TurnRequest:
     return TurnRequest(
         playthrough_id=uuid.uuid4(),
         participant_id=uuid.uuid4(),
         action_text="I draw my sword.",
+        action_mode=action_mode,
         turn_count=0,
     )
 
@@ -430,6 +432,32 @@ async def test_prompt_formats_history_as_dialogue_script(monkeypatch) -> None:
     assert "## Current Player Action" in prompt
     assert "Player: I draw my sword." in prompt
     assert "{'action_text':" not in prompt
+
+
+@pytest.mark.parametrize(
+    "action_mode,expected_snippet",
+    [
+        ("say", "The player is speaking."),
+        ("do", "The player is attempting a physical action."),
+        ("story", "The player is requesting a narrative shift."),
+    ],
+)
+def test_build_prompt_includes_action_mode_instruction(
+    action_mode: str, expected_snippet: str
+) -> None:
+    prompt = ai_orchestrator._build_prompt(
+        _turn_request(action_mode), _loaded_state(), _abstained_context()
+    )
+
+    assert expected_snippet in prompt
+
+
+def test_build_prompt_see_mode_has_no_action_instruction() -> None:
+    prompt = ai_orchestrator._build_prompt(
+        _turn_request("see"), _loaded_state(), _abstained_context()
+    )
+
+    assert prompt.endswith("Player: I draw my sword.")
 
 
 async def test_generate_narration_master_mode_emits_mood(monkeypatch) -> None:

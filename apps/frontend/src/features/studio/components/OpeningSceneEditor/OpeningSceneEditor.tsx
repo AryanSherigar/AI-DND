@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Button } from "@/shared/components/ui/Button";
 import { useScenario } from "../../hooks/useScenario";
 import { useServerSyncedState } from "../../hooks/useServerSyncedState";
@@ -13,6 +13,16 @@ export const OpeningSceneEditor: React.FC<OpeningSceneEditorProps> = ({
   const [openingScene, setOpeningScene] = useServerSyncedState<string>(
     scenario ? (scenario.opening_scene ?? "") : undefined,
   );
+
+  useEffect(() => {
+    if (openingScene === undefined || !scenario) return;
+    if (openingScene === (scenario.opening_scene ?? "")) return;
+
+    const timer = setTimeout(() => {
+      updateScenario({ opening_scene: openingScene });
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [openingScene, scenario, updateScenario]);
 
   const handleSave = (): void => {
     updateScenario({ opening_scene: openingScene ?? "" });

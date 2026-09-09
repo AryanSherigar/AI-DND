@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.scenario_music import ScenarioMusic
@@ -65,14 +65,8 @@ class ScenarioMusicRepo:
         existing.bpm = bpm
         existing.duration_seconds = duration_seconds
         await self.session.flush()
+        # updated_at is server-computed onupdate -- flush marks it expired,
+        # so a later synchronous read (e.g. Pydantic's model_validate)
+        # would otherwise trigger a lazy load outside an async context.
+        await self.session.refresh(existing)
         return existing
-
-    async def count_filled_slots(self, scenario_id: uuid.UUID) -> int:
-        """Count how many of the 6 mood slots have a persisted row."""
-        stmt = (
-            select(func.count())
-            .select_from(ScenarioMusic)
-            .where(ScenarioMusic.scenario_id == scenario_id)
-        )
-        result = await self.session.execute(stmt)
-        return result.scalar_one()

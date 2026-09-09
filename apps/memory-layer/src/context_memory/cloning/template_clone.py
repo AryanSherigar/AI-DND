@@ -425,9 +425,15 @@ def _read_labeled(
 # read here would clone every historical/superseded fact version into
 # every new playthrough alongside the current ones. Entity reads have no
 # such concept and stay unfiltered.
-_CURRENT_FACT_WHERE_CLAUSE = (
-    "coalesce(n.is_current, true) = true AND coalesce(n.archived, false) = false"
-)
+#
+# No coalesce()/IS NULL here: HydraDB's Cypher subset only supports direct
+# property-vs-literal comparisons combined with AND/OR (confirmed against
+# the live instance -- coalesce() and `IS NULL` both come back as
+# "OpenCypher query is not supported yet"). Every Fact writer now sets
+# `is_current`/`archived` explicitly at creation (direct_authoring.py,
+# graph_plan_builder.py) so a plain comparison is correct and won't
+# silently exclude rows with the property unset.
+_CURRENT_FACT_WHERE_CLAUSE = "n.is_current = true AND n.archived = false"
 
 
 def _read_edges(

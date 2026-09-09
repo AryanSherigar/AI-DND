@@ -1,9 +1,25 @@
 import { useState } from "react";
-import { signInWithPopup } from "firebase/auth";
+import { signInWithPopup, signInWithEmailAndPassword } from "firebase/auth";
 import { auth, googleProvider } from "@/shared/lib/firebase";
 import { exchangeFirebaseToken, logoutUser } from "../api/auth.api";
 import { useAuthStore } from "../stores/auth.store";
 import { extractErrorMessage } from "@/shared/lib/extractErrorMessage";
+import {
+  DEFAULT_JUDGE_EMAIL,
+  DEFAULT_JUDGE_PASSWORD,
+} from "../constants/auth.constants";
+
+const formatJudgeAuthError = (err: unknown, email: string): string => {
+  const rawMsg = extractErrorMessage(err, "Judge login failed");
+  if (
+    rawMsg.includes("user-not-found") ||
+    rawMsg.includes("invalid-credential") ||
+    rawMsg.includes("wrong-password")
+  ) {
+    return `Judge account (${email}) not found in Firebase. Please enable Email/Password auth and add this user in the Firebase Console.`;
+  }
+  return rawMsg;
+};
 
 export const useAuth = () => {
   const {
@@ -14,8 +30,11 @@ export const useAuth = () => {
     logout: storeLogout,
   } = useAuthStore();
   const [error, setError] = useState<string | null>(null);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isJudgeLoading, setIsJudgeLoading] = useState(false);
 
   const loginWithGoogle = async () => {
+    setIsGoogleLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const idToken = await result.user.getIdToken();
@@ -26,6 +45,28 @@ export const useAuth = () => {
       setError(null);
     } catch (err: unknown) {
       setError(extractErrorMessage(err, "Login failed"));
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
+  const loginAsJudge = async () => {
+    setIsJudgeLoading(true);
+    const email = import.meta.env.VITE_JUDGE_EMAIL || DEFAULT_JUDGE_EMAIL;
+    const password =
+      import.meta.env.VITE_JUDGE_PASSWORD || DEFAULT_JUDGE_PASSWORD;
+
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      const idToken = await result.user.getIdToken();
+      const { access_token, user: apiUser } =
+        await exchangeFirebaseToken(idToken);
+      setAuth(access_token, apiUser);
+      setError(null);
+    } catch (err: unknown) {
+      setError(formatJudgeAuthError(err, email));
+    } finally {
+      setIsJudgeLoading(false);
     }
   };
 
@@ -62,8 +103,11 @@ export const useAuth = () => {
     user,
     isAuthenticated,
     isLoading,
+    isGoogleLoading,
+    isJudgeLoading,
     error,
     loginWithGoogle,
+    loginAsJudge,
     loginAsDevUser,
     logout,
   };

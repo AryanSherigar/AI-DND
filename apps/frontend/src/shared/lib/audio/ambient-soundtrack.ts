@@ -1,5 +1,4 @@
 import { ScenarioMood } from "@/shared/types/audio.types";
-import { DEFAULT_MOOD_TRACK_URLS } from "@/shared/constants/audio";
 
 const CROSSFADE_DURATION_SECONDS = 4.0;
 const MIN_COOLDOWN_MS = 45000;
@@ -126,9 +125,10 @@ export class AmbientSoundtrackController {
 
   public transitionTo(
     newMood: ScenarioMood,
-    trackUrl: string = DEFAULT_MOOD_TRACK_URLS[newMood],
+    trackUrl: string | undefined = undefined,
     isForce: boolean = false,
   ): boolean {
+    if (!trackUrl) return false;
     if (!this.shouldAllowTransition(newMood, isForce)) {
       return false;
     }
@@ -193,6 +193,13 @@ export class AmbientSoundtrackController {
     const audio = new Audio();
     audio.loop = true;
     audio.preload = "auto";
+    // Mood tracks are served cross-origin from GCS. createMediaElementSource
+    // below routes this element's output through the Web Audio graph, and
+    // without crossOrigin set the element is CORS-opaque -- Web Audio mutes
+    // it entirely ("MediaElementAudioSource outputs zeroes") even though the
+    // element itself would play fine on its own. Requires the GCS bucket to
+    // answer with Access-Control-Allow-Origin for this to actually work.
+    audio.crossOrigin = "anonymous";
     let sourceNode: MediaElementAudioSourceNode | null = null;
     let gainNode: GainNode | null = null;
 

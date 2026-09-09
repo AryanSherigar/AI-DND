@@ -13,6 +13,9 @@ import time
 from collections.abc import AsyncIterator
 
 import structlog
+from google.genai import types
+from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt
+
 from app.config import settings
 from app.exceptions.turn_exceptions import (
     GeminiUnavailableError,
@@ -25,8 +28,6 @@ from app.models.turn import LoadedState, TurnRequest
 from app.turn import tool_definitions
 from app.turn.mood import extract_mood_tag
 from app.turn.steps import state_validator, tool_handler
-from google.genai import types
-from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt
 
 logger = structlog.get_logger()
 
@@ -57,6 +58,21 @@ _BASE_DM_SYSTEM_PROMPT = (
     "[MOOD: <peaceful|mystery|tension|combat|melancholy|triumph>]\n"
     "Maintain the previous tone unless a significant shift occurs. On the next line, begin the narrative prose."
 )
+
+_ACTION_MODE_INSTRUCTIONS: dict[str, str] = {
+    "say": (
+        "The player is speaking. Narrate how NPCs and the world react to "
+        "what was said; do not introduce new physical action on their behalf."
+    ),
+    "do": (
+        "The player is attempting a physical action. Resolve the concrete "
+        "outcome and consequences of that attempt."
+    ),
+    "story": (
+        "The player is requesting a narrative shift. You may skip time, "
+        "change scene, or escalate the plot to honor this."
+    ),
+}
 
 
 async def generate_narration(
@@ -299,10 +315,18 @@ def _build_prompt(
     )
     history = _recent_history(loaded_state.state)
     history_block = _format_history(history)
-    action_block = f"## Current Player Action\nPlayer: {turn_request.action_text}"
+    action_block = (
+        f"## Current Player Action\nPlayer: {turn_request.action_text}"
+        f"{_build_action_mode_instruction(turn_request.action_mode)}"
+    )
     return (
         f"{world_block}{player_block}{facts_block}{history_block}{action_block}".strip()
     )
+
+
+def _build_action_mode_instruction(action_mode: str) -> str:
+    instruction = _ACTION_MODE_INSTRUCTIONS.get(action_mode)
+    return f"\n({instruction})" if instruction else ""
 
 
 # --- Master mode: native function-calling round-trip loop -----------------

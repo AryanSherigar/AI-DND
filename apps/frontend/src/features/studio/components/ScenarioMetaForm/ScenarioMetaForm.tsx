@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
 import { Select, SelectOption } from "@/shared/components/ui/Select";
@@ -51,6 +51,28 @@ export const ScenarioMetaForm: React.FC<ScenarioMetaFormProps> = ({
   const [form, setForm] = useServerSyncedState<ScenarioMetaFormState>(
     scenario ? buildInitialState(scenario) : undefined,
   );
+
+  useEffect(() => {
+    if (!form || !scenario) return;
+    const isDirty =
+      form.title !== scenario.title ||
+      form.logline !== (scenario.logline ?? "");
+    if (!isDirty) return;
+
+    const timer = setTimeout(() => {
+      updateScenario({
+        title: form.title,
+        logline: form.logline,
+      });
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [form, scenario, updateScenario]);
+
+  const handleCoverImageChange = (url: string | null): void => {
+    if (!form) return;
+    setForm({ ...form, coverImageUrl: url });
+    updateScenario({ cover_image_url: url ?? undefined });
+  };
 
   const handleSave = (): void => {
     if (!form) return;
@@ -105,7 +127,7 @@ export const ScenarioMetaForm: React.FC<ScenarioMetaFormProps> = ({
       <CoverImageUploader
         label="Cover Image"
         value={form.coverImageUrl}
-        onChange={(url) => setForm({ ...form, coverImageUrl: url })}
+        onChange={handleCoverImageChange}
         generatePrompt={{
           title: form.title,
           genreTags: form.genreTags,

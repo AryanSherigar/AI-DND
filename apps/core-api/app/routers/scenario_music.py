@@ -136,7 +136,6 @@ async def generate_music_track(
     background_tasks.add_task(
         MusicService.run_generation_job,
         job.job_id,
-        body.duration_seconds,
         session_factory,
     )
     return job

@@ -16,7 +16,7 @@ def _embedding(**overrides: object) -> Embedding:
         subject_kind="fact",
         subject_id="fact:001",
         source_chunk_id="chunk:001",
-        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        model_name="text-embedding-005",
         model_version="1",
         values=(0.1, 0.2, 0.3),
         embedded_content_hash="sha256:abc",

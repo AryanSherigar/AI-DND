@@ -48,7 +48,7 @@ export function NewbiePlayScreen() {
     >
       {/* Reader Header */}
       <EBookHeader
-        onBack={() => navigate("/play")}
+        onBack={() => navigate("/discover")}
         onOpenCodex={toggleLeftSidebar}
         onOpenChronicle={openChronicleModal}
       />

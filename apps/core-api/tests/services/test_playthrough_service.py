@@ -32,6 +32,7 @@ from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.share_repo import ShareRepo
 from app.repositories.turn_log_repo import TurnLogRepo
 from app.repositories.user_repo import UserRepo
+from app.services import default_music
 from app.services.playthrough_service import PlaythroughService
 
 
@@ -43,6 +44,7 @@ async def _make_service(db_session: AsyncSession) -> PlaythroughService:
         share_repo=ShareRepo(db_session),
         turn_log_repo=TurnLogRepo(db_session),
         entity_repo=EntityRepo(db_session),
+        fact_repo=FactRepo(db_session),
         condition_repo=ConditionRepo(db_session),
         invariant_repo=InvariantRepo(db_session),
         end_condition_repo=EndConditionRepo(db_session),
@@ -65,6 +67,7 @@ async def _make_scenario(
     setup_schema: list[object] | None = None,
     player_count_support: str = "solo",
     narration_font: str | None = None,
+    action_chips: list[str] | None = None,
 ) -> Scenario:
     scenario = Scenario(
         creator_id=creator_id,
@@ -77,6 +80,7 @@ async def _make_scenario(
         narrator_persona="A grim narrator.",
         world_data={"lore": "A cave full of gold."},
         narration_font=narration_font,
+        action_chips=action_chips or [],
     )
     db_session.add(scenario)
     await db_session.flush()
@@ -128,6 +132,43 @@ async def test_create_playthrough_snapshots_narration_font(db_session: AsyncSess
     )
 
     assert result.scenario_snapshot["narration_font"] == "special-elite"
+
+
+@pytest.mark.asyncio
+async def test_create_playthrough_snapshots_action_chips(db_session: AsyncSession):
+    service = await _make_service(db_session)
+    user = await _make_user(db_session)
+    scenario = await _make_scenario(
+        db_session,
+        user.user_id,
+        action_chips=["I explore the ancient ruins.", "I draw my sword."],
+    )
+
+    result = await service.create_playthrough(
+        user_id=user.user_id,
+        data=PlaythroughCreate(scenario_id=scenario.scenario_id, setup_values={}),
+    )
+
+    assert result.scenario_snapshot["action_chips"] == [
+        "I explore the ancient ruins.",
+        "I draw my sword.",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_create_playthrough_snapshots_empty_action_chips_by_default(
+    db_session: AsyncSession,
+):
+    service = await _make_service(db_session)
+    user = await _make_user(db_session)
+    scenario = await _make_scenario(db_session, user.user_id)
+
+    result = await service.create_playthrough(
+        user_id=user.user_id,
+        data=PlaythroughCreate(scenario_id=scenario.scenario_id, setup_values={}),
+    )
+
+    assert result.scenario_snapshot["action_chips"] == []
 
 
 @pytest.mark.asyncio
@@ -315,20 +356,22 @@ async def test_create_playthrough_with_multi_select_and_object_options(
 async def test_create_playthrough_master_mode_snapshot_includes_entities_and_rules(
     db_session: AsyncSession,
 ):
-    """A master-mode scenario's entities, active conditions, and rule
-    invariants are pinned into scenario_snapshot at playthrough creation
-    (master-mode-turn-pipeline.spec.md) — TRS never reads Scenario or its
-    sub-resource tables directly during a turn."""
+    """A master-mode scenario's entities, non-hidden facts, active
+    conditions, and rule invariants are pinned into scenario_snapshot at
+    playthrough creation (master-mode-turn-pipeline.spec.md) — TRS never
+    reads Scenario or its sub-resource tables directly during a turn."""
     import httpx
 
     from app.models.condition import ConditionCreate
     from app.models.end_condition import EndConditionCreate
     from app.models.entity import EntityCreate
+    from app.models.fact import FactCreate
     from app.models.invariant import InvariantCreate
     from app.models.minigame import DodgeConfig, MinigameCreate
     from app.services.condition_service import ConditionService
     from app.services.end_condition_service import EndConditionService
     from app.services.entity_service import EntityService
+    from app.services.fact_service import FactService
     from app.services.invariant_service import InvariantService
     from app.services.minigame_service import MinigameService
 
@@ -362,6 +405,39 @@ async def test_create_playthrough_master_mode_snapshot_includes_entities_and_rul
             canonical_name="The Warden",
             aliases=["the guardian"],
             description="A tireless sentinel bound to the cairn.",
+        ),
+    )
+    relic = await entity_service.create_entity(
+        scenario.scenario_id,
+        user.user_id,
+        EntityCreate(
+            entity_type="item",
+            canonical_name="the Ashen Crown",
+            description="A relic said to bind the cairn's warden.",
+        ),
+    )
+    fact_service = FactService(
+        FactRepo(db_session), EntityRepo(db_session), ScenarioRepo(db_session)
+    )
+    await fact_service.create_fact(
+        scenario.scenario_id,
+        user.user_id,
+        FactCreate(
+            subject_entity_id=warden.entity_id,
+            predicate="guards",
+            object_entity_id=relic.entity_id,
+        ),
+    )
+    # Hidden facts are secrets, not codex entries -- must never reach the
+    # snapshot the play screen renders from.
+    await fact_service.create_fact(
+        scenario.scenario_id,
+        user.user_id,
+        FactCreate(
+            subject_entity_id=warden.entity_id,
+            predicate="fears",
+            object_literal="sunlight",
+            hidden=True,
         ),
     )
     condition_service = ConditionService(
@@ -466,13 +542,15 @@ async def test_create_playthrough_master_mode_snapshot_includes_entities_and_rul
 
     snapshot = result.scenario_snapshot
     assert snapshot["mode"] == "master"
-    assert len(snapshot["entities"]) == 1
+    assert len(snapshot["entities"]) == 2
     assert snapshot["entities"][0]["entity_id"] == str(warden.entity_id)
     assert snapshot["entities"][0]["entity_type"] == "character"
     assert snapshot["entities"][0]["aliases"] == ["the guardian"]
     assert snapshot["entities"][0]["description"] == (
         "A tireless sentinel bound to the cairn."
     )
+    assert len(snapshot["facts"]) == 1
+    assert snapshot["facts"][0]["text"] == "The Warden guards the Ashen Crown."
     assert len(snapshot["scenario_conditions"]) == 1
     assert snapshot["scenario_conditions"][0]["label"] == "Warden Is Wary"
     assert len(snapshot["rule_invariants"]) == 1
@@ -664,3 +742,114 @@ async def test_create_playthrough_player_setup_fact_attachment(
     assert "Default Hero" in req.player_entity_aliases
     assert req.setup_facts[0].predicate == "has_class"
     assert req.setup_facts[0].object_literal == "Paladin"
+
+
+@pytest.mark.asyncio
+async def test_create_playthrough_snapshots_music_tracks_newbie_mode(
+    db_session: AsyncSession,
+):
+    """Newbie-mode scenarios never write scenario_music rows -- every mood
+    must still resolve to a real, playable built-in default track."""
+    service = await _make_service(db_session)
+    user = await _make_user(db_session)
+    scenario = await _make_scenario(db_session, user.user_id)
+
+    result = await service.create_playthrough(
+        user_id=user.user_id,
+        data=PlaythroughCreate(scenario_id=scenario.scenario_id, setup_values={}),
+    )
+
+    music_tracks = result.scenario_snapshot["music_tracks"]
+    assert set(music_tracks) == {
+        "peaceful",
+        "mystery",
+        "tension",
+        "combat",
+        "melancholy",
+        "triumph",
+    }
+    for mood, track_url in music_tracks.items():
+        assert track_url == default_music.default_track_url(mood)
+
+
+@pytest.mark.asyncio
+async def test_create_playthrough_snapshots_music_tracks_master_mode_untouched(
+    db_session: AsyncSession,
+):
+    """An untouched mood slot in a master-mode scenario resolves to the same
+    built-in default as a newbie-mode scenario."""
+    service = await _make_service(db_session)
+    user = await _make_user(db_session)
+    scenario = Scenario(
+        creator_id=user.user_id,
+        title="The Hollow Cairn",
+        mode="master",
+        complexity_tier="master",
+        player_count_support="solo",
+        status="published",
+        narrator_persona="Dry humor.",
+    )
+    db_session.add(scenario)
+    await db_session.flush()
+
+    result = await service.create_playthrough(
+        user_id=user.user_id,
+        data=PlaythroughCreate(scenario_id=scenario.scenario_id, setup_values={}),
+    )
+
+    music_tracks = result.scenario_snapshot["music_tracks"]
+    for mood, track_url in music_tracks.items():
+        assert track_url == default_music.default_track_url(mood)
+
+
+@pytest.mark.asyncio
+async def test_create_playthrough_snapshots_explicit_default_selection(
+    db_session: AsyncSession,
+):
+    """A persisted source='default' row resolves the same as an untouched
+    slot -- proves 'explicitly chose default' and 'never touched' no longer
+    collapse into different behavior."""
+    service = await _make_service(db_session)
+    user = await _make_user(db_session)
+    scenario = await _make_scenario(db_session, user.user_id)
+    await ScenarioMusicRepo(db_session).upsert(
+        scenario_id=scenario.scenario_id,
+        mood="peaceful",
+        source="default",
+        track_url=None,
+    )
+
+    result = await service.create_playthrough(
+        user_id=user.user_id,
+        data=PlaythroughCreate(scenario_id=scenario.scenario_id, setup_values={}),
+    )
+
+    music_tracks = result.scenario_snapshot["music_tracks"]
+    assert music_tracks["peaceful"] == default_music.default_track_url("peaceful")
+
+
+@pytest.mark.asyncio
+async def test_create_playthrough_snapshots_custom_uploaded_music_track(
+    db_session: AsyncSession,
+):
+    """A creator-uploaded track's URL passes through the snapshot verbatim,
+    not the built-in default."""
+    service = await _make_service(db_session)
+    user = await _make_user(db_session)
+    scenario = await _make_scenario(db_session, user.user_id)
+    custom_url = "https://storage.googleapis.com/test-bucket/scenario-music/custom.mp3"
+    await ScenarioMusicRepo(db_session).upsert(
+        scenario_id=scenario.scenario_id,
+        mood="combat",
+        source="upload",
+        track_url=custom_url,
+        duration_seconds=45.0,
+    )
+
+    result = await service.create_playthrough(
+        user_id=user.user_id,
+        data=PlaythroughCreate(scenario_id=scenario.scenario_id, setup_values={}),
+    )
+
+    music_tracks = result.scenario_snapshot["music_tracks"]
+    assert music_tracks["combat"] == custom_url

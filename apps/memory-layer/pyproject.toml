@@ -17,7 +17,6 @@ dependencies = [
     "pydantic>=2.0.0",
     "pytest>=8.0.0",
     "python-dotenv>=1.0.0",
-    "sentence-transformers>=2.0.0",
     "uvicorn>=0.30.0",
 ]
 

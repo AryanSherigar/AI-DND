@@ -1,6 +1,11 @@
 """Turn Resolution Service Configuration module."""
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_SECRET_KEY = "default-secret-key-change-in-production"
+MIN_PRODUCTION_SECRET_KEY_LENGTH = 32
+SECONDS_PER_DAY = 86400
 
 
 class Settings(BaseSettings):
@@ -15,7 +20,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/aidnd_db"
     db_pool_size: int = 5
     db_max_overflow: int = 10
-    secret_key: str = "default-secret-key-change-in-production"
+    secret_key: str = DEFAULT_SECRET_KEY
     jwt_algorithm: str = "HS256"
     cors_origins: list[str] = ["http://localhost:5173"]
     environment: str = "development"
@@ -31,9 +36,6 @@ class Settings(BaseSettings):
     play_count_increment_turn_threshold: int = 10
     state_write_max_retries: int = 2
     memory_batch_turn_interval: int = 5
-    # Memory layer (apps/memory-layer) -- unconsumed by memory_client.py
-    # until it stops being a mock (see its own module docstring, "Phase 4"),
-    # but declared here now so the real client has settings to read.
     memory_service_url: str = "http://localhost:8002"
     memory_service_api_key: str = ""
     memory_query_timeout_seconds: int = 3
@@ -43,11 +45,28 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
     sse_ping_interval_seconds: int = 15
-    imagen_model_name: str = "imagen-3.0-generate-002"
-    imagen_timeout_seconds: int = 30
+    is_rate_limit_enabled: bool = True
+    rate_limit_requests_per_window: int = 30
+    rate_limit_window_seconds: int = 60
+    rate_limit_daily_requests: int = 1000
+    rate_limit_daily_window_seconds: int = SECONDS_PER_DAY
+    image_generation_model_name: str = "gemini-3.1-flash-image"
+    image_generation_timeout_seconds: int = 30
     gcs_bucket_name: str = ""
     local_upload_dir: str = "uploads"
     firebase_credentials_path: str = ""
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        """Refuse to boot in production with the default or a weak secret_key."""
+        if self.environment == "production" and (
+            self.secret_key == DEFAULT_SECRET_KEY
+            or len(self.secret_key) < MIN_PRODUCTION_SECRET_KEY_LENGTH
+        ):
+            raise ValueError(
+                "FATAL: Insecure SECRET_KEY configured in production environment!"
+            )
+        return self
 
 
 settings = Settings()

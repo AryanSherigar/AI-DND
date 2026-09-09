@@ -450,6 +450,10 @@ class GraphPlanBuilder:
             valid_to=v_to_epoch,
             created_at=created_epoch,
             is_current=True,
+            # See direct_authoring.write_fact's identical comment: HydraDB's
+            # Cypher subset has no coalesce()/IS NULL support, so this must
+            # be explicit or template_clone's WHERE clause silently drops it.
+            archived=False,
         )
         return GraphNode(graph_id, "Fact", logical_key, properties)
 

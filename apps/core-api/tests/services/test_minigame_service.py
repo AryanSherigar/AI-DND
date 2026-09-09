@@ -4,8 +4,6 @@ import uuid
 
 import httpx
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db.models.user import User
 from app.exceptions.minigame_exceptions import (
     MinigameModeError,
@@ -19,6 +17,7 @@ from app.models.scenario import ScenarioCreate
 from app.repositories.condition_repo import ConditionRepo
 from app.repositories.end_condition_repo import EndConditionRepo
 from app.repositories.entity_repo import EntityRepo
+from app.repositories.fact_repo import FactRepo
 from app.repositories.invariant_repo import InvariantRepo
 from app.repositories.map_repo import MapRepo
 from app.repositories.minigame_repo import MinigameRepo
@@ -32,6 +31,7 @@ from app.repositories.user_repo import UserRepo
 from app.services.minigame_service import MinigameService
 from app.services.playthrough_service import PlaythroughService
 from app.services.scenario_service import ScenarioService
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.fixture
@@ -345,6 +345,7 @@ async def test_playthrough_snapshot_includes_minigames_sorted_by_priority(
         share_repo=ShareRepo(db_session),
         turn_log_repo=TurnLogRepo(db_session),
         entity_repo=EntityRepo(db_session),
+        fact_repo=FactRepo(db_session),
         condition_repo=ConditionRepo(db_session),
         invariant_repo=InvariantRepo(db_session),
         end_condition_repo=EndConditionRepo(db_session),
@@ -363,4 +364,4 @@ async def test_playthrough_snapshot_includes_minigames_sorted_by_priority(
     minigames = result.scenario_snapshot["scenario_minigames"]
     assert [m["label"] for m in minigames] == ["First", "Second"]
     assert minigames[0]["outcome_mode"] == "binary"
-    assert minigames[0]["dodge_config"] == {"difficulty": 3}
+    assert minigames[0]["dodge_config"]["difficulty"] == 3

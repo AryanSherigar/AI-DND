@@ -1,3 +1,4 @@
+import axios from "axios";
 import React, { useRef, useState } from "react";
 import {
   ALLOWED_COVER_IMAGE_ACCEPT,
@@ -7,6 +8,13 @@ import {
 import { useGenerateCoverImage } from "../../hooks/useGenerateCoverImage";
 import { useUploadCoverImage } from "../../hooks/useUploadCoverImage";
 import { CoverImageUploaderProps } from "./CoverImageUploader.types";
+
+const getGenerationErrorMessage = (error: unknown): string => {
+  if (axios.isAxiosError(error) && error.code === "ECONNABORTED") {
+    return "Image generation is taking longer than expected — please try again.";
+  }
+  return "Image generation failed — please try again.";
+};
 
 const getDropzoneClasses = (disabled: boolean, isDragging: boolean): string => {
   if (disabled) {
@@ -69,8 +77,7 @@ export const CoverImageUploader: React.FC<CoverImageUploaderProps> = ({
       },
       {
         onSuccess: (data) => onChange(data.url),
-        onError: () =>
-          setErrorMessage("Image generation failed — please try again."),
+        onError: (error) => setErrorMessage(getGenerationErrorMessage(error)),
       },
     );
   };

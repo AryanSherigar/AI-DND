@@ -29,10 +29,3 @@ class MusicGenerationQuotaExceededError(BaseAppException):
 
     def __init__(self, message: str = "Music generation quota exceeded"):
         super().__init__(message=message, status_code=429)
-
-
-class MusicSlotIncompleteError(BaseAppException):
-    """Raised at publish time when fewer than all 6 mood slots are filled."""
-
-    def __init__(self, message: str = "All 6 mood slots must be set before publish"):
-        super().__init__(message=message, status_code=400)

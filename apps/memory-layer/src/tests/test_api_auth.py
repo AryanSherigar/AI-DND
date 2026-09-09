@@ -3,9 +3,8 @@
 
 Tested directly against the dependency function rather than via
 `TestClient` -- `api.routes` pulls in `context_memory.composition`, which
-requires optional ML dependencies (sentence-transformers) this repo's test
-environment doesn't always have installed; `require_api_key` itself needs
-none of that.
+constructs a live Vertex AI client; `require_api_key` itself needs none of
+that.
 """
 
 from __future__ import annotations
@@ -13,8 +12,9 @@ from __future__ import annotations
 import os
 import unittest
 
-from api.routes import require_api_key
 from fastapi import HTTPException
+
+from api.routes import require_api_key
 
 
 class RequireApiKeyTests(unittest.TestCase):

@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.scenario_music import MOOD_SLOTS
 from app.db.models.user import User
 from app.exceptions.scenario_exceptions import (
     ScenarioAccessDeniedError,
@@ -21,7 +20,6 @@ from app.models.scenario import ScenarioCreate
 from app.repositories.entity_repo import EntityRepo
 from app.repositories.fact_repo import FactRepo
 from app.repositories.scenario_entity_type_repo import ScenarioEntityTypeRepo
-from app.repositories.scenario_music_repo import ScenarioMusicRepo
 from app.repositories.scenario_repo import ScenarioRepo
 from app.repositories.user_repo import UserRepo
 from app.services.entity_service import EntityService
@@ -58,15 +56,6 @@ def _session_factory_for(session: AsyncSession):
         yield session
 
     return lambda: _cm()
-
-
-async def _fill_all_music_slots(db_session: AsyncSession, scenario_id: uuid.UUID):
-    """Publish now requires all 6 mood slots to be set; fill them with the
-    default track so tests unrelated to music aren't blocked by it."""
-    repo = ScenarioMusicRepo(db_session)
-    for mood in MOOD_SLOTS:
-        await repo.upsert(scenario_id, mood, source="default", track_url=None)
-    await db_session.commit()
 
 
 async def _create_draft(
@@ -141,7 +130,6 @@ async def test_run_publish_job_success_first_publish(
     repo = ScenarioRepo(db_session)
     service = PublishService(repo)
     created = await _create_draft(db_session, sample_user, content_tag="all-ages")
-    await _fill_all_music_slots(db_session, created.scenario_id)
     await service.start_publish(created.scenario_id, sample_user.user_id)
 
     await PublishService.run_publish_job(
@@ -155,10 +143,35 @@ async def test_run_publish_job_success_first_publish(
 
 
 @pytest.mark.asyncio
-async def test_run_publish_job_fails_when_music_slots_incomplete(
+async def test_run_publish_job_master_mode_publishes_with_no_music_slots_set(
     db_session: AsyncSession, sample_user: User
 ):
-    """Publish blocks until all 6 mood slots are set (custom or default)."""
+    """Unset mood slots fall back to the built-in default track at playback
+    time (MusicService.list_scenario_music), so publish must not require
+    every slot to be explicitly filled first."""
+    repo = ScenarioRepo(db_session)
+    service = PublishService(repo)
+    created = await _create_master_draft(db_session, sample_user)
+    # Deliberately leave music slots unset.
+    await service.start_publish(created.scenario_id, sample_user.user_id)
+
+    await PublishService.run_publish_job(
+        created.scenario_id, _session_factory_for(db_session)
+    )
+
+    published = await repo.get_by_id(created.scenario_id)
+    assert published.status == "published"
+    assert published.published_at is not None
+    assert published.publish_error is None
+
+
+@pytest.mark.asyncio
+async def test_run_publish_job_newbie_mode_publishes_with_no_music_slots_set(
+    db_session: AsyncSession, sample_user: User
+):
+    """Newbie mode has no UI to fill mood slots (MusicSlotEditor only renders
+    in master mode's Studio layout), so it must publish fine with none set --
+    regression test for the bug where every newbie scenario was unpublishable."""
     repo = ScenarioRepo(db_session)
     service = PublishService(repo)
     created = await _create_draft(db_session, sample_user, content_tag="all-ages")
@@ -169,10 +182,10 @@ async def test_run_publish_job_fails_when_music_slots_incomplete(
         created.scenario_id, _session_factory_for(db_session)
     )
 
-    failed = await repo.get_by_id(created.scenario_id)
-    assert failed.status == "draft"
-    assert failed.published_at is None
-    assert "mood slots" in failed.publish_error
+    published = await repo.get_by_id(created.scenario_id)
+    assert published.status == "published"
+    assert published.published_at is not None
+    assert published.publish_error is None
 
 
 @pytest.mark.asyncio
@@ -201,7 +214,6 @@ async def test_run_publish_job_republish_failure_keeps_scenario_live(
     repo = ScenarioRepo(db_session)
     service = PublishService(repo)
     created = await _create_draft(db_session, sample_user, content_tag="all-ages")
-    await _fill_all_music_slots(db_session, created.scenario_id)
     await service.start_publish(created.scenario_id, sample_user.user_id)
     await PublishService.run_publish_job(
         created.scenario_id, _session_factory_for(db_session)
@@ -288,7 +300,6 @@ async def test_run_publish_job_master_mode_sends_entities_and_facts(
         ),
     )
 
-    await _fill_all_music_slots(db_session, created.scenario_id)
     await service.start_publish(created.scenario_id, sample_user.user_id)
     await PublishService.run_publish_job(
         created.scenario_id, _session_factory_for(db_session)
@@ -321,7 +332,6 @@ async def test_run_publish_job_newbie_mode_sends_world_data_only(
     calls = _capture_ingest_calls(monkeypatch)
     service = PublishService(ScenarioRepo(db_session))
     created = await _create_draft(db_session, sample_user)
-    await _fill_all_music_slots(db_session, created.scenario_id)
     await service.start_publish(created.scenario_id, sample_user.user_id)
 
     await PublishService.run_publish_job(
@@ -344,7 +354,6 @@ async def test_run_publish_job_empty_master_mode_scenario_still_ingests(
     calls = _capture_ingest_calls(monkeypatch)
     service = PublishService(ScenarioRepo(db_session))
     created = await _create_master_draft(db_session, sample_user)
-    await _fill_all_music_slots(db_session, created.scenario_id)
     await service.start_publish(created.scenario_id, sample_user.user_id)
 
     await PublishService.run_publish_job(

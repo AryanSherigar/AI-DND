@@ -1,14 +1,9 @@
 import React from "react";
 import { Button } from "@/shared/components/ui/Button";
 
-const MIN_DURATION = 30;
-const MAX_DURATION = 120;
-
 interface MoodSlotPromptFormProps {
   prompt: string;
   onPromptChange: (val: string) => void;
-  durationSeconds: number;
-  onDurationChange: (val: number) => void;
   isBusy: boolean;
   quotaExceeded: boolean;
   isRequesting: boolean;
@@ -18,8 +13,6 @@ interface MoodSlotPromptFormProps {
 export const MoodSlotPromptForm: React.FC<MoodSlotPromptFormProps> = ({
   prompt,
   onPromptChange,
-  durationSeconds,
-  onDurationChange,
   isBusy,
   quotaExceeded,
   isRequesting,
@@ -36,18 +29,9 @@ export const MoodSlotPromptForm: React.FC<MoodSlotPromptFormProps> = ({
       maxLength={500}
     />
     <div className="flex items-center gap-2">
-      <label className="text-xs text-content-faint">
-        Length (s)
-        <input
-          type="number"
-          min={MIN_DURATION}
-          max={MAX_DURATION}
-          value={durationSeconds}
-          onChange={(e) => onDurationChange(Number(e.target.value))}
-          disabled={isBusy || quotaExceeded}
-          className="ml-2 w-16 rounded-md border border-border-subtle bg-surface px-1.5 py-1 text-xs text-content"
-        />
-      </label>
+      <p className="text-xs text-content-faint">
+        Generates a ~30s loopable clip.
+      </p>
       <Button
         type="button"
         variant="secondary"

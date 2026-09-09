@@ -3,24 +3,7 @@ import { Link } from "react-router-dom";
 import { useStudioStore } from "../stores/studio.store";
 import { StudioDocumentLayout } from "../components/Layout/StudioDocumentLayout";
 import { MasterModeCreateFlow } from "../components/MasterModeCreateFlow/MasterModeCreateFlow";
-
-const SaveStatusIndicator: React.FC<{
-  isSaving: boolean;
-  lastSaved: Date | null;
-}> = ({ isSaving, lastSaved }) => {
-  if (isSaving) {
-    return (
-      <span className="flex items-center gap-2 text-content-muted">
-        <span className="h-3 w-3 animate-spin rounded-full border-b-2 border-content-muted" />
-        Saving…
-      </span>
-    );
-  }
-  if (lastSaved) {
-    return <span className="text-success">Saved</span>;
-  }
-  return <span className="text-content-faint">Unsaved draft</span>;
-};
+import { SaveStatusIndicator } from "../components/SaveStatusIndicator/SaveStatusIndicator";
 
 export const NewScenarioPage: React.FC = () => {
   const { mode, setMode, isSaving, lastSaved, resetDraft } = useStudioStore();

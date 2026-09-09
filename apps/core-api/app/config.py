@@ -34,13 +34,10 @@ class Settings(BaseSettings):
     core_api_public_url: str = "http://localhost:8000"
     local_upload_dir: str = "uploads"
     gemini_api_key: str = ""
-    imagen_model_name: str = "imagen-3.0-generate-002"
-    imagen_timeout_seconds: int = 30
+    image_generation_model_name: str = "gemini-3.1-flash-image"
+    image_generation_timeout_seconds: int = 30
     lyria_model_name: str = "lyria-002"
     lyria_timeout_seconds: int = 60
-    # Memory layer (apps/memory-layer) -- unconsumed by memory_client.py
-    # until it stops being a mock (see its own module docstring, "Phase 4"),
-    # but declared here now so the real client has settings to read.
     memory_service_url: str = "http://localhost:8002"
     memory_service_api_key: str = ""
     memory_query_timeout_seconds: int = 3
@@ -51,7 +48,11 @@ class Settings(BaseSettings):
     # exceeds it, surfacing as a false "publish failed" to the user while
     # memory-layer keeps working in the background regardless.
     memory_template_timeout_seconds: int = 60
-    memory_clone_timeout_seconds: int = 5
+    # Same failure mode as the NEW-MED-02 fix above: 5s was fine for a warm
+    # memory-layer instance but is consistently too short whenever memory-layer
+    # has scaled to zero and needs to cold-start (e.g. Cloud Run), surfacing as
+    # a false "playthrough creation failed" to the user.
+    memory_clone_timeout_seconds: int = 30
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

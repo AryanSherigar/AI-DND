@@ -10,8 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from context_memory.core.errors import ContractValidationError
 from context_memory.core.models import ContextBatch
 
-ROOT = Path(__file__).resolve().parents[2]
-FIXTURES = ROOT / "docs" / "fixtures"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 class ContractV1Tests(unittest.TestCase):

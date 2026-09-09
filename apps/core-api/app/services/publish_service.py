@@ -17,9 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.models.entity import Entity
 from app.db.models.fact import Fact
 from app.db.models.scenario import Scenario
-from app.db.models.scenario_music import MOOD_SLOTS
 from app.exceptions.map_exceptions import MapPublishValidationError
-from app.exceptions.music_exceptions import MusicSlotIncompleteError
 from app.exceptions.scenario_exceptions import (
     ScenarioAccessDeniedError,
     ScenarioAlreadyPublishingError,
@@ -36,7 +34,6 @@ from app.models.memory import (
 from app.repositories.entity_repo import EntityRepo
 from app.repositories.fact_repo import FactRepo
 from app.repositories.map_repo import MapRepo
-from app.repositories.scenario_music_repo import ScenarioMusicRepo
 from app.repositories.scenario_repo import ScenarioRepo
 
 logger = structlog.get_logger()
@@ -102,7 +99,6 @@ class PublishService:
             try:
                 _check_content_tag(scenario)
                 await _check_map_start_pin(scenario, MapRepo(session))
-                await _check_music_slots_filled(scenario, ScenarioMusicRepo(session))
                 ingest_request = await _build_ingest_request(
                     scenario, EntityRepo(session), FactRepo(session)
                 )
@@ -154,17 +150,6 @@ async def _check_map_start_pin(scenario: Scenario, map_repo: MapRepo) -> None:
     start_pin = await map_repo.get_start_pin_by_scenario(scenario.scenario_id)
     if start_pin is None:
         raise MapPublishValidationError()
-
-
-async def _check_music_slots_filled(
-    scenario: Scenario, scenario_music_repo: ScenarioMusicRepo
-) -> None:
-    """All 6 mood slots must be set (upload, generated, or explicit default)
-    before publish — nobody is forced to customize every mood, but every
-    slot must be a deliberate choice."""
-    filled_count = await scenario_music_repo.count_filled_slots(scenario.scenario_id)
-    if filled_count < len(MOOD_SLOTS):
-        raise MusicSlotIncompleteError()
 
 
 async def _build_ingest_request(

@@ -1,13 +1,33 @@
+from typing import ClassVar
+
 import pytest
+
 from context_memory.core.id_generator import IdGenerator
 from context_memory.ingestion.entity_name_index import EntityNameIndex
-from sentence_transformers import SentenceTransformer
+
+
+class _FakeSemanticEmbedder:
+    """Deterministic stand-in for a real embedding provider: hand-picked
+    vectors that preserve the semantic relationships these tests assert on
+    (related names close together, unrelated ones orthogonal) without a
+    network call or a local model."""
+
+    _VECTORS: ClassVar[dict[str, tuple[float, ...]]] = {
+        "max": (1.0, 0.05, 0.0, 0.0),
+        "maxwell": (0.95, 0.1, 0.0, 0.0),
+        "san francisco": (0.0, 1.0, 0.0, 0.0),
+        "golden retriever": (0.0, 0.0, 1.0, 0.0),
+        "quantum mechanics": (0.0, 0.0, 0.0, 1.0),
+        "buddy": (0.5, 0.0, 0.5, 0.0),
+    }
+
+    def embed(self, text: str) -> tuple[float, ...]:
+        return self._VECTORS.get(text.lower(), (0.1, 0.1, 0.1, 0.1))
 
 
 @pytest.fixture(scope="module")
-def shared_model():
-    """Module-scoped shared SentenceTransformer model instance for test speed."""
-    return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device="cpu")
+def shared_embedder():
+    return _FakeSemanticEmbedder()
 
 
 @pytest.fixture
@@ -19,8 +39,8 @@ def id_gen():
 class TestEntityNameIndex:
     """Test suite for EntityNameIndex."""
 
-    def test_add_and_find_candidates(self, shared_model, id_gen):
-        index = EntityNameIndex(model=shared_model)
+    def test_add_and_find_candidates(self, shared_embedder, id_gen):
+        index = EntityNameIndex(embedder=shared_embedder)
         hid = "haystack_001"
 
         eid1 = id_gen.entity_id(hid, "max", "pet")
@@ -45,8 +65,8 @@ class TestEntityNameIndex:
         assert top_cand["entity_type"] == "pet"
         assert top_cand["type_match"] is True
 
-    def test_threshold_filtering(self, shared_model, id_gen):
-        index = EntityNameIndex(model=shared_model)
+    def test_threshold_filtering(self, shared_embedder, id_gen):
+        index = EntityNameIndex(embedder=shared_embedder)
         hid = "haystack_001"
 
         eid1 = id_gen.entity_id(hid, "golden retriever", "pet")
@@ -58,8 +78,8 @@ class TestEntityNameIndex:
         )
         assert len(candidates) == 0
 
-    def test_remove_entity(self, shared_model, id_gen):
-        index = EntityNameIndex(model=shared_model)
+    def test_remove_entity(self, shared_embedder, id_gen):
+        index = EntityNameIndex(embedder=shared_embedder)
         hid = "haystack_001"
 
         eid = id_gen.entity_id(hid, "buddy", "pet")
@@ -74,23 +94,12 @@ class TestEntityNameIndex:
         assert len(candidates) == 0
 
 
-class _FakeModel:
-    """Deterministic stand-in for SentenceTransformer -- no network/model
-    download needed for a pure bulk-load unit test."""
-
-    def encode(self, text, normalize_embeddings=True):
-        import numpy as np
-
-        digest = sum(ord(c) for c in text) or 1
-        return np.random.default_rng(digest).random(8).astype("float32")
-
-
 class TestRebuildFromEntities:
     """§12 fix: the real recovery path for a process-local index that
     started empty (a fresh replica, or a process restart)."""
 
     def test_rebuild_populates_the_index(self) -> None:
-        index = EntityNameIndex(model=_FakeModel())
+        index = EntityNameIndex(embedder=_FakeSemanticEmbedder())
 
         count = index.rebuild_from_entities(
             [
@@ -103,7 +112,7 @@ class TestRebuildFromEntities:
         assert index.size("hid-1") == 2
 
     def test_a_bad_entry_is_skipped_not_fatal_to_the_rest_of_the_rebuild(self) -> None:
-        index = EntityNameIndex(model=_FakeModel())
+        index = EntityNameIndex(embedder=_FakeSemanticEmbedder())
 
         count = index.rebuild_from_entities(
             [

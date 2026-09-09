@@ -44,6 +44,11 @@ interface MasterEntitySnapshot {
   obtainable: boolean | null;
 }
 
+interface MasterFactSnapshot {
+  fact_id: string;
+  text: string;
+}
+
 interface EndConditionSnapshot {
   outcome_tag: "win" | "lose";
   outcome_title: string;
@@ -65,6 +70,7 @@ interface CommonPlaythroughFields {
   initial_mood?: ScenarioMood;
   music_tracks?: Partial<Record<ScenarioMood, string | null>>;
   narration_font?: string | null;
+  action_chips: string[];
   creator_name: string;
   character_name: string;
   custom_fields: CharacterSetupField[];
@@ -147,6 +153,9 @@ function buildCommonFields(
     null;
   const musicTracks = serverPlaythrough.scenario_snapshot?.music_tracks as
     Partial<Record<ScenarioMood, string | null>> | undefined;
+  const actionChips =
+    (serverPlaythrough.scenario_snapshot?.action_chips as
+      string[] | undefined) ?? [];
   return {
     playthrough_id: serverPlaythrough.playthrough_id,
     scenario_id: serverPlaythrough.scenario_id,
@@ -155,6 +164,7 @@ function buildCommonFields(
     initial_mood: initialMood,
     music_tracks: musicTracks,
     narration_font: narrationFont,
+    action_chips: actionChips,
     creator_name: "Scenario Creator",
     character_name: (setupMap.character_name as string) || "Adventurer",
     custom_fields: buildCustomFields(setupMap, setupSchema),
@@ -279,6 +289,11 @@ function buildPendingMinigame(
   return raw as MinigameEventPayload;
 }
 
+function buildMasterKeyFacts(snapshot: Record<string, unknown>): string[] {
+  const facts = (snapshot.facts ?? []) as MasterFactSnapshot[];
+  return facts.map((fact) => fact.text);
+}
+
 function buildObjectives(snapshot: Record<string, unknown>): Objective[] {
   const endConditions = (snapshot.end_conditions ??
     []) as EndConditionSnapshot[];
@@ -334,7 +349,7 @@ export function buildMasterPlaythroughData(
     ),
     opening_premise: "Your chronicle begins...",
     world_lore: "",
-    key_facts: [],
+    key_facts: buildMasterKeyFacts(snapshot),
     story_cards: [],
     turns,
     entities,

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations import music_gen_client, storage_client
 from app.repositories.user_repo import UserRepo
+from app.services import default_music
 
 
 @pytest.fixture
@@ -48,13 +49,17 @@ def mock_upload_image(monkeypatch):
 
 @pytest.fixture
 def mock_generate_music(monkeypatch):
-    async def _fake_generate_music(prompt, mood, duration_seconds, timeout_seconds):
-        metadata = music_gen_client.GeneratedTrackMetadata(
-            key="D minor", bpm=90, duration_seconds=float(duration_seconds)
-        )
+    from app.services import music_service
+
+    async def _fake_generate_music(prompt, mood, timeout_seconds):
+        metadata = music_gen_client.GeneratedTrackMetadata(key="D minor", bpm=90)
         return b"fake-wav-bytes", metadata
 
+    async def _fake_probe_duration(content: bytes) -> float:
+        return 30.0
+
     monkeypatch.setattr(music_gen_client, "generate_music", _fake_generate_music)
+    monkeypatch.setattr(music_service, "_probe_duration", _fake_probe_duration)
 
 
 @pytest.mark.asyncio
@@ -74,6 +79,8 @@ async def test_list_scenario_music_synthesizes_all_6_defaults(
         "triumph",
     }
     assert all(item["source"] == "default" for item in items)
+    for item in items:
+        assert item["track_url"] == default_music.default_track_url(item["mood"])
 
 
 @pytest.mark.asyncio
@@ -85,6 +92,7 @@ async def test_set_default_track_persists(
     )
     assert resp.status_code == 200
     assert resp.json()["source"] == "default"
+    assert resp.json()["track_url"] == default_music.default_track_url("peaceful")
 
     list_resp = await async_client.get(
         f"/v1/scenarios/{scenario_id}/music", headers=headers
@@ -93,6 +101,41 @@ async def test_set_default_track_persists(
         item for item in list_resp.json()["items"] if item["mood"] == "peaceful"
     )
     assert peaceful["source"] == "default"
+    assert peaceful["track_url"] == default_music.default_track_url("peaceful")
+
+
+@pytest.mark.asyncio
+async def test_default_track_url_is_stable_across_upload_then_revert(
+    async_client: httpx.AsyncClient,
+    headers,
+    scenario_id,
+    mock_upload_image,
+    monkeypatch,
+):
+    from app.services import music_service
+
+    async def _fake_probe_duration(content: bytes) -> float:
+        return 30.0
+
+    monkeypatch.setattr(music_service, "_probe_duration", _fake_probe_duration)
+
+    upload_resp = await async_client.post(
+        f"/v1/scenarios/{scenario_id}/music/peaceful/upload",
+        headers=headers,
+        files={"file": ("track.wav", b"\x00" * 1024, "audio/wav")},
+    )
+    assert upload_resp.status_code == 200
+    uploaded_track_url = upload_resp.json()["track_url"]
+    assert uploaded_track_url != default_music.default_track_url("peaceful")
+
+    revert_resp = await async_client.post(
+        f"/v1/scenarios/{scenario_id}/music/peaceful/default", headers=headers
+    )
+    assert revert_resp.status_code == 200
+    assert revert_resp.json()["track_url"] == default_music.default_track_url(
+        "peaceful"
+    )
+    assert revert_resp.json()["track_url"] != uploaded_track_url
 
 
 @pytest.mark.asyncio
@@ -137,7 +180,6 @@ async def test_generate_confirm_flow(
         json={
             "mood": "combat",
             "prompt": "driving battle theme",
-            "duration_seconds": 60,
         },
     )
     assert generate_resp.status_code == 202
@@ -179,14 +221,14 @@ async def test_generate_respects_scenario_quota(
     first = await async_client.post(
         f"/v1/scenarios/{scenario_id}/music/generate",
         headers=headers,
-        json={"mood": "combat", "prompt": "theme one", "duration_seconds": 60},
+        json={"mood": "combat", "prompt": "theme one"},
     )
     assert first.status_code == 202
 
     second = await async_client.post(
         f"/v1/scenarios/{scenario_id}/music/generate",
         headers=headers,
-        json={"mood": "triumph", "prompt": "theme two", "duration_seconds": 60},
+        json={"mood": "triumph", "prompt": "theme two"},
     )
     assert second.status_code == 429
 

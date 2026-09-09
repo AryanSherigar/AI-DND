@@ -4,7 +4,7 @@ import { useSSE } from "@/shared/hooks/useSSE";
 
 import { ScenarioMood } from "@/shared/types/audio.types";
 import { ambientSoundtrack } from "@/shared/lib/audio/ambient-soundtrack";
-import { resolveMoodTrackUrl } from "@/shared/constants/audio";
+import { getMoodTrackUrl } from "@/shared/constants/audio";
 
 const TRS_BASE_URL = import.meta.env.VITE_TRS_URL || "http://localhost:8001";
 
@@ -32,7 +32,7 @@ export function useSpectator(
         const mood = data as ScenarioMood;
         ambientSoundtrack.transitionTo(
           mood,
-          resolveMoodTrackUrl(mood, musicTracks),
+          getMoodTrackUrl(mood, musicTracks),
         );
       } else if (eventName === "narration") {
         setIsLive(true);

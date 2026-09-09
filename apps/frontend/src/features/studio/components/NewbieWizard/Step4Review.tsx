@@ -5,32 +5,9 @@ import { createScenario } from "../../api/scenarios.api";
 import { PublishFlow } from "../PublishFlow/PublishFlow";
 import { extractErrorMessage } from "@/shared/lib/extractErrorMessage";
 
-// Initial editable entities & facts
-const INITIAL_ENTITIES = [
-  {
-    id: 1,
-    name: "The Crimson Guild",
-    type: "Faction",
-    desc: "Ruthless mercenaries seeking ancient artifacts.",
-  },
-  {
-    id: 2,
-    name: "Elara",
-    type: "Character",
-    desc: "A scholar holding forgotten magic.",
-  },
-];
-
-const INITIAL_FACTS = [
-  { id: 1, text: "The Crimson Guild is hunting ancient relics." },
-  { id: 2, text: "The subterranean ruins are sealed by draconic runes." },
-];
-
 export const Step4Review: React.FC = () => {
   const navigate = useNavigate();
   const { newbieDraft, setSaveState } = useStudioStore();
-  const [entities, setEntities] = useState(INITIAL_ENTITIES);
-  const [facts, setFacts] = useState(INITIAL_FACTS);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [draftScenarioId, setDraftScenarioId] = useState<string | null>(null);
@@ -51,13 +28,17 @@ export const Step4Review: React.FC = () => {
           .filter(Boolean)
           .join("\n\n") || undefined,
       world_data: {
-        worldLore: newbieDraft.worldLore,
+        // core-api maps this to memory-layer's required world_data.lore_text;
+        // a creator using the single-lore-prompt toggle writes their lore into
+        // singleLorePrompt instead, so worldLore alone would be empty and
+        // publish would fail with "newbie mode requires world_data.lore_text".
+        worldLore: newbieDraft.useSingleLorePrompt
+          ? newbieDraft.singleLorePrompt
+          : newbieDraft.worldLore,
         openingPrompt: newbieDraft.openingPrompt,
         mainConflict: newbieDraft.mainConflict,
         storyCards: newbieDraft.storyCards,
         singleLorePrompt: newbieDraft.singleLorePrompt,
-        entities,
-        facts,
       },
       setup_schema: newbieDraft.setupInputs || [],
     });
@@ -130,8 +111,8 @@ export const Step4Review: React.FC = () => {
           Review & Publish
         </h2>
         <p className="text-sm text-content-muted">
-          Review your scenario details, player options, entities, and facts
-          before saving or publishing.
+          Review your scenario details and player options before saving or
+          publishing.
         </p>
       </div>
 
@@ -186,87 +167,6 @@ export const Step4Review: React.FC = () => {
             ))}
           </div>
         )}
-      </div>
-
-      {/* Extracted Entities */}
-      <div className="space-y-6">
-        <h3 className="text-sm font-semibold tracking-wide text-content-muted uppercase border-b border-border-subtle pb-2">
-          Extracted Entities
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {entities.map((e) => (
-            <div
-              key={e.id}
-              className="rounded-md bg-surface-inset border border-border-subtle p-4 space-y-3"
-            >
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={e.name}
-                  onChange={(ev) =>
-                    setEntities(
-                      entities.map((en) =>
-                        en.id === e.id ? { ...en, name: ev.target.value } : en,
-                      ),
-                    )
-                  }
-                  className="flex-1 bg-transparent border-b border-border-subtle rounded-md px-2 py-1 text-sm font-semibold text-content focus:outline-none focus-visible:border-accent/50"
-                />
-                <input
-                  type="text"
-                  value={e.type}
-                  onChange={(ev) =>
-                    setEntities(
-                      entities.map((en) =>
-                        en.id === e.id ? { ...en, type: ev.target.value } : en,
-                      ),
-                    )
-                  }
-                  className="w-24 bg-transparent border-b border-border-subtle rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wider text-content-muted focus:outline-none focus-visible:border-accent/50 text-center"
-                />
-              </div>
-              <textarea
-                value={e.desc}
-                onChange={(ev) =>
-                  setEntities(
-                    entities.map((en) =>
-                      en.id === e.id ? { ...en, desc: ev.target.value } : en,
-                    ),
-                  )
-                }
-                className="w-full h-16 bg-surface border border-border-subtle rounded-md px-3 py-2 text-sm font-sans text-content-muted focus:outline-none focus-visible:border-accent/50 resize-none"
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Extracted Facts */}
-      <div className="space-y-6">
-        <h3 className="text-sm font-semibold tracking-wide text-content-muted uppercase border-b border-border-subtle pb-2">
-          Extracted Facts
-        </h3>
-        <div className="space-y-3">
-          {facts.map((f) => (
-            <div
-              key={f.id}
-              className="rounded-md bg-surface-inset border border-border-subtle p-3"
-            >
-              <input
-                type="text"
-                value={f.text}
-                onChange={(ev) =>
-                  setFacts(
-                    facts.map((fa) =>
-                      fa.id === f.id ? { ...fa, text: ev.target.value } : fa,
-                    ),
-                  )
-                }
-                className="w-full bg-transparent rounded-md px-3 py-1 text-sm font-sans text-content-muted focus:outline-none focus:border-b focus-visible:border-accent/50"
-              />
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* Action Buttons */}

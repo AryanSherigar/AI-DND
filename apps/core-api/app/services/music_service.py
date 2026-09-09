@@ -12,7 +12,7 @@ from mutagen import MutagenError
 from mutagen._file import File as MutagenFile
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models.scenario_music import MOOD_SLOTS
+from app.db.models.scenario_music import MOOD_SLOTS, ScenarioMusic
 from app.exceptions.music_exceptions import (
     MusicGenerationQuotaExceededError,
     MusicJobNotFoundError,
@@ -29,12 +29,12 @@ from app.models.music import (
 from app.repositories.music_generation_job_repo import MusicGenerationJobRepo
 from app.repositories.music_generation_log_repo import MusicGenerationLogRepo
 from app.repositories.scenario_music_repo import ScenarioMusicRepo
+from app.services import default_music
 
 logger = structlog.get_logger()
 
 MAX_AUDIO_UPLOAD_BYTES = 15 * 1024 * 1024
 MIN_TRACK_DURATION_SECONDS = 30
-MAX_TRACK_DURATION_SECONDS = 120
 MAX_GENERATIONS_PER_SCENARIO = 20
 MAX_GENERATIONS_PER_CREATOR_PER_DAY = 10
 
@@ -73,7 +73,7 @@ class MusicService:
         rows = await self.scenario_music_repo.get_by_scenario(scenario_id)
         rows_by_mood = {row.mood: row for row in rows}
         items = [
-            ScenarioMusicResponse.model_validate(rows_by_mood[mood])
+            _to_response(rows_by_mood[mood])
             if mood in rows_by_mood
             else _synthesize_default(scenario_id, mood)
             for mood in MOOD_SLOTS
@@ -97,12 +97,10 @@ class MusicService:
             raise MusicValidationError("Audio file exceeds the 15MB size limit.")
 
         duration_seconds = await _probe_duration(content)
-        if not (
-            MIN_TRACK_DURATION_SECONDS <= duration_seconds <= MAX_TRACK_DURATION_SECONDS
-        ):
+        if duration_seconds < MIN_TRACK_DURATION_SECONDS:
             raise MusicValidationError(
-                f"Track duration must be between {MIN_TRACK_DURATION_SECONDS} and "
-                f"{MAX_TRACK_DURATION_SECONDS} seconds, got {duration_seconds:.1f}."
+                f"Track duration must be at least {MIN_TRACK_DURATION_SECONDS} "
+                f"seconds, got {duration_seconds:.1f}."
             )
 
         object_key = f"{_SCENARIO_MUSIC_PREFIX}/{uuid.uuid4()}{extension}"
@@ -124,7 +122,7 @@ class MusicService:
         row = await self.scenario_music_repo.upsert(
             scenario_id=scenario_id, mood=mood, source="default", track_url=None
         )
-        return ScenarioMusicResponse.model_validate(row)
+        return _to_response(row)
 
     async def request_generation(
         self,
@@ -146,7 +144,6 @@ class MusicService:
     @staticmethod
     async def run_generation_job(
         job_id: uuid.UUID,
-        duration_seconds: int,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """Run the Lyria call in the background against its own DB session."""
@@ -161,9 +158,9 @@ class MusicService:
                 audio_bytes, metadata = await music_gen_client.generate_music(
                     prompt=job.prompt,
                     mood=job.mood,
-                    duration_seconds=duration_seconds,
                     timeout_seconds=60,
                 )
+                actual_duration_seconds = await _probe_duration(audio_bytes)
                 object_key = f"{_MUSIC_PREVIEW_PREFIX}/{uuid.uuid4()}.wav"
                 preview_url = await storage_client.upload_image(
                     audio_bytes, _GENERATED_TRACK_CONTENT_TYPE, object_key
@@ -183,7 +180,7 @@ class MusicService:
                 preview_url=preview_url,
                 key=metadata.key,
                 bpm=metadata.bpm,
-                duration_seconds=metadata.duration_seconds,
+                duration_seconds=actual_duration_seconds,
             )
             logger.info(EVENT_MUSIC_GENERATION_JOB_SUCCEEDED, job_id=str(job_id))
             await session.commit()
@@ -263,6 +260,18 @@ class MusicService:
             )
 
 
+def _to_response(row: ScenarioMusic) -> ScenarioMusicResponse:
+    """Build a response for a persisted row, resolving the real playable
+    default-track URL for 'default'-source rows (DB keeps track_url=NULL for
+    those, so a future default-asset swap needs no per-scenario migration)."""
+    response = ScenarioMusicResponse.model_validate(row)
+    if response.source == "default":
+        response = response.model_copy(
+            update={"track_url": default_music.default_track_url(row.mood)}
+        )
+    return response
+
+
 def _synthesize_default(scenario_id: uuid.UUID, mood: str) -> ScenarioMusicResponse:
     """Build an unpersisted 'default' response for a mood slot with no row."""
     now = datetime.now(UTC)
@@ -271,7 +280,7 @@ def _synthesize_default(scenario_id: uuid.UUID, mood: str) -> ScenarioMusicRespo
         scenario_id=scenario_id,
         mood=mood,
         source="default",
-        track_url=None,
+        track_url=default_music.default_track_url(mood),
         created_at=now,
         updated_at=now,
     )

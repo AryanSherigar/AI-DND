@@ -7,26 +7,31 @@ pipeline. The only file permitted to call this module is
 app/services/music_service.py.
 
 Crossfade guardrail: every generated track is forced into the same key (D
-minor) and the mood's own target BPM range, with the requested duration
-rounded to a whole number of bars at that BPM. Key alone does not prevent an
-audible seam at the loop point — bar-alignment does; cross-mood tempo
-differences are tolerated and masked by the frontend's ~4s gain crossfade,
-not solved here.
+minor) and the mood's own target BPM, via the text prompt. Cross-mood tempo
+differences are tolerated and masked by the frontend's ~4s gain crossfade.
 
-NOTE: the exact google-genai SDK method/param names for Lyria music
-generation must be confirmed against the pinned SDK version before this
-goes live — the shape below mirrors image_gen_client.py's
-generate_images call as the closest known-working pattern.
+NOTE: Lyria on Vertex AI has no batch/offline endpoint in the google-genai
+SDK (only a WebSocket-based Live Music session, which the SDK itself
+refuses to open in Vertex AI mode). The real integration is a raw
+`publishers/google/models/{model}:predict` REST call, confirmed against
+Google's Lyria API reference. This module issues that call through
+`genai.Client`'s own internal `_api_client.async_request`, the same
+authenticated transport `image_gen_client.py` already uses, rather than
+reimplementing auth from scratch.
+
+NOTE: Lyria-002 has no duration parameter — every call returns a fixed clip
+(up to ~32.8s). The caller cannot request a specific length.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 
 import structlog
 from google import genai
 from google.genai import errors as genai_errors
-from google.genai import types
 
 from app.config import settings
 from app.exceptions.music_exceptions import MusicGenerationError
@@ -34,9 +39,6 @@ from app.exceptions.music_exceptions import MusicGenerationError
 logger = structlog.get_logger()
 
 GENERATION_KEY = "D minor"
-
-BEATS_PER_BAR = 4
-SECONDS_PER_MINUTE = 60
 
 MOOD_BPM_RANGES: dict[str, tuple[int, int]] = {
     "peaceful": (55, 70),
@@ -53,15 +55,15 @@ EVENT_MUSIC_GENERATION_ERROR = "music_generation_error"
 _client: genai.Client | None = None
 
 _RATE_LIMIT_STATUS_CODE = 429
+_PREDICT_SAMPLE_COUNT = 1
 
 
 class GeneratedTrackMetadata:
     """Metadata about a generated track, alongside its audio bytes."""
 
-    def __init__(self, key: str, bpm: int, duration_seconds: float) -> None:
+    def __init__(self, key: str, bpm: int) -> None:
         self.key = key
         self.bpm = bpm
-        self.duration_seconds = duration_seconds
 
 
 def _get_client() -> genai.Client:
@@ -78,18 +80,6 @@ def _target_bpm(mood: str) -> int:
     return (low + high) // 2
 
 
-def _bar_aligned_duration(requested_seconds: int, bpm: int) -> float:
-    """Round a requested duration to the nearest whole number of 4-beat bars.
-
-    A partial bar at the loop point is what causes an audible click/pop on
-    crossfade-loop; rounding to a bar boundary at the track's own tempo
-    removes that seam regardless of key.
-    """
-    seconds_per_bar = BEATS_PER_BAR * SECONDS_PER_MINUTE / bpm
-    bars = max(1, round(requested_seconds / seconds_per_bar))
-    return round(bars * seconds_per_bar, 2)
-
-
 def _build_prompt(prompt: str, mood: str, bpm: int) -> str:
     """Append the fixed crossfade constraints to the creator's free-text prompt."""
     return (
@@ -100,30 +90,27 @@ def _build_prompt(prompt: str, mood: str, bpm: int) -> str:
 
 
 async def generate_music(
-    prompt: str, mood: str, duration_seconds: int, timeout_seconds: int
+    prompt: str, mood: str, timeout_seconds: int
 ) -> tuple[bytes, GeneratedTrackMetadata]:
     """Generate a single loopable track from a text prompt via Lyria on Vertex AI."""
     bpm = _target_bpm(mood)
-    aligned_duration = _bar_aligned_duration(duration_seconds, bpm)
     full_prompt = _build_prompt(prompt, mood, bpm)
+    path = f"publishers/google/models/{settings.lyria_model_name}:predict"
+    request_dict = {
+        "instances": [{"prompt": full_prompt}],
+        "parameters": {"sample_count": _PREDICT_SAMPLE_COUNT},
+    }
 
     logger.info(
         EVENT_MUSIC_GENERATION_STARTED,
         model=settings.lyria_model_name,
         mood=mood,
         bpm=bpm,
-        duration_seconds=aligned_duration,
         prompt_length=len(prompt),
     )
     try:
         response = await asyncio.wait_for(
-            _get_client().aio.models.generate_music(
-                model=settings.lyria_model_name,
-                prompt=full_prompt,
-                config=types.GenerateMusicConfig(
-                    duration_seconds=aligned_duration,
-                ),
-            ),
+            _get_client()._api_client.async_request("post", path, request_dict),
             timeout=timeout_seconds,
         )
     except asyncio.TimeoutError as exc:
@@ -138,12 +125,18 @@ async def generate_music(
             raise MusicGenerationError() from exc
         raise
 
-    if not response.generated_tracks:
-        raise MusicGenerationError("Music generation returned no results")
-    audio_bytes = response.generated_tracks[0].audio.audio_bytes
-    if audio_bytes is None:
-        raise MusicGenerationError("Music generation returned no audio bytes")
+    audio_bytes = _extract_audio_bytes(response.body)
+    return audio_bytes, GeneratedTrackMetadata(key=GENERATION_KEY, bpm=bpm)
 
-    return audio_bytes, GeneratedTrackMetadata(
-        key=GENERATION_KEY, bpm=bpm, duration_seconds=aligned_duration
+
+def _extract_audio_bytes(response_body: str) -> bytes:
+    """Pull the first prediction's base64-encoded WAV audio out of a predict response."""
+    predictions = (
+        json.loads(response_body).get("predictions") if response_body else None
     )
+    if not predictions:
+        raise MusicGenerationError("Music generation returned no results")
+    audio_content = predictions[0].get("bytesBase64Encoded")
+    if not audio_content:
+        raise MusicGenerationError("Music generation returned no audio bytes")
+    return base64.b64decode(audio_content)

@@ -163,9 +163,8 @@ class MemoryEngine:
         self._batch_store = batch_store or PostgresBatchStore(pool)
         # mem1 gap #46 fix: unlike the stores above, deliberately NOT
         # default-constructed here -- it needs the same `Embedder` instance
-        # the orchestrator uses (a second SentenceTransformer load is
-        # expensive, see docs/fixes_and_evaluation_findings.md §3.1), which
-        # this class has no access to build on its own. None (every caller
+        # the orchestrator uses, which this class has no access to build on
+        # its own. None (every caller
         # that never authors master-mode scenarios or clones templates, most
         # existing tests) means write_template_fact/clone_playthrough_space
         # simply skip the projection step, same as the other optional

@@ -31,10 +31,8 @@ def get_http_client() -> httpx.AsyncClient:
 
     NOTE: constructed per-request rather than as an app-wide singleton —
     Core API has no existing shared outbound-HTTP-client convention to
-    reuse (verified: no other Core API service makes real outbound HTTP
-    calls today, memory_client.py is a mock), and per-request instantiation
-    keeps this dependency trivially overridable in tests via
-    app.dependency_overrides.
+    reuse, and per-request instantiation keeps this dependency trivially
+    overridable in tests via app.dependency_overrides.
     """
     return httpx.AsyncClient()
 

@@ -51,7 +51,7 @@ export const MASTER_MODE_TABS = [
     id: "music",
     label: "Mood Music",
     helpText:
-      "Upload or generate a track for each of the 6 moods your narrator can call for. All 6 slots must be set (custom or default) before this scenario can be published.",
+      "Upload or generate a track for each of the 6 moods your narrator can call for. Any mood left unset automatically falls back to its default track.",
   },
   {
     id: "setup",
@@ -69,4 +69,16 @@ export interface MasterModeStudioLayoutProps {
 
 export interface StudioSetupPanelProps {
   scenarioId: string;
+}
+
+export interface MasterModeNavProps {
+  scenarioId: string;
+  activeTab: MasterModeTabId;
+  onTabSelect: (tabId: MasterModeTabId) => void;
+}
+
+export interface MasterModeTabPanelsProps {
+  scenarioId: string;
+  activeTab: MasterModeTabId;
+  visitedTabs: Set<MasterModeTabId>;
 }

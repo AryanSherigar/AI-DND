@@ -22,7 +22,7 @@ from context_memory.core.journal import JournaledLLMClient, StepJournal
 from context_memory.core.llm_client import LLMClient
 from context_memory.core.tracing import configure_tracing
 from context_memory.engine import MemoryEngine
-from context_memory.ingestion.embedding import SentenceTransformerEmbedder
+from context_memory.ingestion.embedding import VertexEmbedder
 from context_memory.ingestion.entity_hydration import HydraEntityHydrator
 from context_memory.ingestion.entity_name_index import EntityNameIndex
 from context_memory.ingestion.entity_registry import EntityRegistry
@@ -77,6 +77,8 @@ def build_ingestion_and_retrieval(
     extraction_store: Any | None = None,
     journal: StepJournal | None = None,
     external_fact_id_store: Any | None = None,
+    query_embedder: Any | None = None,
+    entity_name_embedder: Any | None = None,
 ) -> tuple[IngestionOrchestrator, HybridRetrievalEngine, Extractor]:
     """`reader_llm_client` is explicit, not defaulted, because the two callers
     currently pass different clients there and unifying that choice is a
@@ -129,7 +131,9 @@ def build_ingestion_and_retrieval(
     # filter on `context_id`, so sharing this index across every request in
     # this process's lifetime is safe -- different contexts never see each
     # other's candidates. See docs/fixes_and_evaluation_findings.md §4.
-    entity_name_index = EntityNameIndex()
+    entity_name_index = EntityNameIndex(
+        embedder=entity_name_embedder if entity_name_embedder is not None else embedder
+    )
     entity_hydrator = (
         HydraEntityHydrator(hydra_transport)
         if config.entity_hydration_enabled
@@ -177,7 +181,7 @@ def build_ingestion_and_retrieval(
 
     retrieval_engine = HybridRetrievalEngine(
         llm_client=_journaled(reader_llm_client, journal, "reader"),
-        embedder=embedder,
+        embedder=query_embedder if query_embedder is not None else embedder,
         pool=pool,
         hydra_client=hydra_transport,
         config=config,
@@ -240,7 +244,29 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
         database=config.hydradb_database,
         timeout_seconds=config.hydradb_request_timeout_seconds,
     )
-    embedder = SentenceTransformerEmbedder(model_name=config.embedding_model_name)
+    # Three role-scoped instances, not one shared with a `task_type` param
+    # threaded through every call: Vertex's asymmetric embedding model wants
+    # document text, query text, and symmetric name-matching text embedded
+    # under different `task_type`s, and every call site is already
+    # role-pure (document-side vs. query-side vs. entity-name blocking).
+    document_embedder = VertexEmbedder(
+        api_key=config.embedding_api_key,
+        model_name=config.embedding_model_name,
+        model_version=config.embedding_model_version,
+        task_type="RETRIEVAL_DOCUMENT",
+    )
+    query_embedder = VertexEmbedder(
+        api_key=config.embedding_api_key,
+        model_name=config.embedding_model_name,
+        model_version=config.embedding_model_version,
+        task_type="RETRIEVAL_QUERY",
+    )
+    entity_name_embedder = VertexEmbedder(
+        api_key=config.embedding_api_key,
+        model_name=config.embedding_model_name,
+        model_version=config.embedding_model_version,
+        task_type="SEMANTIC_SIMILARITY",
+    )
     journal = StepJournal(pool) if config.step_journal_enabled else None
     # NEW-CRIT-01 fix: shared with MemoryEngine below (`external_fact_id_store`)
     # rather than building two -- it's a stateless wrapper over `pool`, same
@@ -251,11 +277,13 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
     orchestrator, retrieval_engine, _extractor = build_ingestion_and_retrieval(
         pool=pool,
         hydra_transport=hydra_transport,
-        embedder=embedder,
+        embedder=document_embedder,
         config=config,
         reader_llm_client=config.get_reader_client(),
         journal=journal,
         external_fact_id_store=external_fact_id_store,
+        query_embedder=query_embedder,
+        entity_name_embedder=entity_name_embedder,
     )
 
     # Phase 6: rollback gets its own `GraphWriter` -- `PostgresGraphManifestStore`
@@ -281,13 +309,12 @@ def build_memory_engine(config: Config | None = None) -> MemoryEngine:
 
     # mem1 gap #46 fix: same "second instance costs nothing" reasoning as
     # the writers above -- both Postgres stores are stateless wrappers over
-    # `pool`. Reuses the SAME `embedder` object already built above (not a
-    # second one): a second SentenceTransformer load is expensive (see
-    # docs/fixes_and_evaluation_findings.md §3.1), and `authoring_allocator`
-    # already doubles as the GraphIdAllocator, so it doubles again here as
-    # the FactProjectionWriter's ChunkStore.
+    # `pool`. Reuses the SAME `document_embedder` object already built above
+    # (not a second one), and `authoring_allocator` already doubles as the
+    # GraphIdAllocator, so it doubles again here as the FactProjectionWriter's
+    # ChunkStore.
     fact_projection_writer = FactProjectionWriter(
-        embedder,
+        document_embedder,
         PostgresEmbeddingStore(pool),
         PostgresSearchIndexStore(pool),
         authoring_allocator,

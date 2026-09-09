@@ -5,6 +5,7 @@ import { useAuthStore } from "../stores/auth.store";
 import { useAuth } from "../hooks/useAuth";
 import { LoginHero } from "../components/LoginHero/LoginHero";
 import { GoogleSignInButton } from "../components/GoogleSignInButton/GoogleSignInButton";
+import { JudgeSignInButton } from "../components/JudgeSignInButton/JudgeSignInButton";
 import { LayoutTextFlip } from "@/shared/components/ui/aceternity/layout-text-flip";
 import { Loader } from "@/shared/components/feedback/Loader";
 
@@ -20,11 +21,19 @@ const FLIP_LIGHT =
 
 export const LoginPage: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuthStore();
-  const { error, loginWithGoogle, loginAsDevUser } = useAuth();
+  const {
+    error,
+    isGoogleLoading,
+    isJudgeLoading,
+    loginWithGoogle,
+    loginAsJudge,
+    loginAsDevUser,
+  } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const from = location.state?.from?.pathname || "/";
+  const isPending = isGoogleLoading || isJudgeLoading;
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -77,8 +86,30 @@ export const LoginPage: React.FC = () => {
             />
           </motion.div>
 
-          <div className="mt-10">
-            <GoogleSignInButton onClick={loginWithGoogle} />
+          <div className="mt-10 flex flex-col gap-4">
+            <GoogleSignInButton
+              onClick={loginWithGoogle}
+              isPending={isGoogleLoading}
+              disabled={isPending}
+            />
+
+            <div className="relative my-2 flex items-center justify-center">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-neutral-300" />
+              </div>
+              <span
+                className="relative px-3 font-mono text-[11px] tracking-wider text-neutral-400 uppercase"
+                style={{ backgroundColor: LOGIN_BG }}
+              >
+                or for hackathon evaluation
+              </span>
+            </div>
+
+            <JudgeSignInButton
+              onClick={loginAsJudge}
+              isPending={isJudgeLoading}
+              disabled={isPending}
+            />
           </div>
 
           {error && (
@@ -91,8 +122,8 @@ export const LoginPage: React.FC = () => {
           )}
 
           <p className="mt-8 font-sans text-xs leading-relaxed text-neutral-500">
-            By continuing you agree to the terms of use. wevr only reads your
-            name and email from Google.
+            By continuing you agree to the terms of use. Use Google Sign-In or
+            the pre-configured judge account for instant evaluation access.
           </p>
 
           {import.meta.env.DEV && (

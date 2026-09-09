@@ -1,0 +1,56 @@
+server {
+    listen ${PORT};
+    server_name localhost;
+
+    # Must cover the largest upload the app accepts (core-api's
+    # MAX_SCENARIO_AUDIO_BYTES is 10MB) -- nginx's 1MB default silently
+    # 413s any upload above it before the request reaches core-api.
+    client_max_body_size 15M;
+
+    # NOTE: no explicit "Host" header is set on the proxied locations below.
+    # Cloud Run's edge routes by Host header, so the request must keep the
+    # backend's own *.run.app hostname (nginx's default of $proxy_host,
+    # derived from proxy_pass) rather than this frontend's hostname.
+    location /api/ {
+        proxy_pass ${CORE_API_ORIGIN}/;
+        proxy_ssl_server_name on;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # TRS streams SSE responses; buffering/caching must stay off so tokens
+    # reach the browser as they're generated instead of being held until the
+    # response ends.
+    location /trs/ {
+        proxy_pass ${TRS_ORIGIN}/;
+        proxy_ssl_server_name on;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+    }
+
+    location /uploads/ {
+        proxy_pass ${CORE_API_ORIGIN}/uploads/;
+        proxy_ssl_server_name on;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+        try_files $uri $uri/ /index.html;
+    }
+
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}

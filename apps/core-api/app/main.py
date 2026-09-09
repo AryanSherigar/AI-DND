@@ -23,6 +23,7 @@ from app.routers import (
     logs,
     maps,
     minigames,
+    music_defaults,
     playthroughs,
     scenario_entity_types,
     scenario_music,
@@ -62,6 +63,7 @@ setup_error_handlers(app)
 app.include_router(auth.router)
 app.include_router(scenarios.router)
 app.include_router(scenario_music.router)
+app.include_router(music_defaults.router)
 app.include_router(entities.router)
 app.include_router(scenario_entity_types.router)
 app.include_router(facts.router)

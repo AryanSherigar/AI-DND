@@ -1,0 +1,32 @@
+# Virtual environments (saves 5.7GB context)
+.venv/
+venv/
+env/
+
+# Python cache & compiled bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# HydraDB Rust crate directory (memory-layer Python container does not need hydradb source)
+hydradb/
+
+# Testing & Benchmark artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.cache/
+
+# Environment & Secrets
+.env
+.env.*
+src/.env
+!.env.example
+!src/.env.example
+
+# Git & Editor files
+.git/
+.gitignore
+.vscode/
+.idea/
+*.log

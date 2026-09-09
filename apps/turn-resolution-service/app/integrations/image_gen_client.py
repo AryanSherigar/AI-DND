@@ -1,4 +1,4 @@
-"""Imagen (Vertex AI) image generation client for Turn Resolution Service.
+"""Gemini image generation client for Turn Resolution Service.
 
 CLAUDE.md restricts AI calls to this service, but the equivalent client in
 Core API (used for Studio cover image generation) is an intentional, approved
@@ -9,6 +9,12 @@ permitted to call this module.
 
 Authenticated with a Vertex AI API key (Express Mode), the same pattern
 gemini_client.py in this service uses.
+
+NOTE: this project's Vertex AI access does not include any Imagen model
+(every imagen-3.x/4.x variant 404s). Confirmed live against
+gemini-3.1-flash-image, so image generation goes through generate_content
+and its inline_data image part rather than the Imagen-specific
+generate_images call.
 """
 
 from __future__ import annotations
@@ -16,11 +22,12 @@ from __future__ import annotations
 import asyncio
 
 import structlog
-from app.config import settings
-from app.exceptions.turn_exceptions import SceneImageGenerationError
 from google import genai
 from google.genai import errors as genai_errors
-from google.genai import types
+from google.genai.types import GenerateContentResponse
+
+from app.config import settings
+from app.exceptions.turn_exceptions import SceneImageGenerationError
 
 logger = structlog.get_logger()
 
@@ -44,18 +51,17 @@ def _get_client() -> genai.Client:
 
 
 async def generate_image(prompt: str, timeout_seconds: int) -> bytes:
-    """Generate a single image from a text prompt via Imagen on Vertex AI."""
+    """Generate a single image from a text prompt via Gemini on Vertex AI."""
     logger.info(
         EVENT_IMAGE_GENERATION_STARTED,
-        model=settings.imagen_model_name,
+        model=settings.image_generation_model_name,
         prompt_length=len(prompt),
     )
     try:
         response = await asyncio.wait_for(
-            _get_client().aio.models.generate_images(
-                model=settings.imagen_model_name,
-                prompt=prompt,
-                config=types.GenerateImagesConfig(number_of_images=1),
+            _get_client().aio.models.generate_content(
+                model=settings.image_generation_model_name,
+                contents=prompt,
             ),
             timeout=timeout_seconds,
         )
@@ -71,9 +77,18 @@ async def generate_image(prompt: str, timeout_seconds: int) -> bytes:
             raise SceneImageGenerationError() from exc
         raise
 
-    if not response.generated_images:
+    return _extract_image_bytes(response)
+
+
+def _extract_image_bytes(response: GenerateContentResponse) -> bytes:
+    """Pull the first inline-data image part out of a generate_content response."""
+    candidates = response.candidates
+    parts = (
+        candidates[0].content.parts if candidates and candidates[0].content else None
+    )
+    if not parts:
         raise SceneImageGenerationError("Image generation returned no results")
-    image_bytes = response.generated_images[0].image.image_bytes
-    if image_bytes is None:
-        raise SceneImageGenerationError("Image generation returned no image bytes")
-    return image_bytes
+    for part in parts:
+        if part.inline_data and part.inline_data.data:
+            return part.inline_data.data
+    raise SceneImageGenerationError("Image generation returned no image bytes")

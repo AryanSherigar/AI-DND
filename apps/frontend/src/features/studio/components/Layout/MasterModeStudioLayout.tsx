@@ -1,16 +1,6 @@
-import React from "react";
-import { EntityEditor } from "../EntityEditor/EntityEditor";
-import { FactEditor } from "../FactEditor/FactEditor";
-import { ConditionEditor } from "../ConditionEditor/ConditionEditor";
-import { StateSchemaEditor } from "../StateSchemaEditor/StateSchemaEditor";
-import { EndConditionsEditor } from "../EndConditionsEditor/EndConditionsEditor";
-import { InvariantEditor } from "../InvariantEditor/InvariantEditor";
-import { MapEditor } from "../MapEditor/MapEditor";
-import { MinigameEditor } from "../MinigameEditor/MinigameEditor";
-import { MusicSlotEditor } from "../MusicSlotEditor/MusicSlotEditor";
-import { PlaytestButton } from "../PlaytestButton/PlaytestButton";
-import { DuplicateScenarioButton } from "../DuplicateScenarioButton/DuplicateScenarioButton";
-import { StudioSetupPanel } from "./StudioSetupPanel";
+import React, { useEffect, useState } from "react";
+import { MasterModeNav } from "./MasterModeNav";
+import { MasterModeTabPanels } from "./MasterModeTabPanels";
 import { StudioChatDrawer } from "./StudioChatDrawer";
 import { TabHelpBanner } from "./TabHelpBanner";
 import {
@@ -25,53 +15,37 @@ export const MasterModeStudioLayout: React.FC<MasterModeStudioLayoutProps> = ({
 }) => {
   const activeTab = useStudioStore((state) => state.activeMasterTab);
   const setActiveTab = useStudioStore((state) => state.setActiveMasterTab);
+  const [visitedTabs, setVisitedTabs] = useState<Set<MasterModeTabId>>(
+    () => new Set([activeTab]),
+  );
 
-  const handleTabClick = (tabId: MasterModeTabId) => () => setActiveTab(tabId);
+  useEffect(() => {
+    setVisitedTabs((prev) => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
+
   const activeTabConfig = MASTER_MODE_TABS.find((tab) => tab.id === activeTab);
 
   return (
     <div className="flex flex-1 overflow-hidden bg-surface-inset font-sans text-content-muted">
-      <nav className="w-56 border-r border-border-subtle flex-shrink-0 p-4 space-y-1">
-        {MASTER_MODE_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={handleTabClick(tab.id)}
-            className={`w-full text-left px-3 py-2 text-sm ${
-              activeTab === tab.id
-                ? "bg-surface text-content font-medium"
-                : "text-content-faint hover:text-content-muted"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-        <div className="pt-4 space-y-2 border-t border-border-subtle mt-4">
-          <PlaytestButton scenarioId={scenarioId} />
-          <DuplicateScenarioButton scenarioId={scenarioId} />
-        </div>
-      </nav>
+      <MasterModeNav
+        scenarioId={scenarioId}
+        activeTab={activeTab}
+        onTabSelect={setActiveTab}
+      />
       <main className="flex-1 overflow-y-auto p-8">
         {activeTabConfig && (
           <TabHelpBanner key={activeTab} helpText={activeTabConfig.helpText} />
         )}
-        {activeTab === "entities" && <EntityEditor scenarioId={scenarioId} />}
-        {activeTab === "facts" && <FactEditor scenarioId={scenarioId} />}
-        {activeTab === "state" && <StateSchemaEditor scenarioId={scenarioId} />}
-        {activeTab === "conditions" && (
-          <ConditionEditor scenarioId={scenarioId} />
-        )}
-        {activeTab === "invariants" && (
-          <InvariantEditor scenarioId={scenarioId} />
-        )}
-        {activeTab === "endings" && (
-          <EndConditionsEditor scenarioId={scenarioId} />
-        )}
-        {activeTab === "minigames" && (
-          <MinigameEditor scenarioId={scenarioId} />
-        )}
-        {activeTab === "maps" && <MapEditor scenarioId={scenarioId} />}
-        {activeTab === "music" && <MusicSlotEditor scenarioId={scenarioId} />}
-        {activeTab === "setup" && <StudioSetupPanel scenarioId={scenarioId} />}
+        <MasterModeTabPanels
+          scenarioId={scenarioId}
+          activeTab={activeTab}
+          visitedTabs={visitedTabs}
+        />
       </main>
       <StudioChatDrawer activeSection={activeTab} scenarioId={scenarioId} />
     </div>

@@ -50,4 +50,26 @@ describe("ActionChipsEditor", () => {
 
     expect(savedPayload).toEqual({ action_chips: ["Search the cairn"] });
   });
+
+  it("does not add a duplicate chip (case-insensitive, trimmed)", async () => {
+    server.use(
+      http.get(`${API_URL}/v1/scenarios/${SCENARIO_ID}`, () =>
+        HttpResponse.json({
+          scenario_id: SCENARIO_ID,
+          action_chips: ["Explore the ruins"],
+        }),
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderEditor();
+
+    expect(await screen.findByText("Explore the ruins")).toBeInTheDocument();
+
+    const input = screen.getByLabelText(/new action chip/i);
+    await user.type(input, "  explore the ruins  {enter}");
+
+    expect(screen.getAllByText("Explore the ruins")).toHaveLength(1);
+    expect(input).toHaveValue("  explore the ruins  ");
+  });
 });

@@ -66,6 +66,9 @@ function buildServerPlaythrough(
           is_secret: true,
         },
       ],
+      facts: [
+        { fact_id: "fact-1", text: "The Warden guards the Rusty Sword." },
+      ],
     },
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
@@ -111,6 +114,16 @@ describe("buildMasterPlaythroughData", () => {
       { key: "health", label: "Health", value: 85 },
       { key: "sanity", label: "Sanity", value: 98 },
     ]);
+  });
+
+  it("maps the pinned snapshot facts into key_facts", () => {
+    const data = buildMasterPlaythroughData(
+      buildServerPlaythrough(),
+      emptyTurns,
+      false,
+    );
+
+    expect(data.key_facts).toEqual(["The Warden guards the Rusty Sword."]);
   });
 
   it("resolves player_inventory entity ids against the entities list", () => {

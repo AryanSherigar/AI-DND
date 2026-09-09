@@ -19,6 +19,7 @@ from app.models.turn_log import TurnLogListResponse
 from app.repositories.condition_repo import ConditionRepo
 from app.repositories.end_condition_repo import EndConditionRepo
 from app.repositories.entity_repo import EntityRepo
+from app.repositories.fact_repo import FactRepo
 from app.repositories.invariant_repo import InvariantRepo
 from app.repositories.map_repo import MapRepo
 from app.repositories.minigame_repo import MinigameRepo
@@ -44,6 +45,7 @@ def get_playthrough_service(
         share_repo=ShareRepo(session),
         turn_log_repo=TurnLogRepo(session),
         entity_repo=EntityRepo(session),
+        fact_repo=FactRepo(session),
         condition_repo=ConditionRepo(session),
         invariant_repo=InvariantRepo(session),
         end_condition_repo=EndConditionRepo(session),

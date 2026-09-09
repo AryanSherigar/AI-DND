@@ -1,13 +1,12 @@
 import React, { useState } from "react";
 import { AudioPreviewPlayer } from "@/shared/components/AudioPreviewPlayer";
+import { extractErrorMessage } from "@/shared/lib/extractErrorMessage";
 import { useScenarioMusic } from "../../hooks/useScenarioMusic";
 import { useMusicGenerationJob } from "../../hooks/useMusicGenerationJob";
 import { MoodSlotCardProps } from "./MoodSlotCard.types";
 import { MoodSlotUploadRow } from "./MoodSlotUploadRow";
 import { MoodSlotPromptForm } from "./MoodSlotPromptForm";
 import { MoodSlotJobStatus } from "./MoodSlotJobStatus";
-
-const DEFAULT_GENERATION_DURATION_SECONDS = 60;
 
 const getSourceLabel = (source?: string): string => {
   if (source === "upload") return "Uploaded";
@@ -23,9 +22,6 @@ export const MoodSlotCard: React.FC<MoodSlotCardProps> = ({
   quotaExceeded,
 }) => {
   const [prompt, setPrompt] = useState("");
-  const [durationSeconds, setDurationSeconds] = useState(
-    DEFAULT_GENERATION_DURATION_SECONDS,
-  );
   const [pendingJobId, setPendingJobId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -41,6 +37,7 @@ export const MoodSlotCard: React.FC<MoodSlotCardProps> = ({
   } = useScenarioMusic(scenarioId);
   const { data: job } = useMusicGenerationJob(scenarioId, pendingJobId);
   const isBusy = isUploading || isRequestingGeneration || isConfirming;
+  const effectiveTrackUrl = slot?.track_url ?? null;
 
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -49,7 +46,12 @@ export const MoodSlotCard: React.FC<MoodSlotCardProps> = ({
     setErrorMessage(null);
     uploadTrack(
       { mood, file },
-      { onError: () => setErrorMessage("Upload failed — please try again.") },
+      {
+        onError: (err) =>
+          setErrorMessage(
+            extractErrorMessage(err, "Upload failed — please try again."),
+          ),
+      },
     );
   };
 
@@ -57,10 +59,13 @@ export const MoodSlotCard: React.FC<MoodSlotCardProps> = ({
     if (!prompt.trim()) return;
     setErrorMessage(null);
     requestGeneration(
-      { mood, prompt, duration_seconds: durationSeconds },
+      { mood, prompt },
       {
         onSuccess: (createdJob) => setPendingJobId(createdJob.job_id),
-        onError: () => setErrorMessage("Music generation failed to start."),
+        onError: (err) =>
+          setErrorMessage(
+            extractErrorMessage(err, "Music generation failed to start."),
+          ),
       },
     );
   };
@@ -69,7 +74,10 @@ export const MoodSlotCard: React.FC<MoodSlotCardProps> = ({
     if (!pendingJobId) return;
     confirmGeneratedTrack(pendingJobId, {
       onSuccess: () => setPendingJobId(null),
-      onError: () => setErrorMessage("Could not save the generated track."),
+      onError: (err) =>
+        setErrorMessage(
+          extractErrorMessage(err, "Could not save the generated track."),
+        ),
     });
   };
 
@@ -89,7 +97,7 @@ export const MoodSlotCard: React.FC<MoodSlotCardProps> = ({
         </span>
       </div>
 
-      {slot?.track_url && <AudioPreviewPlayer src={slot.track_url} />}
+      {effectiveTrackUrl && <AudioPreviewPlayer src={effectiveTrackUrl} />}
 
       <MoodSlotUploadRow
         label={label}
@@ -104,8 +112,6 @@ export const MoodSlotCard: React.FC<MoodSlotCardProps> = ({
         <MoodSlotPromptForm
           prompt={prompt}
           onPromptChange={setPrompt}
-          durationSeconds={durationSeconds}
-          onDurationChange={setDurationSeconds}
           isBusy={isBusy}
           quotaExceeded={quotaExceeded}
           isRequesting={isRequestingGeneration}

@@ -17,8 +17,11 @@ describe("Header", () => {
       user: null,
       isAuthenticated: false,
       isLoading: false,
+      isGoogleLoading: false,
+      isJudgeLoading: false,
       error: null,
       loginWithGoogle: vi.fn(),
+      loginAsJudge: vi.fn(),
       loginAsDevUser: vi.fn(),
       logout: mockLogout,
     });
@@ -53,8 +56,11 @@ describe("Header", () => {
       user: { user_id: "user-42", display_name: "Geralt of Rivia" },
       isAuthenticated: true,
       isLoading: false,
+      isGoogleLoading: false,
+      isJudgeLoading: false,
       error: null,
       loginWithGoogle: vi.fn(),
+      loginAsJudge: vi.fn(),
       loginAsDevUser: vi.fn(),
       logout: mockLogout,
     });
